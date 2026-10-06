@@ -74,6 +74,19 @@ public sealed class MailNotifications : IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<string, IEmailProvider> _providers;
+    public EmailAccount? GetAccount(string provider) => _providers.GetValueOrDefault(provider)?.Account;
+    public string? GetStatusError(string provider) => _providers.GetValueOrDefault(provider)?.StatusError;
+    public MailSettings GetSettings(string provider)
+    {
+        lock (_gate)
+        {
+            if (_settings.Provider == provider) return _settings.Clone();
+            if (provider != "gmail") throw new ArgumentException(nameof(provider));
+            var path = _settingsPath + "." + provider;
+            return File.Exists(path) ? JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(path)) ?? throw new InvalidDataException()
+                : new MailSettings { Provider = provider };
+        }
+    }
     public EmailAccount? GoogleAccount => _providers.GetValueOrDefault("gmail")?.Account;
     public string? GoogleStatusError => _providers.GetValueOrDefault("gmail")?.StatusError;
     public int PausedCount { get { lock (_gate) return _jobs.Count(j => !j.Sent && !MatchesAccount(j, _settings)); } }
@@ -132,11 +145,11 @@ public sealed class MailNotifications : IAsyncDisposable
         { JsonSerializer.Serialize(file, value); file.Flush(true); }
         File.Move(path + ".tmp", path, true);
     }
-    public void SaveSettings(MailSettings settings)
+    public void SaveSettings(MailSettings settings, bool activate = true)
     {
         if (settings.Provider == "gmail")
         {
-            var account = GoogleAccount;
+            var account = GetAccount(settings.Provider);
             if (account is null || settings.AccountId != account.Id) throw new MailAuthorizationException();
             settings.From = account.Address;
             settings.EncryptedPassword = "";
@@ -148,11 +161,18 @@ public sealed class MailNotifications : IAsyncDisposable
         lock (_gate)
         {
             if (LoadError is not null) throw new InvalidOperationException(LoadError);
+            if (!activate && _settings.Provider != settings.Provider)
+            {
+                Save(_settingsPath + "." + settings.Provider, settings);
+                return;
+            }
+            if (_settings.Provider == "gmail") Save(_settingsPath + "." + _settings.Provider, _settings);
             Save(_settingsPath, settings);
             _settings = settings.Clone();
         }
     }
-    public async Task ConnectGoogleAsync(string clientFile, CancellationToken token)
+    public Task ConnectGoogleAsync(string clientFile, CancellationToken token) => ConnectAsync("gmail", clientFile, token);
+    public async Task ConnectAsync(string provider, string clientFile, CancellationToken token)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
         linked.CancelAfter(TimeSpan.FromMinutes(3));
@@ -160,10 +180,10 @@ public sealed class MailNotifications : IAsyncDisposable
         try
         {
             if (LoadError is not null) throw new InvalidOperationException(LoadError);
-            var account = await _providers["gmail"].ConnectAsync(clientFile, linked.Token);
-            var settings = Settings;
-            settings.Enabled = settings.Enabled && settings.Provider == "gmail" && settings.AccountId == account.Id;
-            settings.Provider = "gmail";
+            var account = await _providers[provider].ConnectAsync(clientFile, linked.Token);
+            var settings = GetSettings(provider);
+            settings.Enabled = settings.Enabled && settings.Provider == provider && settings.AccountId == account.Id;
+            settings.Provider = provider;
             settings.AccountId = account.Id;
             settings.From = account.Address;
             settings.AuthorizationRequired = false;
@@ -172,21 +192,22 @@ public sealed class MailNotifications : IAsyncDisposable
         finally { _sending.Release(); }
     }
 
-    public async Task DisconnectGoogleAsync(CancellationToken token)
+    public Task DisconnectGoogleAsync(CancellationToken token) => DisconnectAsync("gmail", token);
+    public async Task DisconnectAsync(string provider, CancellationToken token)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
         await _sending.WaitAsync(linked.Token);
         try
         {
-            var settings = Settings;
+            var settings = GetSettings(provider);
             settings.Enabled = false;
             settings.AuthorizationRequired = true;
             lock (_gate)
             {
-                Save(_settingsPath, settings);
-                _settings = settings;
+                if (_settings.Provider == provider) { Save(_settingsPath, settings); _settings = settings; }
+                else Save(_settingsPath + "." + provider, settings);
             }
-            await _providers["gmail"].DisconnectAsync(linked.Token);
+            await _providers[provider].DisconnectAsync(linked.Token);
         }
         finally { _sending.Release(); }
     }
@@ -240,6 +261,18 @@ public sealed class MailNotifications : IAsyncDisposable
         : exception is MailProviderException or MailAuthorizationException ? exception.Message
         : exception is OperationCanceledException ? "Canceled or mail timeout" : exception.GetType().Name;
 
+    private void MarkAuthorizationRequired(MailSettings failedSettings)
+    {
+        lock (_gate)
+        {
+            var saved = GetSettings(failedSettings.Provider);
+            if (saved.AccountId != failedSettings.AccountId) return;
+            saved.AuthorizationRequired = true;
+            if (_settings.Provider == saved.Provider) { Save(_settingsPath, saved); _settings = saved; }
+            else Save(_settingsPath + "." + saved.Provider, saved);
+        }
+    }
+
     public async Task TestAsync(MailSettings settings, CancellationToken token)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
@@ -261,7 +294,7 @@ public sealed class MailNotifications : IAsyncDisposable
         }
         catch (MailAuthorizationException)
         {
-            lock (_gate) { _settings.AuthorizationRequired = true; Save(_settingsPath, _settings); }
+            MarkAuthorizationRequired(settings);
             throw;
         }
         catch (Exception exception) { _log("Mail: test not confirmed; " + Describe(job) + "; " + FailureDetails(exception)); throw; }
@@ -321,11 +354,10 @@ public sealed class MailNotifications : IAsyncDisposable
                 lock (_gate)
                 {
                     job.Attempts = Math.Max(0, job.Attempts - 1);
-                    _settings.AuthorizationRequired = true;
-                    Save(_settingsPath, _settings);
+                    MarkAuthorizationRequired(settings);
                     Save(_queuePath, _jobs);
                 }
-                _log(Localization.Text("Mail paused: reconnect your Google account. Queued reports are preserved.", "Отправка приостановлена: подключите аккаунт Google заново. Очередь сохранена."));
+                _log(Localization.Text("Mail paused: reconnect your email account. Queued reports are preserved.", "Отправка приостановлена: подключите почтовый аккаунт заново. Очередь сохранена."));
             }
             catch (Exception e)
             {

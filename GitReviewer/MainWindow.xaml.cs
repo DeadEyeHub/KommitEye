@@ -217,6 +217,7 @@ public partial class MainWindow : Window
         _trayIcon.DoubleClick += (_, _) => Dispatch(ShowFromTray);
         ApplyLanguage();
 
+        InitializeApplyChanges();
         Closing += MainWindow_Closing;
         StateChanged += (_, _) =>
         {
@@ -274,7 +275,9 @@ public partial class MainWindow : Window
         RenderProjectButtons();
         SaveCustomPromptButton.Content = Localization.Text("Save custom prompt", "Сохранить свой промпт");
         ResetCustomPromptButton.Content = Localization.Text("Use built-in prompt", "Использовать встроенный");
+        CaptureMailDrafts();
         BuildMailPanel();
+        RefreshApplyChangesBar();
         ParametersHelpText.Text = Localization.Text(
             "Generation and review limits (per profile). Save to persist. Changes apply to the next review, not a running review. Decimal separator: dot or comma. Limits are shown in brackets.",
             "Генерация и лимиты ревью (для каждого профиля). Нажмите «Сохранить». Изменения применятся к следующей проверке, не к текущей. Дробные числа: точка или запятая. Диапазоны указаны в скобках.");
@@ -454,6 +457,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             SshKeyPathTextBox.Text = dialog.FileName;
+            MarkSettingsChanged("project");
             SaveAuthenticationPreferences();
         }
     }
@@ -470,6 +474,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             PlinkPathTextBox.Text = dialog.FileName;
+            MarkSettingsChanged("project");
             SaveAuthenticationPreferences();
         }
     }
@@ -632,6 +637,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true)
         {
             RepositoryPathTextBox.Text = dialog.FolderName;
+            MarkSettingsChanged("project");
         }
     }
 
@@ -777,26 +783,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var profile = ReadProfileFromForm();
-            var existing = _models.Profiles.FirstOrDefault(item =>
-                item.Name.Equals(profile.Name, StringComparison.OrdinalIgnoreCase));
-            if (existing is null)
-            {
-                _models.Profiles.Add(profile);
-            }
-            else
-            {
-                existing.Endpoint = profile.Endpoint;
-                existing.Model = profile.Model;
-                existing.ApiKey = profile.ApiKey;
-                existing.ApiKeyEnvironment = profile.ApiKeyEnvironment;
-                existing.Parameters = profile.Parameters.Clone();
-                profile = existing;
-            }
-
-            _models.ActiveProfile = profile.Name;
-            _configuration.SaveModels(_models);
-            LoadProfiles(profile.Name);
+            PersistModelProfile(ReadProfileFromForm());
             ModelStatusTextBlock.Text = Localization.Text(
                 "Profile saved locally.",
                 "Профиль сохранен локально.");
@@ -1280,7 +1267,8 @@ public partial class MainWindow : Window
         if (_mailCounts is not null)
         {
             var counts = _mail.Counts();
-            _mailCounts.Text = Localization.Format("Mail queue: {0}; failed: {1}; awaiting original account: {2}.", "Очередь писем: {0}; не отправлено: {1}; ожидают исходный аккаунт: {2}.", counts.Pending, counts.Failed, _mail.PausedCount);
+            var mailCountsText = Localization.Format("Mail queue: {0}; failed: {1}; awaiting original account: {2}.", "Очередь писем: {0}; не отправлено: {1}; ожидают исходный аккаунт: {2}.", counts.Pending, counts.Failed, _mail.PausedCount);
+            foreach (var label in _mailCountLabels) label.Text = mailCountsText;
             RefreshMailAccountStatus();
         }
         if (_automaticStopPending && !_runner.IsRunning)

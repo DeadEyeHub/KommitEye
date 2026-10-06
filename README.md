@@ -989,3 +989,8 @@ next review, not a running model request. Legacy `system-prompt.txt` files in Ap
 remain ignored and are never rewritten or deleted.
 
 [Back to contents](#contents)
+
+
+### Applying settings
+
+Editing a text field, password or selection shows **Apply changes** in a fixed bottom bar. It stays visible while scrolling or switching tabs, including for settings that already took effect. Checkboxes do not show the bar. Apply saves the edited sections and keeps the bar open on validation errors. Model changes apply to the next commit; a review already in progress is not restarted. Applying project settings wakes an idle monitoring loop. Mail changes retain the Gmail draft.

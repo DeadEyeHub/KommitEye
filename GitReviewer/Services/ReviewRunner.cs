@@ -17,6 +17,25 @@ public sealed class ReviewRunner
     private string _activeCommit = string.Empty;
     private int _remaining;
     private int _retryDelaySeconds;
+    private AppSettings? _updatedSettings;
+    private ModelProfile? _updatedProfile;
+    private TaskCompletionSource _settingsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public void UpdateSettings(AppSettings settings)
+    {
+        var schedule = new DailyModelSchedule(settings);
+        lock (_lifecycleLock)
+        {
+            _updatedSettings = settings;
+            _schedule = schedule;
+            _retryDelaySeconds = settings.PollIntervalSeconds;
+            _settingsChanged.TrySetResult();
+        }
+    }
+    public void UpdateProfile(ModelProfile profile)
+    {
+        profile.Parameters.Validate();
+        lock (_lifecycleLock) { _updatedProfile = profile.Clone(); _settingsChanged.TrySetResult(); }
+    }
     private DailyModelSchedule _schedule = new(new AppSettings());
     private readonly Func<DateTime> _localNow;
     public event Action<int?>? RemainingChanged;
@@ -64,6 +83,8 @@ public sealed class ReviewRunner
             if (_runTask is { IsCompleted: false } || _stopTask is not null || _manualReviewActive)
                 return false;
 
+            _updatedSettings = null; _updatedProfile = null;
+            _settingsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
             profile.Parameters.Validate();
             _schedule = new DailyModelSchedule(settings);
             _cancellation?.Dispose();
@@ -192,6 +213,14 @@ public sealed class ReviewRunner
         string? failedCommit = null;
         while (!cancellationToken.IsCancellationRequested)
         {
+            Task configurationChanged;
+            lock (_lifecycleLock)
+            {
+                settings = _updatedSettings ?? settings;
+                profile = _updatedProfile?.Clone() ?? profile;
+                _settingsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                configurationChanged = _settingsChanged.Task;
+            }
             try
             {
                 await WaitForScheduleAsync(cancellationToken);
@@ -242,7 +271,13 @@ public sealed class ReviewRunner
             }
 
             Publish(NextRunChanged, (DateTimeOffset?)DateTimeOffset.Now.AddSeconds(settings.PollIntervalSeconds));
-            try { await Task.Delay(TimeSpan.FromSeconds(settings.PollIntervalSeconds), cancellationToken); }
+            try
+            {
+                using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                await Task.WhenAny(Task.Delay(TimeSpan.FromSeconds(settings.PollIntervalSeconds), wait.Token), configurationChanged);
+                wait.Cancel();
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             finally { Publish(NextRunChanged, (DateTimeOffset?)null); }
         }
     }
@@ -382,6 +417,7 @@ public sealed class ReviewRunner
         string? advanceFrom = null,
         bool updateSubmodulesAfterAdvance = true)
     {
+        lock (_lifecycleLock) if (!_manualReviewActive) profile = _updatedProfile?.Clone() ?? profile;
         var result = await AnalyzeAndReportAsync(
             repositoryPath, repositoryIdentity, branch, sha, profile, false, cancellationToken);
         Emit(ReviewStage.SavingCursor, profile, sha);

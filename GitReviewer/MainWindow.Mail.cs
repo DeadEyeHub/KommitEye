@@ -8,20 +8,29 @@ namespace GitReviewer;
 public partial class MainWindow
 {
     private Controls.TextBlock? _mailCounts, _mailAccountStatus;
+    private readonly List<Controls.TextBlock> _mailCountLabels = [];
     private CancellationTokenSource? _mailAuthorizationCancellation;
     private bool _mailAccountBusy;
     private string _googleClientFile = "";
 
+    private readonly Dictionary<string, Controls.TextBlock> _mailStatuses = new();
+    private readonly Dictionary<string, Action> _applyMailDrafts = new();
+    private readonly Dictionary<string, Action> _captureMailDrafts = new();
+    private readonly Dictionary<string, MailSettings> _mailDrafts = new();
+    private void CaptureMailDrafts() { foreach (var capture in _captureMailDrafts.Values) capture(); }
     private void RefreshMailAccountStatus()
     {
-        if (_mailAccountStatus is null) return;
-        var account = _mail.GoogleAccount;
-        _mailAccountStatus.Text = account is null
-            ? _mail.GoogleStatusError ?? Localization.Text("Google account is not connected.", "Аккаунт Google не подключён.")
-            : Localization.Text("Google account: ", "Аккаунт Google: ") + account.Address +
-              (account.NeedsAuthorization || _mail.Settings.AuthorizationRequired
-                  ? Localization.Text(" — reconnect to resume sending.", " — подключите заново для возобновления отправки.")
-                  : Localization.Text(" — connected.", " — подключён."));
+        foreach (var (provider, label) in _mailStatuses)
+        {
+            var account = _mail.GetAccount(provider);
+            var settings = _mail.GetSettings(provider);
+            label.Text = account is null
+                ? _mail.GetStatusError(provider) ?? Localization.Text("Account is not connected.", "Аккаунт не подключён.")
+                : account.Address + (account.NeedsAuthorization || settings.AuthorizationRequired
+                    ? Localization.Text(" — reconnect to resume sending.", " — подключите заново для возобновления отправки.")
+                    : Localization.Text(" — connected.", " — подключён.")) +
+                    (_mail.Settings.Provider == provider ? Localization.Text(" Active sender.", " Активный отправитель.") : "");
+        }
     }
 
     private static string FindGoogleClientFile()
@@ -48,10 +57,19 @@ public partial class MainWindow
         if (_mail is null || _mailAccountBusy) return;
         MailTab.Header = Localization.Text("Mail", "Почта");
         MailPanel.Children.Clear();
-        var settings = _mail.Settings;
+        _mailStatuses.Clear();
+        _mailCountLabels.Clear();
+        MailPanel.Tag = "mail:gmail";
+        BuildMailProviderPanel(MailPanel, "gmail");
+    }
+
+    private void BuildMailProviderPanel(Controls.StackPanel MailPanel, string provider)
+    {
+        var settings = _mailDrafts.GetValueOrDefault(provider) ?? _mail.GetSettings(provider);
         MailPanel.Children.Add(new Controls.TextBlock { Text = "Google · Gmail API", FontSize = 18, FontWeight = FontWeights.SemiBold });
         _mailAccountStatus = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 8), TextWrapping = TextWrapping.Wrap };
         MailPanel.Children.Add(_mailAccountStatus);
+        _mailStatuses[provider] = _mailAccountStatus;
         RefreshMailAccountStatus();
         Controls.TextBox Field(string en, string ru, string value)
         {
@@ -97,9 +115,10 @@ public partial class MainWindow
         MailPanel.Children.Add(status);
         _mailCounts = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
         MailPanel.Children.Add(_mailCounts);
+        _mailCountLabels.Add(_mailCounts);
         void UpdateButtons()
         {
-            var connected = _mail.GoogleAccount is not null;
+            var connected = _mail.GetAccount(provider) is not null;
             browse.IsEnabled = connect.IsEnabled = clientFile.IsEnabled = !_mailAccountBusy;
             disconnect.IsEnabled = connected && !_mailAccountBusy;
             cancel.IsEnabled = _mailAccountBusy && _mailAuthorizationCancellation is not null;
@@ -108,20 +127,73 @@ public partial class MainWindow
         }
         MailSettings Read()
         {
-            var account = _mail.GoogleAccount ?? throw new MailAuthorizationException();
-            return new MailSettings { Provider = "gmail", AccountId = account.Id, From = account.Address,
+            var account = _mail.GetAccount(provider) ?? throw new MailAuthorizationException();
+            return new MailSettings { Provider = provider, AccountId = account.Id, From = account.Address,
                 Enabled = enabled.IsChecked == true, SendToAuthor = toAuthor.IsChecked == true,
                 SendWithoutBugs = noBugs.IsChecked == true, Recipients = recipients.Text.Trim(),
                 AttachmentFormat = attachmentFormat.SelectedItem as string ?? "html" };
         }
+        MailSettings Draft() => new() { Provider = provider, Enabled = enabled.IsChecked == true,
+            SendToAuthor = toAuthor.IsChecked == true, SendWithoutBugs = noBugs.IsChecked == true,
+            Recipients = recipients.Text.Trim(), AttachmentFormat = attachmentFormat.SelectedItem as string ?? "html" };
+        _captureMailDrafts[provider] = () =>
+        {
+            _googleClientFile = clientFile.Text.Trim();
+            _mailDrafts[provider] = Draft();
+        };
+        _applyMailDrafts[provider] = () =>
+        {
+            _captureMailDrafts[provider]();
+            if (_mail.GetAccount(provider) is not null) _mail.SaveSettings(Read(), activate: false);
+            else if (enabled.IsChecked == true) throw new MailAuthorizationException();
+            status.Text = Localization.Text("Mail settings applied.", "Настройки почты применены.");
+            RefreshMailAccountStatus();
+        };
+        // Checkbox actions apply on their own and never create an Apply changes notification.
+        void CheckboxChanged(object sender, RoutedEventArgs args)
+        {
+            if (_mailAccountBusy) return;
+            try
+            {
+                _captureMailDrafts[provider]();
+                if (_mail.GetAccount(provider) is not null)
+                {
+                    var saved = _mail.GetSettings(provider);
+                    var account = _mail.GetAccount(provider)!;
+                    saved.Provider = provider; saved.AccountId = account.Id; saved.From = account.Address;
+                    saved.Enabled = enabled.IsChecked == true; saved.SendToAuthor = toAuthor.IsChecked == true;
+                    saved.SendWithoutBugs = noBugs.IsChecked == true;
+                    _mail.SaveSettings(saved, activate: false);
+                }
+                else if (enabled.IsChecked == true) throw new MailAuthorizationException();
+            }
+            catch (Exception error)
+            {
+                status.Text = Error(error);
+                var saved = _mail.GetSettings(provider);
+                _mailAccountBusy = true;
+                try
+                {
+                    enabled.IsChecked = saved.Enabled;
+                    toAuthor.IsChecked = saved.SendToAuthor;
+                    noBugs.IsChecked = saved.SendWithoutBugs;
+                }
+                finally { _mailAccountBusy = false; }
+            }
+        }
+        foreach (var box in new[] { enabled, toAuthor, noBugs }) { box.Checked += CheckboxChanged; box.Unchecked += CheckboxChanged; }
         string Error(Exception error) => error is MailAuthorizationException or MailProviderException ? error.Message :
             error is OperationCanceledException ? Localization.Text("Operation canceled or timed out.", "Операция отменена или истекло время ожидания.") :
-            Localization.Format("Mail operation failed ({0}). Check the JSON file, connection and account permissions.",
-                "Операция с почтой не выполнена ({0}). Проверьте JSON, соединение и разрешения аккаунта.", error.GetType().Name);
+            Localization.Format("Mail operation failed ({0}). Check the OAuth client settings, connection and account permissions.",
+                "Операция с почтой не выполнена ({0}). Проверьте настройки OAuth-клиента, соединение и разрешения аккаунта.", error.GetType().Name);
         browse.Click += (_, _) =>
         {
             var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Google OAuth JSON (*.json)|*.json", CheckFileExists = true };
-            if (dialog.ShowDialog(this) == true) clientFile.Text = _googleClientFile = dialog.FileName;
+            if (dialog.ShowDialog(this) == true)
+            {
+                clientFile.Text = _googleClientFile = dialog.FileName;
+                MarkSettingsChanged("mail:" + provider);
+            }
         };
         cancel.Click += (_, _) => _mailAuthorizationCancellation?.Cancel();
         connect.Click += async (_, _) =>
@@ -134,8 +206,8 @@ public partial class MainWindow
             try
             {
                 _googleClientFile = clientFile.Text.Trim();
-                status.Text = Localization.Text("Complete Google sign-in in your browser…", "Завершите вход в Google в браузере…");
-                await _mail.ConnectGoogleAsync(_googleClientFile, cancellation.Token);
+                status.Text = Localization.Text("Complete sign-in in your browser…", "Завершите вход в браузере…");
+                await _mail.ConnectAsync(provider, clientFile.Text.Trim(), cancellation.Token);
                 enabled.IsChecked = _mail.Settings.Enabled;
                 status.Text = Localization.Text("Connected. Choose recipients, enable notifications and save settings.", "Аккаунт подключён. Укажите получателей, включите уведомления и сохраните настройки.");
             }
@@ -148,8 +220,8 @@ public partial class MainWindow
             _mailAccountBusy = true; UpdateButtons();
             try
             {
-                await _mail.DisconnectGoogleAsync(CancellationToken.None);
-                status.Text = Localization.Text("Disconnected. Queued reports are preserved for their original account.", "Аккаунт отключён. Очередь сохранена для исходного аккаунта.");
+                await _mail.DisconnectAsync(provider, CancellationToken.None);
+                status.Text = Localization.Text("Disconnected. Local tokens removed. Queued reports are preserved for their original account.", "Аккаунт отключён. Локальные токены удалены. Очередь сохранена для исходного аккаунта.");
             }
             catch (Exception error) { status.Text = Error(error); }
             finally { enabled.IsChecked = false; _mailAccountBusy = false; UpdateButtons(); }
@@ -167,14 +239,15 @@ public partial class MainWindow
             {
                 status.Text = Localization.Text("Sending test email…", "Отправляется тестовое письмо…");
                 await _mail.TestAsync(Read(), CancellationToken.None);
-                status.Text = Localization.Text("Test email accepted by Gmail API; inbox delivery is not confirmed.", "Тестовое письмо принято Gmail API; доставка в ящик не подтверждена.");
+                status.Text = Localization.Text("Test email accepted by the mail provider; inbox delivery is not confirmed.", "Тестовое письмо принято почтовым сервисом; доставка в ящик не подтверждена.");
             }
             catch (Exception error) { status.Text = Error(error); }
             finally { _mailAccountBusy = false; UpdateButtons(); }
         };
         retry.Click += (_, _) =>
         {
-            try { _mail.RetryFailed(); status.Text = Localization.Text("Failed mail for this account queued again.", "Неотправленные письма этого аккаунта возвращены в очередь."); }
+            try { if (_mail.Settings.Provider != provider) throw new MailProviderException(Localization.Text("Save / use this account first.", "Сначала сохраните / выберите этот аккаунт."));
+                _mail.RetryFailed(); status.Text = Localization.Text("Failed mail for this account queued again.", "Неотправленные письма этого аккаунта возвращены в очередь."); }
             catch (Exception error) { status.Text = Error(error); }
         };
         UpdateButtons();

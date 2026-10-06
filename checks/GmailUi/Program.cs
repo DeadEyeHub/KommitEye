@@ -23,6 +23,8 @@ public partial class MainWindow : Window
         Content = new ScrollViewer { Background = SystemColors.WindowBrush, Content = MailPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
 
+    private void MarkSettingsChanged(string scope) { }
+
     public void Render(string path)
     {
         var surface = (FrameworkElement)Content;

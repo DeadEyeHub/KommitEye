@@ -117,6 +117,11 @@ public partial class MainWindow
             if (target == -2 && (catalog.Projects.Count == 1 || System.Windows.MessageBox.Show(
                 Localization.Text("Remove this project from the list? Repository files, reports and review progress will be kept.", "Убрать проект из списка? Файлы репозитория, отчёты и позиция проверки сохранятся."),
                 "GitReviewer", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)) return;
+            if (_pendingSettings.Count > 0)
+            {
+                ApplyPendingSettings();
+                MarkSettingsChanged("applied"); // Keep the user's acknowledgement visible across projects.
+            }
             SaveProjectDraft();
             _switchingProject = true;
             MainTabs.IsEnabled = ProjectButtons.IsEnabled = AddProjectButton.IsEnabled = RemoveProjectButton.IsEnabled = false;

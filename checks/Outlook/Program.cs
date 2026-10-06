@@ -51,6 +51,9 @@ await using (var notifications = new MailNotifications(root, _ => { }, startWork
     settings = notifications.Settings; settings.Recipients = "outlook@example.invalid"; notifications.SaveSettings(settings);
     Check(notifications.GetSettings("gmail").Recipients == "google@example.invalid", "Google settings preserved");
     Check(notifications.GoogleAccount is not null, "Google remains connected");
+    var googleDraft = notifications.GetSettings("gmail"); googleDraft.Recipients = "updated@example.invalid";
+    notifications.SaveSettings(googleDraft, activate: false);
+    Check(notifications.Settings.Provider == "outlook" && notifications.GetSettings("gmail").Recipients == "updated@example.invalid", "applying inactive draft does not switch sender");
     await notifications.DisconnectAsync("gmail", default);
     Check(notifications.Settings.Provider == "outlook" && !notifications.Settings.AuthorizationRequired, "disconnect inactive account leaves active settings");
 }

@@ -145,7 +145,7 @@ public sealed class MailNotifications : IAsyncDisposable
         { JsonSerializer.Serialize(file, value); file.Flush(true); }
         File.Move(path + ".tmp", path, true);
     }
-    public void SaveSettings(MailSettings settings)
+    public void SaveSettings(MailSettings settings, bool activate = true)
     {
         if (settings.Provider is "gmail" or "outlook")
         {
@@ -161,6 +161,11 @@ public sealed class MailNotifications : IAsyncDisposable
         lock (_gate)
         {
             if (LoadError is not null) throw new InvalidOperationException(LoadError);
+            if (!activate && _settings.Provider != settings.Provider)
+            {
+                Save(_settingsPath + "." + settings.Provider, settings);
+                return;
+            }
             if (_settings.Provider is "gmail" or "outlook") Save(_settingsPath + "." + _settings.Provider, _settings);
             Save(_settingsPath, settings);
             _settings = settings.Clone();
@@ -256,6 +261,18 @@ public sealed class MailNotifications : IAsyncDisposable
         : exception is MailProviderException or MailAuthorizationException ? exception.Message
         : exception is OperationCanceledException ? "Canceled or mail timeout" : exception.GetType().Name;
 
+    private void MarkAuthorizationRequired(MailSettings failedSettings)
+    {
+        lock (_gate)
+        {
+            var saved = GetSettings(failedSettings.Provider);
+            if (saved.AccountId != failedSettings.AccountId) return;
+            saved.AuthorizationRequired = true;
+            if (_settings.Provider == saved.Provider) { Save(_settingsPath, saved); _settings = saved; }
+            else Save(_settingsPath + "." + saved.Provider, saved);
+        }
+    }
+
     public async Task TestAsync(MailSettings settings, CancellationToken token)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
@@ -277,7 +294,7 @@ public sealed class MailNotifications : IAsyncDisposable
         }
         catch (MailAuthorizationException)
         {
-            lock (_gate) { _settings.AuthorizationRequired = true; Save(_settingsPath, _settings); }
+            MarkAuthorizationRequired(settings);
             throw;
         }
         catch (Exception exception) { _log("Mail: test not confirmed; " + Describe(job) + "; " + FailureDetails(exception)); throw; }
@@ -337,8 +354,7 @@ public sealed class MailNotifications : IAsyncDisposable
                 lock (_gate)
                 {
                     job.Attempts = Math.Max(0, job.Attempts - 1);
-                    _settings.AuthorizationRequired = true;
-                    Save(_settingsPath, _settings);
+                    MarkAuthorizationRequired(settings);
                     Save(_queuePath, _jobs);
                 }
                 _log(Localization.Text("Mail paused: reconnect your email account. Queued reports are preserved.", "Отправка приостановлена: подключите почтовый аккаунт заново. Очередь сохранена."));

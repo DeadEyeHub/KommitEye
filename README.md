@@ -998,3 +998,8 @@ Mail has separate Google and Outlook tabs. Both connections and provider setting
 Register an application in Microsoft Entra with **Accounts in any organizational directory and personal Microsoft accounts**. Add the **Mobile and desktop applications** platform and redirect URI `http://localhost`. Add Microsoft Graph **delegated** permissions `User.Read` (identify the connected mailbox) and `Mail.Send` (send reports). Paste the **Application (client) ID** into the Outlook tab. No client secret is required. Organizational policies may require administrator consent.
 
 Sign-in uses the system browser and MSAL OAuth authorization code flow with PKCE. MSAL refreshes expired tokens; its cache is stored with Windows DPAPI for the current Windows user in `oauth/outlook-account.bin`. Authorization errors pause sending until reconnection. Disconnect removes local tokens; it does not revoke tenant-wide consent or sign out the browser. Account permissions can also be removed in the Microsoft account/organization portal.
+
+
+### Applying settings
+
+Editing a text field, password or selection shows **Apply changes** in a fixed bottom bar. It stays visible while scrolling or switching tabs, including for settings that already took effect. Checkboxes do not show the bar. Apply saves the edited sections and keeps the bar open on validation errors. Model changes apply to the next commit; a review already in progress is not restarted. Applying project settings wakes an idle monitoring loop. Mail changes retain each provider's draft and do not silently switch the active sender.

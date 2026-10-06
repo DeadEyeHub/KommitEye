@@ -8,6 +8,7 @@ namespace GitReviewer;
 public partial class MainWindow
 {
     private Controls.TextBlock? _mailCounts, _mailAccountStatus;
+    private readonly List<Controls.TextBlock> _mailCountLabels = [];
     private CancellationTokenSource? _mailAuthorizationCancellation;
     private bool _mailAccountBusy;
     private string _googleClientFile = "";
@@ -15,6 +16,10 @@ public partial class MainWindow
     private readonly Dictionary<string, Controls.TextBlock> _mailStatuses = new();
     private string _mailProviderTab = "gmail";
     private string _microsoftClientId = "";
+    private readonly Dictionary<string, Action> _applyMailDrafts = new();
+    private readonly Dictionary<string, Action> _captureMailDrafts = new();
+    private readonly Dictionary<string, MailSettings> _mailDrafts = new();
+    private void CaptureMailDrafts() { foreach (var capture in _captureMailDrafts.Values) capture(); }
     private void RefreshMailAccountStatus()
     {
         foreach (var (provider, label) in _mailStatuses)
@@ -55,10 +60,11 @@ public partial class MainWindow
         MailTab.Header = Localization.Text("Mail", "Почта");
         MailPanel.Children.Clear();
         _mailStatuses.Clear();
+        _mailCountLabels.Clear();
         var tabs = new Controls.TabControl();
         foreach (var provider in new[] { "gmail", "outlook" })
         {
-            var panel = new Controls.StackPanel { Margin = new Thickness(12) };
+            var panel = new Controls.StackPanel { Margin = new Thickness(12), Tag = "mail:" + provider };
             var tab = new Controls.TabItem { Header = provider == "gmail" ? "Google" : "Outlook", Content = panel, Tag = provider };
             tabs.Items.Add(tab);
             BuildMailProviderPanel(panel, provider);
@@ -74,7 +80,7 @@ public partial class MainWindow
     private void BuildMailProviderPanel(Controls.StackPanel MailPanel, string provider)
     {
         var google = provider == "gmail";
-        var settings = _mail.GetSettings(provider);
+        var settings = _mailDrafts.GetValueOrDefault(provider) ?? _mail.GetSettings(provider);
         MailPanel.Children.Add(new Controls.TextBlock { Text = google ? "Google · Gmail API" : "Outlook · Microsoft Graph", FontSize = 18, FontWeight = FontWeights.SemiBold });
         _mailAccountStatus = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 8), TextWrapping = TextWrapping.Wrap };
         MailPanel.Children.Add(_mailAccountStatus);
@@ -127,6 +133,7 @@ public partial class MainWindow
         MailPanel.Children.Add(status);
         _mailCounts = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
         MailPanel.Children.Add(_mailCounts);
+        _mailCountLabels.Add(_mailCounts);
         void UpdateButtons()
         {
             var connected = _mail.GetAccount(provider) is not null;
@@ -144,6 +151,55 @@ public partial class MainWindow
                 SendWithoutBugs = noBugs.IsChecked == true, Recipients = recipients.Text.Trim(),
                 AttachmentFormat = attachmentFormat.SelectedItem as string ?? "html" };
         }
+        MailSettings Draft() => new() { Provider = provider, Enabled = enabled.IsChecked == true,
+            SendToAuthor = toAuthor.IsChecked == true, SendWithoutBugs = noBugs.IsChecked == true,
+            Recipients = recipients.Text.Trim(), AttachmentFormat = attachmentFormat.SelectedItem as string ?? "html" };
+        _captureMailDrafts[provider] = () =>
+        {
+            if (google) _googleClientFile = clientFile.Text.Trim(); else _microsoftClientId = clientFile.Text.Trim();
+            _mailDrafts[provider] = Draft();
+        };
+        _applyMailDrafts[provider] = () =>
+        {
+            _captureMailDrafts[provider]();
+            if (_mail.GetAccount(provider) is not null) _mail.SaveSettings(Read(), activate: false);
+            else if (enabled.IsChecked == true) throw new MailAuthorizationException();
+            status.Text = Localization.Text("Mail settings applied.", "Настройки почты применены.");
+            RefreshMailAccountStatus();
+        };
+        // Checkbox actions apply on their own and never create an Apply changes notification.
+        void CheckboxChanged(object sender, RoutedEventArgs args)
+        {
+            if (_mailAccountBusy) return;
+            try
+            {
+                _captureMailDrafts[provider]();
+                if (_mail.GetAccount(provider) is not null)
+                {
+                    var saved = _mail.GetSettings(provider);
+                    var account = _mail.GetAccount(provider)!;
+                    saved.Provider = provider; saved.AccountId = account.Id; saved.From = account.Address;
+                    saved.Enabled = enabled.IsChecked == true; saved.SendToAuthor = toAuthor.IsChecked == true;
+                    saved.SendWithoutBugs = noBugs.IsChecked == true;
+                    _mail.SaveSettings(saved, activate: false);
+                }
+                else if (enabled.IsChecked == true) throw new MailAuthorizationException();
+            }
+            catch (Exception error)
+            {
+                status.Text = Error(error);
+                var saved = _mail.GetSettings(provider);
+                _mailAccountBusy = true;
+                try
+                {
+                    enabled.IsChecked = saved.Enabled;
+                    toAuthor.IsChecked = saved.SendToAuthor;
+                    noBugs.IsChecked = saved.SendWithoutBugs;
+                }
+                finally { _mailAccountBusy = false; }
+            }
+        }
+        foreach (var box in new[] { enabled, toAuthor, noBugs }) { box.Checked += CheckboxChanged; box.Unchecked += CheckboxChanged; }
         string Error(Exception error) => error is MailAuthorizationException or MailProviderException ? error.Message :
             error is OperationCanceledException ? Localization.Text("Operation canceled or timed out.", "Операция отменена или истекло время ожидания.") :
             Localization.Format("Mail operation failed ({0}). Check the OAuth client settings, connection and account permissions.",
@@ -151,7 +207,11 @@ public partial class MainWindow
         browse.Click += (_, _) =>
         {
             var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Google OAuth JSON (*.json)|*.json", CheckFileExists = true };
-            if (dialog.ShowDialog(this) == true) clientFile.Text = _googleClientFile = dialog.FileName;
+            if (dialog.ShowDialog(this) == true)
+            {
+                clientFile.Text = _googleClientFile = dialog.FileName;
+                MarkSettingsChanged("mail:" + provider);
+            }
         };
         cancel.Click += (_, _) => _mailAuthorizationCancellation?.Cancel();
         connect.Click += async (_, _) =>

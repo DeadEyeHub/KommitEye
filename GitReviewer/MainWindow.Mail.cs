@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Controls;
 using GitReviewer.Services;
 using Controls = System.Windows.Controls;
 using Localization = GitReviewer.Services.Localization;
@@ -8,101 +7,176 @@ namespace GitReviewer;
 
 public partial class MainWindow
 {
-    private Controls.TextBlock? _mailCounts;
+    private Controls.TextBlock? _mailCounts, _mailAccountStatus;
+    private CancellationTokenSource? _mailAuthorizationCancellation;
+    private bool _mailAccountBusy;
+    private string _googleClientFile = "";
+
+    private void RefreshMailAccountStatus()
+    {
+        if (_mailAccountStatus is null) return;
+        var account = _mail.GoogleAccount;
+        _mailAccountStatus.Text = account is null
+            ? _mail.GoogleStatusError ?? Localization.Text("Google account is not connected.", "Аккаунт Google не подключён.")
+            : Localization.Text("Google account: ", "Аккаунт Google: ") + account.Address +
+              (account.NeedsAuthorization || _mail.Settings.AuthorizationRequired
+                  ? Localization.Text(" — reconnect to resume sending.", " — подключите заново для возобновления отправки.")
+                  : Localization.Text(" — connected.", " — подключён."));
+    }
+
+    private static string FindGoogleClientFile()
+    {
+        var folders = new List<string> { Path.Combine(Environment.CurrentDirectory, "authMail") };
+        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null && folders.Count < 7; directory = directory.Parent)
+            folders.Add(Path.Combine(directory.FullName, "authMail"));
+        foreach (var folder in folders.Distinct())
+        {
+            try
+            {
+                if (!Directory.Exists(folder)) continue;
+                var files = Directory.GetFiles(folder, "client_secret_*.json");
+                if (files.Length == 1) return files[0];
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return "";
+    }
+
     private void BuildMailPanel()
     {
-        if (_mail is null) return;
+        if (_mail is null || _mailAccountBusy) return;
         MailTab.Header = Localization.Text("Mail", "Почта");
         MailPanel.Children.Clear();
         var settings = _mail.Settings;
-        var enabled = new Controls.CheckBox { Content = Localization.Text("Enable email notifications", "Включить почтовые уведомления"),
-            IsChecked = settings.Enabled, Margin = new Thickness(0, 0, 0, 12) };
-        MailPanel.Children.Add(enabled);
-        var toAuthor = new Controls.CheckBox { Content = Localization.Text("Also send to the commit author", "Отправлять также автору коммита"), IsChecked = settings.SendToAuthor, Margin = new Thickness(0,0,0,8),
-            ToolTip = Localization.Text("Uses the email from Git commit metadata. Enable only for trusted repositories: reports may be sent outside your organization.", "Адрес берётся из Git-коммита. Включайте только для доверенных репозиториев: отчёт может уйти за пределы организации.") };
-        var noBugs = new Controls.CheckBox { Content = Localization.Text("Send even when no bugs are found", "Отправлять и при отсутствии ошибок"), IsChecked = settings.SendWithoutBugs, Margin = new Thickness(0,0,0,8),
-            ToolTip = Localization.Text("Successful reviews only, including empty diffs. Failed reviews and timeouts do not send reports.", "Только успешные проверки, включая пустой diff. Ошибка проверки или таймаут не приводят к отправке.") };
-        MailPanel.Children.Add(toAuthor); MailPanel.Children.Add(noBugs);
+        MailPanel.Children.Add(new Controls.TextBlock { Text = "Google · Gmail API", FontSize = 18, FontWeight = FontWeights.SemiBold });
+        _mailAccountStatus = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 8), TextWrapping = TextWrapping.Wrap };
+        MailPanel.Children.Add(_mailAccountStatus);
+        RefreshMailAccountStatus();
         Controls.TextBox Field(string en, string ru, string value)
         {
             MailPanel.Children.Add(new Controls.TextBlock { Text = Localization.Text(en, ru), Margin = new Thickness(0, 6, 0, 3) });
-            var box = new Controls.TextBox { Text = value, MaxWidth = 600, HorizontalAlignment = System.Windows.HorizontalAlignment.Left, Width = 420 };
-            MailPanel.Children.Add(box); return box;
+            var box = new Controls.TextBox { Text = value, Width = 600, MaxWidth = 600, HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
+            MailPanel.Children.Add(box);
+            return box;
         }
-        var host = Field("SMTP server", "SMTP-сервер", settings.Host);
-        var port = Field("Port", "Порт", settings.Port.ToString());
-        MailPanel.Children.Add(new Controls.TextBlock { Text = Localization.Text("Connection security", "Защита соединения"), Margin = new Thickness(0, 6, 0, 3) });
-        var security = new Controls.ComboBox { ItemsSource = new[] { "None", "StartTls", "SslOnConnect" }, SelectedItem = settings.Security,
-            Width = 220, HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
-        MailPanel.Children.Add(security);
+        if (_googleClientFile.Length == 0 && _mail.GoogleAccount is null) _googleClientFile = FindGoogleClientFile();
+        var clientFile = Field("Google Desktop OAuth JSON", "OAuth JSON Google (Desktop app)", _googleClientFile);
         MailPanel.Children.Add(new Controls.TextBlock { Text = Localization.Text(
-            "None sends credentials and reports without encryption. Use only on a trusted test network. StartTls requires TLS; SslOnConnect starts with TLS.",
-            "None передаёт пароль и отчёты без шифрования. Только для доверенной тестовой сети. StartTls требует TLS; SslOnConnect использует TLS сразу."),
+            "Choose the downloaded JSON for the first connection. Leave blank to reuse saved client settings when reconnecting. Sign-in opens in your browser; no email password is stored.",
+            "Для первого подключения выберите скачанный JSON. При повторном входе поле можно оставить пустым для использования сохранённых настроек. Вход откроется в браузере; пароль почты не сохраняется."),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 6) });
-        var user = Field("Username (empty = no authentication)", "Логин (пусто = без авторизации)", settings.Username);
-        MailPanel.Children.Add(new Controls.TextBlock { Text = Localization.Text("Password (encrypted for this Windows user)", "Пароль (шифруется для текущего пользователя Windows)"), Margin = new Thickness(0, 6, 0, 3) });
-        var password = new Controls.PasswordBox { Width = 420, HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
-        try { password.Password = settings.GetPassword(); } catch { AppendLog("Mail password cannot be decrypted. Enter it again."); }
-        MailPanel.Children.Add(password);
-        var from = Field("From (Name <email@example.com>)", "Отправитель (Имя <email@example.com>)", settings.From);
+        var accountButtons = new Controls.WrapPanel { Margin = new Thickness(0, 6, 0, 12) };
+        Controls.Button Button(string en, string ru) => new() { Content = Localization.Text(en, ru), Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 6) };
+        var browse = Button("Browse…", "Выбрать файл…");
+        var connect = Button("Connect / reconnect Google", "Подключить Google / войти заново");
+        var disconnect = Button("Disconnect", "Отключить");
+        var cancel = Button("Cancel sign-in", "Отменить вход");
+        accountButtons.Children.Add(browse); accountButtons.Children.Add(connect); accountButtons.Children.Add(disconnect); accountButtons.Children.Add(cancel);
+        MailPanel.Children.Add(accountButtons);
+        var enabled = new Controls.CheckBox { Content = Localization.Text("Enable email notifications", "Включить почтовые уведомления"),
+            IsChecked = settings.Enabled, Margin = new Thickness(0, 0, 0, 12) };
+        var toAuthor = new Controls.CheckBox { Content = Localization.Text("Also send to the commit author", "Отправлять также автору коммита"),
+            IsChecked = settings.SendToAuthor, Margin = new Thickness(0, 0, 0, 8),
+            ToolTip = Localization.Text("Uses the email from Git metadata. Enable only for trusted repositories.", "Используется email из Git. Включайте только для доверенных репозиториев.") };
+        var noBugs = new Controls.CheckBox { Content = Localization.Text("Send even when no bugs are found", "Отправлять и при отсутствии ошибок"),
+            IsChecked = settings.SendWithoutBugs, Margin = new Thickness(0, 0, 0, 8) };
+        MailPanel.Children.Add(enabled); MailPanel.Children.Add(toAuthor); MailPanel.Children.Add(noBugs);
         var recipients = Field("Recipients (separate with ;)", "Получатели (через ;)", settings.Recipients);
         MailPanel.Children.Add(new Controls.TextBlock { Text = Localization.Text("Report attachment format", "Формат вложения отчёта"), Margin = new Thickness(0, 6, 0, 3) });
         var attachmentFormat = new Controls.ComboBox { ItemsSource = new[] { "html", "md" }, SelectedItem = settings.AttachmentFormat,
-            Width = 120, HorizontalAlignment = System.Windows.HorizontalAlignment.Left,
-            ToolTip = Localization.Text("Email body remains HTML. Format is saved for each queued message; changes affect new messages only.", "Текст письма остаётся HTML. Формат сохраняется при постановке в очередь; изменения действуют только на новые письма.") };
+            Width = 120, HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
         MailPanel.Children.Add(attachmentFormat);
         var buttons = new Controls.WrapPanel { Margin = new Thickness(0, 12, 0, 8) };
-        var save = new Controls.Button { Content = Localization.Text("Save", "Сохранить"), Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0) };
-        var test = new Controls.Button { Content = Localization.Text("Send test email", "Отправить тестовое письмо"), Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 0) };
-        var retry = new Controls.Button { Content = Localization.Text("Retry failed mail", "Повторить неотправленные"), Padding = new Thickness(12, 6, 12, 6) };
+        var save = Button("Save", "Сохранить");
+        var test = Button("Send test email", "Отправить тестовое письмо");
+        var retry = Button("Retry failed mail", "Повторить неотправленные");
         buttons.Children.Add(save); buttons.Children.Add(test); buttons.Children.Add(retry);
         MailPanel.Children.Add(buttons);
         var status = new Controls.TextBlock { TextWrapping = TextWrapping.Wrap, Text = _mail.LoadError ?? "" };
         MailPanel.Children.Add(status);
-        _mailCounts = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 0) };
+        _mailCounts = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap };
         MailPanel.Children.Add(_mailCounts);
+        void UpdateButtons()
+        {
+            var connected = _mail.GoogleAccount is not null;
+            browse.IsEnabled = connect.IsEnabled = clientFile.IsEnabled = !_mailAccountBusy;
+            disconnect.IsEnabled = connected && !_mailAccountBusy;
+            cancel.IsEnabled = _mailAccountBusy && _mailAuthorizationCancellation is not null;
+            save.IsEnabled = test.IsEnabled = retry.IsEnabled = connected && !_mailAccountBusy;
+            RefreshMailAccountStatus();
+        }
         MailSettings Read()
         {
-            if (!int.TryParse(port.Text, out var number)) throw new InvalidOperationException("Invalid SMTP port.");
-            var value = new MailSettings { Enabled = enabled.IsChecked == true, SendToAuthor = toAuthor.IsChecked == true, SendWithoutBugs = noBugs.IsChecked == true, Host = host.Text.Trim(), Port = number,
-                Security = security.SelectedItem as string ?? "StartTls", Username = user.Text.Trim(), From = from.Text.Trim(), Recipients = recipients.Text.Trim(),
+            var account = _mail.GoogleAccount ?? throw new MailAuthorizationException();
+            return new MailSettings { Provider = "gmail", AccountId = account.Id, From = account.Address,
+                Enabled = enabled.IsChecked == true, SendToAuthor = toAuthor.IsChecked == true,
+                SendWithoutBugs = noBugs.IsChecked == true, Recipients = recipients.Text.Trim(),
                 AttachmentFormat = attachmentFormat.SelectedItem as string ?? "html" };
-            value.SetPassword(password.Password);
-            return value;
         }
-        bool ConfirmInsecure(MailSettings value) => value.Security != "None" || System.Windows.MessageBox.Show(
-            Localization.Text("This connection sends credentials and reports without encryption. Continue?", "Соединение передаёт пароль и отчёты без шифрования. Продолжить?"),
-            "SMTP", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
-        save.Click += (_, _) =>
+        string Error(Exception error) => error is MailAuthorizationException or MailProviderException ? error.Message :
+            error is OperationCanceledException ? Localization.Text("Operation canceled or timed out.", "Операция отменена или истекло время ожидания.") :
+            Localization.Format("Mail operation failed ({0}). Check the JSON file, connection and account permissions.",
+                "Операция с почтой не выполнена ({0}). Проверьте JSON, соединение и разрешения аккаунта.", error.GetType().Name);
+        browse.Click += (_, _) =>
         {
+            var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Google OAuth JSON (*.json)|*.json", CheckFileExists = true };
+            if (dialog.ShowDialog(this) == true) clientFile.Text = _googleClientFile = dialog.FileName;
+        };
+        cancel.Click += (_, _) => _mailAuthorizationCancellation?.Cancel();
+        connect.Click += async (_, _) =>
+        {
+            if (_mailAccountBusy) return;
+            _mailAccountBusy = true;
+            using var cancellation = new CancellationTokenSource();
+            _mailAuthorizationCancellation = cancellation;
+            UpdateButtons();
             try
             {
-                var value = Read();
-                if (value.Enabled && !ConfirmInsecure(value)) return;
-                _mail.SaveSettings(value);
-                status.Text = Localization.Text("Mail settings saved.", "Настройки почты сохранены.");
+                _googleClientFile = clientFile.Text.Trim();
+                status.Text = Localization.Text("Complete Google sign-in in your browser…", "Завершите вход в Google в браузере…");
+                await _mail.ConnectGoogleAsync(_googleClientFile, cancellation.Token);
+                enabled.IsChecked = _mail.Settings.Enabled;
+                status.Text = Localization.Text("Connected. Choose recipients, enable notifications and save settings.", "Аккаунт подключён. Укажите получателей, включите уведомления и сохраните настройки.");
             }
-            catch (Exception e) { status.Text = "Mail settings error (" + e.GetType().Name + "). Check host, port, addresses and credentials."; }
+            catch (Exception error) { status.Text = Error(error); }
+            finally { _mailAuthorizationCancellation = null; _mailAccountBusy = false; UpdateButtons(); }
+        };
+        disconnect.Click += async (_, _) =>
+        {
+            if (_mailAccountBusy) return;
+            _mailAccountBusy = true; UpdateButtons();
+            try
+            {
+                await _mail.DisconnectGoogleAsync(CancellationToken.None);
+                status.Text = Localization.Text("Disconnected. Queued reports are preserved for their original account.", "Аккаунт отключён. Очередь сохранена для исходного аккаунта.");
+            }
+            catch (Exception error) { status.Text = Error(error); }
+            finally { enabled.IsChecked = false; _mailAccountBusy = false; UpdateButtons(); }
+        };
+        save.Click += (_, _) =>
+        {
+            try { _mail.SaveSettings(Read()); status.Text = Localization.Text("Mail settings saved.", "Настройки почты сохранены."); }
+            catch (Exception error) { status.Text = Error(error); }
         };
         test.Click += async (_, _) =>
         {
+            if (_mailAccountBusy) return;
+            _mailAccountBusy = true; UpdateButtons();
             try
             {
-                var value = Read();
-                if (!ConfirmInsecure(value)) return;
-                test.IsEnabled = false;
                 status.Text = Localization.Text("Sending test email…", "Отправляется тестовое письмо…");
-                await _mail.TestAsync(value, CancellationToken.None);
-                status.Text = Localization.Text("Settings saved; test email accepted by SMTP server.", "Настройки сохранены; тестовое письмо принято SMTP-сервером.");
-                AppendLog(status.Text);
+                await _mail.TestAsync(Read(), CancellationToken.None);
+                status.Text = Localization.Text("Test email accepted by Gmail API; inbox delivery is not confirmed.", "Тестовое письмо принято Gmail API; доставка в ящик не подтверждена.");
             }
-            catch (Exception e) { status.Text = "SMTP test failed (" + e.GetType().Name + ")."; AppendLog(status.Text); }
-            finally { test.IsEnabled = true; }
+            catch (Exception error) { status.Text = Error(error); }
+            finally { _mailAccountBusy = false; UpdateButtons(); }
         };
         retry.Click += (_, _) =>
         {
-            try { _mail.RetryFailed(); status.Text = Localization.Text("Failed mail queued again. Enable mail to send.", "Неотправленные письма возвращены в очередь. Включите почту для отправки."); }
-            catch (Exception e) { status.Text = "Mail queue error (" + e.GetType().Name + ")."; }
+            try { _mail.RetryFailed(); status.Text = Localization.Text("Failed mail for this account queued again.", "Неотправленные письма этого аккаунта возвращены в очередь."); }
+            catch (Exception error) { status.Text = Error(error); }
         };
+        UpdateButtons();
     }
 }

@@ -24,7 +24,7 @@ parallel projects, Markdown reports and optional email notifications.
 - [Model working hours](#model-working-hours)
 - [Dashboard](#dashboard)
 - [Reports And Notifications](#reports-and-notifications)
-- [SMTP notifications](#smtp-notifications)
+- [Email notifications and Google OAuth](#email-notifications-and-google-oauth)
 - [Journal And Log](#journal-and-log)
 - [Crash diagnostics](#crash-diagnostics)
 - [User Data](#user-data)
@@ -147,12 +147,12 @@ Each saved project has a stable ID and its own `logs/<project-id>/journal.log`
 and `model.log` under the application data directory (with independent rotation
 and clearing). The dashboard, Journal and open Log window follow the selected
 project, including background reviews. Removing a project keeps its log files.
-Old shared logs are retained, not reassigned to an arbitrary project; shared SMTP
+Old shared logs are retained, not reassigned to an arbitrary project; shared email
 service messages continue in the application-wide `journal.log`.
 Parallel reviews consume provider quota concurrently; rate limits still apply.
 Review positions and reports remain
 keyed by repository Git identity and branch, so two entries for the same repository
-and branch share progress. Model profiles, SMTP settings, prompts, language and daily/all-time token totals
+and branch share progress. Model profiles, email settings, prompts, language and daily/all-time token totals
 are application-wide; review journals and detailed logs are per project.
 
 Run migration checks with `dotnet run --project GitReviewer.Tests/PromptMigration/PromptMigration.csproj`
@@ -631,7 +631,7 @@ An interrupted review restarts the same commit with a fresh session after the pa
 no failed report, skipped cursor, email or retry-budget charge is produced by the
 schedule. Tokens already used remain counted. Dashboard status/next-run time show
 the pause. Stop/Exit cancels the wait. Manual reviews and model connection tests
-also respect the interval, but need manual restart if blocked. SMTP delivery is
+also respect the interval, but need manual restart if blocked. Email delivery is
 independent of the model schedule.
 
 [Back to contents](#contents)
@@ -727,67 +727,95 @@ NO_BUGS
 
 [Back to contents](#contents)
 
-## SMTP notifications
+## Email notifications and Google OAuth
 
-The **Mail** tab configures the SMTP host/port, `None`, required `StartTls` or
-`SslOnConnect`, optional username/password, sender and semicolon-separated
-recipients. Sender display names use `GitReviewer <sender@example.com>` syntax.
-Notifications are disabled by default. **Send test email** saves validated settings
-before attempting delivery (also when delivery fails), without enabling notifications,
-and sends only synthetic text, without repository data. It requires an explicit
-recipient. `None` transmits credentials and reports
-unencrypted and asks for confirmation; use it only on a trusted test network.
-TLS modes use normal certificate validation. OAuth is not implemented.
+The **Mail** tab connects a Google account and sends through Gmail API using the
+signed-in user's mailbox. It does not ask for an email password. Microsoft Graph
+is not implemented yet; `IEmailProvider` separates account connection and sending
+from the queue so another provider can be added independently.
 
-After a successful saved review containing findings, a background service queues
-one message with that commit's report rendered as HTML in the body and attached as
-`commit-review.html` by default, with a plain-text fallback. **Report attachment format**
-on the Mail tab selects HTML or Markdown (`commit-review.md`); the body stays HTML.
-The choice is captured per message when queued, including test emails. Changing it
-does not rewrite pending messages. Legacy queue entries default to HTML.
-Repository/model text is HTML-escaped;
-scripts, remote images and raw HTML are not executed. Existing queued Markdown reports
-are converted at delivery time. Local reports remain Markdown.
-It does not attach the accumulated report history.
-**Send even without bugs** also enables notifications for successful NO_BUGS and
-empty-diff reviews. Incomplete/unstructured reviews and timeouts never trigger mail.
-**Send to commit author** adds the Git author email, deduplicated against configured
-recipients. Invalid author addresses are skipped; with no valid recipients the
-notification is skipped. Author addresses are untrusted repository data: enable
-this option only for trusted repositories, since reports may leave your organization.
-Both options are disabled by default and do not resend previous reviews. SMTP failures
-never repeat or invalidate the Git/model review.
+### Connect Google
 
-`mail-settings.json` stores credentials encrypted with Windows DPAPI for the
-current user. `mail-queue.json` preserves pending reports and delivery identifiers
-across restarts; queued reports contain repository information and should be
-protected like report files. Successful delivery removes the stored report body.
-Automatic retries run after 1, 5 and 15 minutes (four attempts total), with a
-30-second SMTP operation timeout. **Retry failed mail** requeues exhausted entries.
-Disabling mail pauses queued sends; an already sending message may still complete.
-Queued recipients are fixed at enqueue time, even if settings subsequently change.
+1. Enable Gmail API in your Google Cloud project and configure the Google Auth
+   Platform consent screen. During Testing, add your account to Test users.
+2. Create an OAuth client of type **Desktop app** and download its JSON.
+3. On **Mail**, choose the JSON and click **Connect / reconnect Google**. A unique
+   `client_secret_*.json` under a nearby `authMail/` directory is suggested automatically.
+4. Complete sign-in and consent in your system browser. The app requests `gmail.send`
+   plus `openid` and `email` to identify the connected mailbox; it does not request
+   permission to read your inbox. The flow uses authorization code + PKCE and a local
+   loopback callback, with a three-minute timeout and a Cancel sign-in button.
+5. Set recipients (separate with `;`), enable notifications and click **Save**.
+   **Send test email** saves the current settings and sends synthetic text to the
+   explicit recipients, without repository data. No test is sent during connection.
 
-Deduplication uses repository identity, branch and commit, including manual reviews.
-A stable Message-ID is reused for retries. SMTP cannot guarantee exactly-once
-delivery: loss of the server's final confirmation or a crash before saving delivery
-state can still produce a duplicate. Queue/settings write failures are logged;
-corrupt files are preserved rather than silently overwritten. SMTP protocol traces
-and passwords are not written to logs.
-The application-wide `journal.log` records why a notification is skipped (disabled, no findings, incomplete,
-or already queued/sent), and identifies queued/accepted messages by commit. A journal
-callback failure cannot terminate the mail worker. SMTP acceptance does not guarantee
-inbox delivery; repeated reviews of an already mailed SHA are still deduplicated.
+The original JSON is not bundled into the executable. `authMail/` and
+`client_secret_*.json` are ignored by Git. The app copies the client configuration,
+account identity and tokens into one atomic Windows DPAPI-protected file at
+`oauth/gmail-account.bin` in the application data directory, readable only under
+that Windows user. The Google SDK uses an explicit memory-only store: no plaintext
+token cache is created. Reconnection can use the saved client configuration with
+an empty JSON path. Do not move the encrypted cache to another Windows account.
 
-Mail diagnostics include Message-ID, sender, recipient list, subject, SMTP host,
-attempt number and the next retry time. Test emails use the same logging. Connection,
-authentication and submission stages are shown without passwords or raw SMTP traffic.
-Rejections include the SMTP status/error code and rejected mailbox when available.
-An accepted message means the SMTP server accepted responsibility, **not** that it
-reached the inbox; this app does not read bounce messages or delivery receipts.
-Recipient addresses are now present in local logs: protect those logs accordingly.
+Access tokens refresh automatically, and rotated refresh tokens are saved before
+sending. A 401 response triggers one forced refresh and retry. Revoked/expired
+refresh tokens and permission failures pause delivery and show a reconnect message;
+pending reports are retained without consuming the normal retry allowance. In Google's
+External/Testing mode, Gmail refresh tokens generally expire after seven days.
+See [Google desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
+and [token expiration](https://developers.google.com/identity/protocols/oauth2#expiration).
 
-Run isolated queue/credential tests using
-`dotnet run --project GitReviewer.Tests/Mail/Mail.csproj`. They do not send mail.
+**Disconnect** disables notifications, deletes the local authorization and attempts
+to revoke Google's grant. If revocation cannot be confirmed, the UI explains how to
+remove access in your Google account; local disconnection still completes. Switching
+accounts disables notifications until explicitly enabled again. Queued messages
+retain their provider, account ID, sender and recipients; another account cannot
+send them. Reconnect the original account to resume its queue.
+
+### Reports and queue
+
+After a successful saved review containing findings, one email contains that
+commit's report as HTML with a plain-text fallback, and an HTML or Markdown attachment.
+**Report attachment format** is captured when queued. Changing settings does not
+rewrite pending messages. Repository text is HTML-escaped; raw HTML, scripts and remote
+images are not executed. Local reports remain Markdown and accumulated report history
+is not attached.
+
+**Send even when no bugs are found** includes successful NO_BUGS and empty-diff reviews.
+Incomplete reviews, failures and timeouts never trigger mail. **Also send to the commit
+author** adds the Git author address, deduplicated against configured recipients.
+Invalid addresses are skipped. Enable this only for trusted repositories: Git author
+metadata determines an external recipient. Both options are off by default.
+
+`mail-settings.json` stores preferences and the selected account ID, without OAuth
+tokens or passwords. `mail-queue.json` preserves pending reports across restarts.
+Successful acceptance removes the queued report body. Non-authorization failures
+retry after 1, 5 and 15 minutes (four attempts total); **Retry failed mail** requeues
+exhausted messages for the selected account only. Disabling notifications pauses the
+queue; a message already being submitted may complete. Mail failures do not repeat
+or invalidate the Git/model review.
+
+Deduplication uses repository identity, branch and commit. Retries retain Message-ID,
+but an ambiguous network failure or a crash after provider acceptance can still cause
+a duplicate. API acceptance does not prove inbox delivery. The app does not read
+bounce messages. Logs include sender, recipients, subject and attempt information,
+but no tokens, client secrets or raw authorization responses.
+
+On migration, automatic SMTP delivery is disabled and the old saved password is
+removed. Recipient/notification preferences and legacy queued reports are preserved;
+legacy SMTP messages are not silently reassigned to a Google mailbox. Connect Google
+and explicitly enable notifications for new reviews.
+
+Run isolated tests (no real sign-in or email sending):
+
+```powershell
+dotnet run --project checks/Gmail/Gmail.csproj
+dotnet run --project checks/GmailUi/GmailUi.csproj
+```
+
+The first covers protected persistence, actual SDK refresh against a fake token
+endpoint, 401/403/429 handling, account switching, disconnect, migration and queue
+recovery. The second renders the production mail panel offscreen in English and Russian.
 
 [Back to contents](#contents)
 
@@ -826,7 +854,7 @@ excluded; each attempt has its own duration.
 The selected project controls the Journal tab, recent Dashboard entries and the
 open Log window. Clearing a project log does not clear another project's files.
 Project IDs remain stable when names or positions change. Older shared log files
-are retained. The shared SMTP service continues to write to the application-wide
+are retained. The shared email service continues to write to the application-wide
 `%LOCALAPPDATA%\GitReviewer\journal.log`.
 
 [Back to contents](#contents)
@@ -866,12 +894,13 @@ models.conf          Model profiles and optional API keys
 settings.conf        Legacy settings retained after project migration
 state.json           Last reviewed commit for each repository and branch
 token-usage.json      Persistent token statistics
-mail-settings.json   SMTP settings and protected credentials
+mail-settings.json   Email preferences and connected account ID
+oauth/gmail-account.bin  DPAPI-protected Google client, identity and tokens
 mail-queue.json      Pending notifications and delivery identifiers
 system-prompt.custom.*.txt  Optional EN/RU system prompt overrides
 reports\             Markdown review reports
 logs\<project-id>\   Per-project journal.log and model.log, plus rotated copies
-journal.log          Shared SMTP diagnostics and retained legacy journal
+journal.log          Shared email diagnostics and retained legacy journal
 model-log.log        Retained legacy detailed log
 crashes\             Crash reports
 diagnostics\         Rejected model report diagnostics

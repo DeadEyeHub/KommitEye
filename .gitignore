@@ -14,3 +14,7 @@ TestResults/
 *.coverage
 *.coveragexml
 Calculatоr/
+
+authMail/
+**/oauth/
+client_secret_*.json

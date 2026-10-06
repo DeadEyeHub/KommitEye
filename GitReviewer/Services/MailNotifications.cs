@@ -10,6 +10,9 @@ namespace GitReviewer.Services;
 
 public sealed class MailSettings
 {
+    public string Provider { get; set; } = "smtp";
+    public string AccountId { get; set; } = "";
+    public bool AuthorizationRequired { get; set; }
     public bool Enabled { get; set; }
     public bool SendToAuthor { get; set; }
     public bool SendWithoutBugs { get; set; }
@@ -31,6 +34,15 @@ public sealed class MailSettings
     public void Validate()
     {
         if (AttachmentFormat is not ("html" or "md")) throw new InvalidOperationException("Attachment format must be html or md.");
+        if (Provider == "gmail")
+        {
+            if (string.IsNullOrWhiteSpace(AccountId)) throw new MailAuthorizationException();
+            if (From.Any(char.IsControl) || Recipients.Any(char.IsControl)) throw new InvalidOperationException("Invalid mail address.");
+            _ = MailboxAddress.Parse(From);
+            if (Addresses().Count == 0 && !SendToAuthor) throw new InvalidOperationException(Localization.Text("Enter a recipient.", "Укажите получателя."));
+            return;
+        }
+        if (Provider != "smtp") throw new InvalidOperationException("Unsupported email provider.");
         if (string.IsNullOrWhiteSpace(Host) || Host.Any(char.IsWhiteSpace) || Host.Contains('/') || Port is < 1 or > 65535)
             throw new InvalidOperationException(Localization.Text("Invalid SMTP host or port.", "Некорректный SMTP-сервер или порт."));
         if (Security is not ("None" or "StartTls" or "SslOnConnect")) throw new InvalidOperationException("Invalid SMTP security mode.");
@@ -44,6 +56,8 @@ public sealed class MailSettings
 
 public sealed class MailJob
 {
+    public string Provider { get; set; } = "smtp";
+    public string AccountId { get; set; } = "";
     public string AttachmentFormat { get; set; } = "html";
     public string Key { get; set; } = "";
     public string MessageId { get; set; } = "";
@@ -59,6 +73,11 @@ public sealed class MailJob
 public sealed class MailNotifications : IAsyncDisposable
 {
     private readonly object _gate = new();
+    private readonly Dictionary<string, IEmailProvider> _providers;
+    public EmailAccount? GoogleAccount => _providers.GetValueOrDefault("gmail")?.Account;
+    public string? GoogleStatusError => _providers.GetValueOrDefault("gmail")?.StatusError;
+    public int PausedCount { get { lock (_gate) return _jobs.Count(j => !j.Sent && !MatchesAccount(j, _settings)); } }
+    private static bool MatchesAccount(MailJob job, MailSettings settings) => job.Provider == settings.Provider && job.AccountId == settings.AccountId;
     private readonly string _settingsPath, _queuePath;
     private readonly Action<string> _log;
     private readonly Func<MailSettings, MailJob, CancellationToken, Task> _send;
@@ -72,13 +91,15 @@ public sealed class MailNotifications : IAsyncDisposable
     public MailSettings Settings { get { lock (_gate) return _settings.Clone(); } }
 
     public MailNotifications(string directory, Action<string> log,
-        Func<MailSettings, MailJob, CancellationToken, Task>? send = null, bool startWorker = true, Func<DateTimeOffset>? now = null)
+        Func<MailSettings, MailJob, CancellationToken, Task>? send = null, bool startWorker = true, Func<DateTimeOffset>? now = null, IEnumerable<IEmailProvider>? providers = null)
     {
+        _providers = (providers ?? [new GmailEmailProvider(directory)]).ToDictionary(p => p.Id, StringComparer.Ordinal);
         _settingsPath = Path.Combine(directory, "mail-settings.json");
         _queuePath = Path.Combine(directory, "mail-queue.json");
         // A UI/logging failure must never terminate the delivery worker.
         _log = message => { try { log(message); } catch { } };
-        _send = send ?? ((settings, job, token) => SendSmtpAsync(settings, job, token, _log));
+        _send = send ?? ((settings, job, token) => _providers.TryGetValue(job.Provider, out var provider)
+            ? provider.SendAsync(job, token) : throw new MailAuthorizationException());
         _now = now ?? (() => DateTimeOffset.UtcNow);
         try
         {
@@ -87,12 +108,20 @@ public sealed class MailNotifications : IAsyncDisposable
             _jobs = File.Exists(_queuePath) ? JsonSerializer.Deserialize<List<MailJob>>(File.ReadAllText(_queuePath))
                 ?? throw new InvalidDataException() : [];
             if (_jobs.Any(j => j is null || string.IsNullOrWhiteSpace(j.Key) || j.Attempts < 0)) throw new InvalidDataException();
+            if (send is null && _settings.Provider == "smtp")
+            {
+                _settings.Enabled = false;
+                _settings.EncryptedPassword = "";
+                if (File.Exists(_settingsPath)) Save(_settingsPath, _settings);
+            }
         }
         catch (Exception e)
         {
             _settings = new(); _jobs = [];
             LoadError = "Mail settings/queue could not be loaded (" + e.GetType().Name + "). Existing files are preserved.";
         }
+        // Legacy SMTP jobs remain saved but cannot be sent through a newly connected account.
+        if (send is null && _settings.Provider == "smtp") _settings.Enabled = false;
         _worker = startWorker ? Task.Run(WorkerAsync) : Task.CompletedTask;
     }
 
@@ -105,6 +134,16 @@ public sealed class MailNotifications : IAsyncDisposable
     }
     public void SaveSettings(MailSettings settings)
     {
+        if (settings.Provider == "gmail")
+        {
+            var account = GoogleAccount;
+            if (account is null || settings.AccountId != account.Id) throw new MailAuthorizationException();
+            settings.From = account.Address;
+            settings.EncryptedPassword = "";
+            settings.Username = "";
+            settings.Host = "";
+            settings.AuthorizationRequired = account.NeedsAuthorization;
+        }
         if (settings.Enabled) settings.Validate();
         lock (_gate)
         {
@@ -113,6 +152,45 @@ public sealed class MailNotifications : IAsyncDisposable
             _settings = settings.Clone();
         }
     }
+    public async Task ConnectGoogleAsync(string clientFile, CancellationToken token)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
+        linked.CancelAfter(TimeSpan.FromMinutes(3));
+        await _sending.WaitAsync(linked.Token);
+        try
+        {
+            if (LoadError is not null) throw new InvalidOperationException(LoadError);
+            var account = await _providers["gmail"].ConnectAsync(clientFile, linked.Token);
+            var settings = Settings;
+            settings.Enabled = settings.Enabled && settings.Provider == "gmail" && settings.AccountId == account.Id;
+            settings.Provider = "gmail";
+            settings.AccountId = account.Id;
+            settings.From = account.Address;
+            settings.AuthorizationRequired = false;
+            SaveSettings(settings);
+        }
+        finally { _sending.Release(); }
+    }
+
+    public async Task DisconnectGoogleAsync(CancellationToken token)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
+        await _sending.WaitAsync(linked.Token);
+        try
+        {
+            var settings = Settings;
+            settings.Enabled = false;
+            settings.AuthorizationRequired = true;
+            lock (_gate)
+            {
+                Save(_settingsPath, settings);
+                _settings = settings;
+            }
+            await _providers["gmail"].DisconnectAsync(linked.Token);
+        }
+        finally { _sending.Release(); }
+    }
+
     public void Enqueue(CommitReviewed review)
     {
         if (review.HasUnstructuredResponse) { _log("Mail: incomplete review skipped: " + review.Sha); return; }
@@ -144,6 +222,7 @@ public sealed class MailNotifications : IAsyncDisposable
                 var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity + "\n" + review.BranchRef + "\n" + review.Sha)));
                 if (_jobs.Any(j => j.Key == key)) { _log("Mail: this commit is already queued or sent: " + review.Sha); return; }
                 var job = new MailJob { Key = key, MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(),
+                    Provider = _settings.Provider, AccountId = _settings.AccountId,
                     AttachmentFormat = _settings.AttachmentFormat,
                     Subject = Clean($"[GitReviewer] {Path.GetFileName(review.RepositoryPath)} / {review.BranchRef} / {review.Sha[..Math.Min(8, review.Sha.Length)]} — bugs: {review.FindingCount}"),
                     Report = review.ReportMarkdown, From = _settings.From, Recipients = string.Join(";", recipients.Select(r => r.ToString())), NextAttempt = _now() };
@@ -158,7 +237,8 @@ public sealed class MailNotifications : IAsyncDisposable
     private static string Describe(MailJob job) => $"id={Clean(job.MessageId)}; from={Clean(job.From)}; to={string.Join("; ", job.Recipients.Split(';').Select(Clean))}; subject={Clean(job.Subject)}";
     private static string FailureDetails(Exception exception) => exception is SmtpCommandException smtp
         ? $"{smtp.GetType().Name}; SMTP={(int)smtp.StatusCode}; reason={smtp.ErrorCode}; rejected-address={Clean(smtp.Mailbox?.Address ?? "-")}"
-        : exception is OperationCanceledException ? "Canceled or SMTP timeout" : exception.GetType().Name;
+        : exception is MailProviderException or MailAuthorizationException ? exception.Message
+        : exception is OperationCanceledException ? "Canceled or mail timeout" : exception.GetType().Name;
 
     public async Task TestAsync(MailSettings settings, CancellationToken token)
     {
@@ -169,14 +249,20 @@ public sealed class MailNotifications : IAsyncDisposable
         SaveSettings(settings);
         await _sending.WaitAsync(token);
         var job = new MailJob { MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(),
+            Provider = settings.Provider, AccountId = settings.AccountId,
             AttachmentFormat = settings.AttachmentFormat,
-            Subject = "GitReviewer SMTP test", Report = "SMTP test message from GitReviewer. No repository data is included.",
+            Subject = "GitReviewer email test", Report = "Test message from GitReviewer. No repository data is included.",
             From = settings.From, Recipients = settings.Recipients };
         try
         {
             _log("Mail: sending test; " + Describe(job));
             await _send(settings, job, token);
-            _log("Mail: test accepted by SMTP server (inbox delivery unconfirmed); " + Describe(job));
+            _log("Mail: test accepted by mail provider (inbox delivery unconfirmed); " + Describe(job));
+        }
+        catch (MailAuthorizationException)
+        {
+            lock (_gate) { _settings.AuthorizationRequired = true; Save(_settingsPath, _settings); }
+            throw;
         }
         catch (Exception exception) { _log("Mail: test not confirmed; " + Describe(job) + "; " + FailureDetails(exception)); throw; }
         finally { _sending.Release(); }
@@ -186,13 +272,13 @@ public sealed class MailNotifications : IAsyncDisposable
         lock (_gate)
         {
             if (LoadError is not null) throw new InvalidOperationException(LoadError);
-            foreach (var job in _jobs.Where(j => !j.Sent && j.Attempts >= 4))
+            foreach (var job in _jobs.Where(j => !j.Sent && MatchesAccount(j, _settings) && j.Attempts >= 4))
             { job.Attempts = 0; job.NextAttempt = _now(); }
             Save(_queuePath, _jobs);
         }
     }
     public (int Pending, int Failed) Counts()
-    { lock (_gate) return (_jobs.Count(j => !j.Sent && j.Attempts < 4), _jobs.Count(j => !j.Sent && j.Attempts >= 4)); }
+    { lock (_gate) return (_jobs.Count(j => !j.Sent && j.Attempts < 4), _jobs.Count(j => !j.Sent && MatchesAccount(j, _settings) && j.Attempts >= 4)); }
 
     private async Task WorkerAsync()
     {
@@ -213,8 +299,8 @@ public sealed class MailNotifications : IAsyncDisposable
             MailSettings settings;
             lock (_gate)
             {
-                if (LoadError is not null || !_settings.Enabled) return;
-                job = _jobs.FirstOrDefault(j => !j.Sent && j.Attempts < 4 && j.NextAttempt <= _now());
+                if (LoadError is not null || !_settings.Enabled || _settings.AuthorizationRequired) return;
+                job = _jobs.FirstOrDefault(j => !j.Sent && MatchesAccount(j, _settings) && j.Attempts < 4 && j.NextAttempt <= _now());
                 if (job is null) return;
                 settings = _settings.Clone();
                 job.Attempts++;
@@ -223,13 +309,24 @@ public sealed class MailNotifications : IAsyncDisposable
             }
             try
             {
-                _log($"Mail: sending attempt {job.Attempts}/4 via {Clean(settings.Host)}:{settings.Port}; " + Describe(job));
+                _log($"Mail: sending attempt {job.Attempts}/4 via {Clean(settings.Provider)}; " + Describe(job));
                 await _send(settings, job, token);
                 lock (_gate) { job.Sent = true; job.Report = ""; Save(_queuePath, _jobs); }
-                _log(Localization.Text("Mail: accepted by SMTP server (inbox delivery unconfirmed); ", "Почта: принято SMTP-сервером (доставка в ящик не подтверждена); ") + Describe(job));
+                _log(Localization.Text("Mail: accepted by mail provider (inbox delivery unconfirmed); ", "Почта: принято почтовым сервисом (доставка в ящик не подтверждена); ") + Describe(job));
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             { _log("Mail: sending canceled, acceptance unknown; " + Describe(job)); throw; }
+            catch (MailAuthorizationException)
+            {
+                lock (_gate)
+                {
+                    job.Attempts = Math.Max(0, job.Attempts - 1);
+                    _settings.AuthorizationRequired = true;
+                    Save(_settingsPath, _settings);
+                    Save(_queuePath, _jobs);
+                }
+                _log(Localization.Text("Mail paused: reconnect your Google account. Queued reports are preserved.", "Отправка приостановлена: подключите аккаунт Google заново. Очередь сохранена."));
+            }
             catch (Exception e)
             {
                 // Never include server text or credentials in logs.

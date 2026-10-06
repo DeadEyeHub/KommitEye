@@ -1280,7 +1280,8 @@ public partial class MainWindow : Window
         if (_mailCounts is not null)
         {
             var counts = _mail.Counts();
-            _mailCounts.Text = Localization.Format("Mail queue: {0}; failed: {1}.", "Очередь писем: {0}; не отправлено: {1}.", counts.Pending, counts.Failed);
+            _mailCounts.Text = Localization.Format("Mail queue: {0}; failed: {1}; awaiting original account: {2}.", "Очередь писем: {0}; не отправлено: {1}; ожидают исходный аккаунт: {2}.", counts.Pending, counts.Failed, _mail.PausedCount);
+            RefreshMailAccountStatus();
         }
         if (_automaticStopPending && !_runner.IsRunning)
         {

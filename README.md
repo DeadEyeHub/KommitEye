@@ -49,7 +49,9 @@ Review requires a tool-capable model/provider; there is no legacy diff-prompt fa
 - Lets the model independently explore an immutable commit using read-only Git tools.
 - Allows manual review of any commit by its short or full SHA.
 - **Find commit** opens a separate window listing the latest 100 commits with
-  short SHAs and descriptions. Filter by SHA or description, or enter an older
+  short SHAs and descriptions. **Load 100 more** adds older commits while preserving
+  the search filter and selection. Search covers all loaded commits; the counter
+  indicates when the entire history is loaded. Filter by SHA or description, or enter an older
   SHA directly. The chosen SHA is used for manual review and automatic start.
 - Lets an authorized user set the automatic review baseline to an ancestor of the selected branch; monitoring continues after that commit.
 - If the model is unavailable (network failure, request timeout, authentication/model-not-found, rate limiting or server failure), review waits without skipping the commit. It probes the selected model until recovery, then retries the same commit. Stop cancels this wait; daily model working hours also apply to probes.
@@ -892,6 +894,15 @@ It checks interval persistence, cancellation, preserving the pending commit, and
 automatic recovery with no review retries available. The `--deadlines` checks use
 a controlled model clock to cover active and silent deadlines, streamed and complete
 responses, the inactivity boundary, cancellation, and report contents.
+
+Run the commit paging check (Windows):
+
+```powershell
+dotnet run --project checks/CommitPaging/CommitPaging.csproj
+```
+
+It checks three pages of history, no gaps or duplicates after a branch moves,
+end-of-history handling, and cancellation.
 
 Run the format repair checks (Windows):
 

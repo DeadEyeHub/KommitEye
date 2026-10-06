@@ -16,7 +16,12 @@ public sealed class CommitSearchWindow : Window
     private readonly TextBox _query = new() { Margin = new Thickness(0, 8, 0, 8) };
     private readonly ListBox _results = new() { DisplayMemberPath = nameof(CommitChoice.Display) };
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
-    private IReadOnlyList<CommitChoice> _commits = [];
+    private readonly List<CommitChoice> _commits = [];
+    private readonly Button _loadMore = new() { Padding = new Thickness(16, 6, 16, 6), Margin = new Thickness(0, 8, 8, 0) };
+    private bool _loading, _closed;
+    private bool _hasMore = true;
+    private string? _head, _loadError;
+    private const int PageSize = 100;
     public string SelectedSha { get; private set; } = string.Empty;
 
     public CommitSearchWindow(GitService git, string path, string branch)
@@ -27,32 +32,48 @@ public sealed class CommitSearchWindow : Window
         var panel = new DockPanel { Margin = new Thickness(16) };
         Content = panel;
         var label = new TextBlock { Text = Localization.Text(
-            "Search recent commits by SHA or description; enter a full or short SHA for an older commit.",
-            "Поиск последних коммитов по хешу или описанию; для более старого введите полный или короткий SHA."), TextWrapping = TextWrapping.Wrap };
+            "Search loaded commits by SHA or description. Load more to search older history, or enter a SHA directly.",
+            "Поиск загруженных коммитов по хешу или описанию. Загрузите ещё для поиска в старой истории или введите SHA напрямую."), TextWrapping = TextWrapping.Wrap };
         DockPanel.SetDock(label, Dock.Top); panel.Children.Add(label);
         DockPanel.SetDock(_query, Dock.Top); panel.Children.Add(_query);
         var select = new Button { Content = Localization.Text("Select", "Выбрать"), Padding = new Thickness(16, 6, 16, 6), Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
-        DockPanel.SetDock(select, Dock.Bottom); panel.Children.Add(select);
+        var actions = new DockPanel();
+        DockPanel.SetDock(actions, Dock.Bottom); panel.Children.Add(actions);
+        DockPanel.SetDock(_loadMore, Dock.Left); actions.Children.Add(_loadMore);
+        actions.Children.Add(select);
         DockPanel.SetDock(_status, Dock.Bottom); panel.Children.Add(_status);
         panel.Children.Add(_results);
         _query.TextChanged += (_, _) => Filter();
         select.Click += (_, _) => SelectCommit();
         _results.MouseDoubleClick += (_, _) => { if (_results.SelectedItem is CommitChoice) SelectCommit(); };
         _results.KeyDown += (_, e) => { if (e.Key == Key.Enter) SelectCommit(); };
-        Closed += (_, _) => { _cancellation.Cancel(); _cancellation.Dispose(); };
-        Loaded += async (_, _) =>
+        Closed += (_, _) => { _closed = true; _cancellation.Cancel(); _cancellation.Dispose(); };
+        _loadMore.Click += async (_, _) => await LoadMoreAsync();
+        Loaded += async (_, _) => { _query.Focus(); await LoadMoreAsync(); };
+
+        async Task LoadMoreAsync()
         {
-            _query.Focus();
-            _status.Text = Localization.Text("Loading…", "Загрузка…");
+            if (_loading || !_hasMore || _closed) return;
+            _loading = true;
+            _loadError = null;
+            Filter();
             try
             {
-                _commits = await git.GetRecentCommitsAsync(path, branch, _cancellation.Token);
-                Filter();
+                var token = _cancellation.Token;
+                _head ??= await git.GetBranchHeadAsync(path, branch, token);
+                var page = await git.GetCommitPageAsync(path, _head, _commits.Count, PageSize + 1, token);
+                if (_closed) return;
+                _commits.AddRange(page.Take(PageSize));
+                _hasMore = page.Count > PageSize;
             }
-            catch (OperationCanceledException) { }
-            catch (Exception error) { _status.Text = error.Message; }
-
-        };
+            catch (OperationCanceledException) when (_closed) { }
+            catch (Exception error) { _loadError = error.Message; }
+            finally
+            {
+                _loading = false;
+                if (!_closed) Filter();
+            }
+        }
     }
 
     private void Filter()
@@ -60,8 +81,16 @@ public sealed class CommitSearchWindow : Window
         var query = _query.Text.Trim();
         var matches = _commits.Where(c => c.Sha.Contains(query, StringComparison.OrdinalIgnoreCase) ||
             c.Subject.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+        var selected = _results.SelectedItem;
         _results.ItemsSource = matches;
-        _status.Text = Localization.Format("Matching commits: {0}", "Найдено коммитов: {0}", matches.Count);
+        if (selected is CommitChoice choice && matches.Contains(choice)) _results.SelectedItem = choice;
+        _loadMore.IsEnabled = !_loading && _hasMore;
+        _loadMore.Content = _loading ? Localization.Text("Loading…", "Загрузка…") :
+            _loadError is not null ? Localization.Text("Retry loading", "Повторить загрузку") :
+            Localization.Text("Load 100 more", "Загрузить ещё 100");
+        _status.Text = Localization.Format("Matching: {0} · Loaded: {1}", "Найдено: {0} · Загружено: {1}", matches.Count, _commits.Count);
+        if (!_hasMore) _status.Text += Localization.Text(" · All commits loaded", " · Все коммиты загружены");
+        if (_loadError is not null) _status.Text += "\n" + _loadError;
     }
 
     private void SelectCommit()

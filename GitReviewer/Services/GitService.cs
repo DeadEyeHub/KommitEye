@@ -114,8 +114,19 @@ public sealed class GitService
         string repositoryPath, string branch, CancellationToken cancellationToken)
     {
         var head = await GetBranchHeadAsync(repositoryPath, branch, cancellationToken);
+        return await GetCommitPageAsync(repositoryPath, head, 0, 100, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<CommitChoice>> GetCommitPageAsync(
+        string repositoryPath, string head, int skip, int count, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(skip);
+        if (count is < 1 or > 101) throw new ArgumentOutOfRangeException(nameof(count));
+        // Paging always uses a fixed SHA so fetches cannot shift page boundaries.
+        head = await ResolveCommitAsync(repositoryPath, head, cancellationToken);
         var result = await ReadPageAsync(repositoryPath, 0, 256_000, cancellationToken,
-            "log", "--no-show-signature", "-n", "100", "--format=%H%x09%s", head, "--");
+            "log", "--no-show-signature", "-n", count.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "--skip=" + skip.ToString(System.Globalization.CultureInfo.InvariantCulture), "--format=%H%x09%s", head, "--");
         if (result.ExitCode != 0 || result.HasMore)
             throw new GitException(Localization.Text("Cannot load the recent commit list.", "Не удалось загрузить список последних коммитов."));
         return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)

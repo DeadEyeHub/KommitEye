@@ -312,8 +312,8 @@ public partial class MainWindow : Window
         SelectedCommitLabel.Text = Localization.Text("Selected commit", "Выбранный коммит");
         FindCommitButton.Content = Localization.Text("Find commit", "Найти коммит");
         CommitShaTextBox.ToolTip = Localization.Text(
-            "Select from the latest 100 commits of the selected branch, or enter a short/full SHA. The list refreshes when opened.",
-            "Выберите из последних 100 коммитов выбранной ветки или введите короткий/полный SHA. Список обновляется при открытии.");
+            "Open Find commit to search the selected branch and load older commits, or enter a short/full SHA.",
+            "Откройте поиск для выбора коммита и загрузки старой истории или введите короткий/полный SHA.");
         ReviewCommitButton.Content = Localization.Text("Review commit", "Проверить коммит");
         SetStartCommitButton.Content = Localization.Text(
             "Start from selected commit",

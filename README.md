@@ -989,3 +989,12 @@ next review, not a running model request. Legacy `system-prompt.txt` files in Ap
 remain ignored and are never rewritten or deleted.
 
 [Back to contents](#contents)
+
+
+### Outlook / Microsoft 365 OAuth
+
+Mail has separate Google and Outlook tabs. Both connections and provider settings are retained. Switching tabs only changes the view; **Save / use this account** selects the sender for new reports. Jobs remain tied to their original provider and account; switching the sender pauses jobs for the other account.
+
+Register an application in Microsoft Entra with **Accounts in any organizational directory and personal Microsoft accounts**. Add the **Mobile and desktop applications** platform and redirect URI `http://localhost`. Add Microsoft Graph **delegated** permissions `User.Read` (identify the connected mailbox) and `Mail.Send` (send reports). Paste the **Application (client) ID** into the Outlook tab. No client secret is required. Organizational policies may require administrator consent.
+
+Sign-in uses the system browser and MSAL OAuth authorization code flow with PKCE. MSAL refreshes expired tokens; its cache is stored with Windows DPAPI for the current Windows user in `oauth/outlook-account.bin`. Authorization errors pause sending until reconnection. Disconnect removes local tokens; it does not revoke tenant-wide consent or sign out the browser. Account permissions can also be removed in the Microsoft account/organization portal.

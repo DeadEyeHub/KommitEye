@@ -22,6 +22,7 @@
   <ItemGroup>
     <PackageReference Include="Google.Apis.Auth" Version="1.73.0" />
     <PackageReference Include="MailKit" Version="4.18.1" />
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.90.1" />
   </ItemGroup>
 
 </Project>

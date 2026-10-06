@@ -14,11 +14,12 @@ public partial class MainWindow : Window
     private readonly MailNotifications _mail;
     private readonly StackPanel MailPanel = new() { Margin = new Thickness(16) };
     private readonly TabItem MailTab = new();
-    public MainWindow(string root, bool connected)
+    public MainWindow(string root, bool connected, string provider)
     {
         _mail = new MailNotifications(root, _ => { }, startWorker: false,
             providers: [new PreviewProvider(connected)]);
         _googleClientFile = "C:\\GitReviewer\\authMail\\client_secret_example.json";
+        _mailProviderTab = provider;
         BuildMailPanel();
         Content = new ScrollViewer { Background = SystemColors.WindowBrush, Content = MailPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -44,10 +45,11 @@ public partial class MainWindow : Window
         var root = Path.Combine(Path.GetTempPath(), "gmail-ui-" + Guid.NewGuid());
         foreach (var language in new[] { "en", "ru" })
         foreach (var connected in new[] { false, true })
+        foreach (var provider in new[] { "gmail", "outlook" })
         {
             Localization.SetLanguage(language);
-            var window = new MainWindow(root, connected);
-            var path = Path.Combine(AppContext.BaseDirectory, $"mail-{language}-{connected}.png");
+            var window = new MainWindow(root, connected, provider);
+            var path = Path.Combine(AppContext.BaseDirectory, $"mail-{provider}-{language}-{connected}.png");
             window.Render(path);
             Console.WriteLine(path);
         }

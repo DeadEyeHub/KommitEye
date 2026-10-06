@@ -458,7 +458,7 @@ public sealed class ReviewRunner
                     throw;
                 }
                 Emit(ReviewStage.Failed, profile, sha, exception.Message);
-                if (exception is ReviewComplexityException || attempt++ >= profile.Parameters.MaxRetries)
+                if (exception is ReviewComplexityException or ReviewFormatException || attempt++ >= profile.Parameters.MaxRetries)
                 {
                     result = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message) };
                     break;

@@ -375,15 +375,17 @@ sequentially, even though parallel tool calls are disabled in requests.
 | `git_tree` | Paginated directory children at an allowed SHA; optional directory `path` and `recursive` (default false) |
 | `git_search` | Paginated case-sensitive literal `query` matches; optional file/directory `path`; skips binary files |
 
-Once tool reads are complete, a malformed final report gets up to two formatting
-correction requests within the existing round/time budgets. Feedback identifies
-invalid fields, missing markers and extra prose; the model must preserve its
-findings and return the required plain-text blocks. Each rejected answer is saved
-verbatim in a JSON diagnostic under `diagnostics/` in the application data folder,
-with the reviewed SHA, model, attempt number and validation errors. If correction
-fails, the error includes the diagnostic path. Automatic analysis retries apply;
-once exhausted, the failure is recorded before skipping the commit.
-Truncated responses and unfinished tool reads cannot be accepted through this retry.
+Once tool reads are complete, a malformed final report gets exactly one isolated
+format-only correction request within the review time limit. No repository tools
+or review conversation are supplied: the original response and validator errors
+are passed as untrusted JSON data. The model may remove commentary and wrappers,
+but must preserve every finding, claim, location and description.
+The repaired response must pass the same validator, and its ordered finding fields
+must match the original. Missing or ambiguous original fields fail closed; findings
+cannot become `NO_BUGS`. A failed repair is reported as a validation failure without
+restarting analysis or requesting another repair. The original rejected answer is
+saved in `diagnostics/` with SHA, model and validation errors; failures include its
+path. Truncated responses and unfinished tool reads cannot use format repair.
 
 Line ranges use 1-based inclusive bounds, at most 500 lines per range, and require
 both bounds. Range conversion supports text blobs up to 512,000 characters;
@@ -695,11 +697,14 @@ If a completed response contains introductory reasoning before the first standal
 `BUG` or `NO_BUGS` line or concluding prose after the report, that surrounding text
 is removed only when the extracted report passes format validation. All bug blocks
 must be complete; mixed markers, text between blocks and malformed findings still
-require correction. An unfinished final block or protocol fields after the report
+require correction. An unfinished final block or protocol fields before or after the report
 are not discarded as prose. The client never
 skips an invalid first finding to accept a later one. The original response remains
 in the detailed project log, together with a notice of the trimmed character count.
 This does not bypass full-diff coverage, tool-error or response-completion checks.
+Markdown fences and unambiguous JSON string wrappers (a JSON string or a single
+`report`, `content`, `response` or `result` string property) are also removed locally.
+Already valid reports do not trigger a model repair.
 
 The model returns plain text blocks:
 
@@ -887,6 +892,15 @@ It checks interval persistence, cancellation, preserving the pending commit, and
 automatic recovery with no review retries available. The `--deadlines` checks use
 a controlled model clock to cover active and silent deadlines, streamed and complete
 responses, the inactivity boundary, cancellation, and report contents.
+
+Run the format repair checks (Windows):
+
+```powershell
+dotnet run --project checks/ReportRepair/ReportRepair.csproj
+```
+
+They cover unchanged findings, prose/Markdown/JSON wrappers, one isolated repair,
+rejected tool calls, changed or lost findings, and failed repairs remaining failures.
 
 The separate `GitReviewer.Tests` repository links production services and
 uses a fake HTTP handler, isolated data paths, and temporary Git repositories.

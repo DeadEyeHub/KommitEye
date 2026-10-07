@@ -1,8 +1,15 @@
-# Git Reviewer
+# KommitEye
 
-<img src="GitReviewer/Assets/app-icon.png" alt="Git Reviewer logo" width="160" />
+Previously named Git Reviewer. Existing installations continue using
+`%LOCALAPPDATA%\GitReviewer` when it exists and the new `%LOCALAPPDATA%\KommitEye`
+directory does not. New installations use the KommitEye directory.
+`KOMMITEYE_DATA_DIR` and `KOMMITEYE_SNAPSHOT_MB` replace the old environment
+variable names; `GITREVIEWER_DATA_DIR` and `GITREVIEWER_SNAPSHOT_MB` remain
+supported for compatibility, with the new names taking precedence.
 
-Git Reviewer is a Windows desktop application that uses a local or cloud
+<img src="KommitEye/Assets/app-icon.png" alt="KommitEye logo" width="160" />
+
+KommitEye is a Windows desktop application that uses a local or cloud
 OpenAI-compatible model to review Git commits for correctness bugs. It supports
 parallel projects, Markdown reports and optional email notifications.
 
@@ -82,20 +89,20 @@ Review requires a tool-capable model/provider; there is no legacy diff-prompt fa
 Run from the repository root:
 
 ```powershell
-dotnet build GitReviewer/GitReviewer.csproj
-dotnet run --project GitReviewer/GitReviewer.csproj
+dotnet build KommitEye/KommitEye.csproj
+dotnet run --project KommitEye/KommitEye.csproj
 ```
 
 To create one versioned, self-contained Windows x64 executable, run:
 
 ```powershell
-.\GitReviewer\publish-win-x64.ps1
+.\KommitEye\publish-win-x64.ps1
 ```
 
 The result is written to:
 
 ```text
-GitReviewer\dist\GitReviewer-<version>-win-x64.exe
+KommitEye\dist\KommitEye-<version>-win-x64.exe
 ```
 
 The executable includes the .NET runtime and default configuration templates.
@@ -111,7 +118,7 @@ menu to cancel and await manual review, stop background monitoring, close Log,
 remove the tray icon, and shut down the application.
 
 The executable name and application version come from `<Version>` in
-[GitReviewer.csproj](GitReviewer/GitReviewer.csproj).
+[KommitEye.csproj](KommitEye/KommitEye.csproj).
 
 [Back to contents](#contents)
 
@@ -155,8 +162,8 @@ keyed by repository Git identity and branch, so two entries for the same reposit
 and branch share progress. Model profiles, email settings, prompts, language and daily/all-time token totals
 are application-wide; review journals and detailed logs are per project.
 
-Run migration checks with `dotnet run --project GitReviewer.Tests/PromptMigration/PromptMigration.csproj`
-and isolated UI switching/layout checks with `dotnet run --project GitReviewer.Tests/ProjectsUi/ProjectsUi.csproj`.
+Run migration checks with `dotnet run --project KommitEye.Tests/PromptMigration/PromptMigration.csproj`
+and isolated UI switching/layout checks with `dotnet run --project KommitEye.Tests/ProjectsUi/ProjectsUi.csproj`.
 
 [Back to contents](#contents)
 
@@ -455,9 +462,9 @@ lines, rather than truncating an unbounded captured string.
 On the model's first request for diff, changed files, tree, search or a numbered
 file range, the command output is streamed once into a temporary disk snapshot.
 Snapshots share a **64 MiB per-session disk budget**, not a 512,000-character cap.
-Set the environment variable `GITREVIEWER_SNAPSHOT_MB` to an integer from 1 to 1024
+Set the environment variable `KOMMITEYE_SNAPSHOT_MB` to an integer from 1 to 1024
 before launching the application to change this budget; invalid values use 64 MiB.
-For example, in PowerShell: `$env:GITREVIEWER_SNAPSHOT_MB = '128'` before starting
+For example, in PowerShell: `$env:KOMMITEYE_SNAPSHOT_MB = '128'` before starting
 the EXE from that shell. Storage uses two bytes per UTF-16 character. Temporary
 files have delete-on-close handles; they are closed on completion, error or cancellation.
 Failed/oversized captures are immediately discarded, never exposed as valid partial snapshots.
@@ -823,7 +830,7 @@ recovery. The second renders the production mail panel offscreen in English and 
 
 The former Log tab is now **Journal** (**Журнал**) and retains general messages.
 Each project journal is appended to
-`%LOCALAPPDATA%\GitReviewer\logs\<project-id>\journal.log`; the last 500
+`%LOCALAPPDATA%\KommitEye\logs\<project-id>\journal.log`; the last 500
 lines are loaded into the tab after a complete application restart. The file
 rotates at 8 MiB and one previous generation is retained as `journal.log.1`.
 
@@ -836,7 +843,7 @@ does not return those fields. Authorization headers, API keys, and environment
 variable values are never logged.
 
 Detailed data is appended to
-`%LOCALAPPDATA%\GitReviewer\logs\<project-id>\model.log`; it rotates
+`%LOCALAPPDATA%\KommitEye\logs\<project-id>\model.log`; it rotates
 at 32 MiB and keeps one previous generation as `model.log.1`. The Log window
 shows a bounded recent tail to keep WPF responsive, while the files hold the full
 retained exchange. These files contain prompts, repository paths, diffs, committed
@@ -855,7 +862,7 @@ The selected project controls the Journal tab, recent Dashboard entries and the
 open Log window. Clearing a project log does not clear another project's files.
 Project IDs remain stable when names or positions change. Older shared log files
 are retained. The shared email service continues to write to the application-wide
-`%LOCALAPPDATA%\GitReviewer\journal.log`.
+`%LOCALAPPDATA%\KommitEye\journal.log`.
 
 [Back to contents](#contents)
 
@@ -863,12 +870,12 @@ are retained. The shared email service continues to write to the application-wid
 
 Unhandled WPF dispatcher, AppDomain, Windows Forms thread and unobserved task
 exceptions are recorded in separate `crashes/crash-*.log` files under the application
-data directory (by default `%LOCALAPPDATA%/GitReviewer`). Reports include time,
+data directory (by default `%LOCALAPPDATA%/KommitEye`). Reports include time,
 application/runtime version, exception type/message, stack and inner exceptions,
 plus the last review context. UI fatal errors show the report path and are not
 silently ignored; the process terminates rather than continuing uncertain review state.
 Unobserved task exceptions are logged when the runtime raises that event.
-If the main directory is unwritable, reports fall back to `%TEMP%/GitReviewer-crashes`.
+If the main directory is unwritable, reports fall back to `%TEMP%/KommitEye-crashes`.
 Reports may contain local paths and exception data; inspect them before sharing.
 Forced process termination, power loss and severe runtime failures (for example
 stack overflow or insufficient memory to write a report) cannot be guaranteed to log.
@@ -880,10 +887,10 @@ stack overflow or insufficient memory to write a report) cannot be guaranteed to
 User-specific files are stored in:
 
 ```text
-%LOCALAPPDATA%\GitReviewer
+%LOCALAPPDATA%\KommitEye
 ```
 
-For isolated or portable runs, set `GITREVIEWER_DATA_DIR` before starting the
+For isolated or portable runs, set `KOMMITEYE_DATA_DIR` before starting the
 application to use a different data directory.
 
 The directory contains:
@@ -942,18 +949,18 @@ dotnet run --project checks/ReportRepair/ReportRepair.csproj
 They cover unchanged findings, prose/Markdown/JSON wrappers, one isolated repair,
 rejected tool calls, changed or lost findings, and failed repairs remaining failures.
 
-The separate `GitReviewer.Tests` repository links production services and
+The separate `KommitEye.Tests` repository links production services and
 uses a fake HTTP handler, isolated data paths, and temporary Git repositories.
 Its extended Git transport fixture runs on Linux using a local SSH shim; no
 server or credentials are required:
 
 ```sh
-dotnet run --project ../GitReviewer.Tests/GitReviewer.Tests.csproj
-dotnet run --project ../GitReviewer.Tests/PromptMigration/PromptMigration.csproj
+dotnet run --project ../KommitEye.Tests/KommitEye.Tests.csproj
+dotnet run --project ../KommitEye.Tests/PromptMigration/PromptMigration.csproj
 ```
 
-Clone or place the test repository as `GitReviewer.Tests` next to `GitReviewer`,
-then run these commands from `GitReviewer`. Tests cover linked worktrees and their
+Clone or place the test repository as `KommitEye.Tests` next to `KommitEye`,
+then run these commands from `KommitEye`. Tests cover linked worktrees and their
 shared object store, case-sensitive refs, custom
 remote mappings, dirty checkout preservation, cursor migration, manual and
 automatic completion, native multi-turn/multi-call tool flow, paged output,
@@ -977,8 +984,8 @@ Select English or Russian on the **Project** tab. The choice is saved in
 the project catalog (with migration from `settings.conf`) and applies to the GUI, tray menu, log messages, reports, and
 model instructions.
 
-System prompts are embedded in the executable from `GitReviewer/system-prompt.example.txt`
-and `GitReviewer/system-prompt.ru.example.txt`. Updating the application therefore
+System prompts are embedded in the executable from `KommitEye/system-prompt.example.txt`
+and `KommitEye/system-prompt.ru.example.txt`. Updating the application therefore
 updates the default prompt automatically. The **System prompt** tab allows editing
 and explicitly saving a custom prompt (1–32000 characters). Overrides are stored
 separately for each language in `system-prompt.custom.en.txt` and

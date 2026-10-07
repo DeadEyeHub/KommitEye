@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text;
-using GitReviewer.Services;
+using KommitEye.Services;
 using MimeKit;
 
 var root = Path.Combine(Path.GetTempPath(), "outlook-check-" + Guid.NewGuid());

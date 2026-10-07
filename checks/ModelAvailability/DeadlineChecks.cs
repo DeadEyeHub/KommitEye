@@ -1,8 +1,8 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using GitReviewer.Models;
-using GitReviewer.Services;
+using KommitEye.Models;
+using KommitEye.Services;
 
 static class DeadlineChecks
 {

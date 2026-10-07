@@ -5,14 +5,14 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
-using GitReviewer;
-using GitReviewer.Services;
+using KommitEye;
+using KommitEye.Services;
 
 class Program
 {
     [STAThread] static void Main()
     {
-        Environment.SetEnvironmentVariable("GITREVIEWER_DATA_DIR", Path.Combine(Path.GetTempPath(), "apply-check-" + Guid.NewGuid()));
+        Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", Path.Combine(Path.GetTempPath(), "apply-check-" + Guid.NewGuid()));
         var app = new Application();
         var window = new MainWindow();
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;

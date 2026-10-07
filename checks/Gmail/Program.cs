@@ -4,11 +4,11 @@ using System.Text.Json;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.Http;
-using GitReviewer.Models;
-using GitReviewer.Services;
+using KommitEye.Models;
+using KommitEye.Services;
 using MimeKit;
 
-var root = Path.Combine(Path.GetTempPath(), "gitreviewer-gmail-" + Guid.NewGuid());
+var root = Path.Combine(Path.GetTempPath(), "kommiteye-gmail-" + Guid.NewGuid());
 Directory.CreateDirectory(root);
 var config = Path.Combine(root, "desktop.json");
 await File.WriteAllTextAsync(config, """{"installed":{"client_id":"fixture-client","client_secret":"fixture-secret","token_uri":"https://untrusted.invalid"}}""");

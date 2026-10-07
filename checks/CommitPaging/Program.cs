@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Text;
-using GitReviewer.Services;
+using KommitEye.Services;
 
-var repo = Path.Combine(Path.GetTempPath(), "GitReviewer-paging-" + Guid.NewGuid());
+var repo = Path.Combine(Path.GetTempPath(), "KommitEye-paging-" + Guid.NewGuid());
 Directory.CreateDirectory(repo);
 await Git(null, "init", "-b", "main");
 var input = new StringBuilder();

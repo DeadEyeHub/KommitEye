@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using System.Net;
 using System.Text.Json;
-using GitReviewer.Models;
-using GitReviewer.Services;
+using KommitEye.Models;
+using KommitEye.Services;
 
-var root = Path.Combine(Path.GetTempPath(), "GitReviewer-repair-" + Guid.NewGuid());
+var root = Path.Combine(Path.GetTempPath(), "KommitEye-repair-" + Guid.NewGuid());
 Directory.CreateDirectory(root);
-Environment.SetEnvironmentVariable("GITREVIEWER_DATA_DIR", Path.Combine(root, "data"));
+Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", Path.Combine(root, "data"));
 var repo = Path.Combine(root, "repo");
 Directory.CreateDirectory(repo);
 await Git("init", "-b", "main");

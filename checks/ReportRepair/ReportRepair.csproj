@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../GitReviewer/GitReviewer.csproj" />
+    <ProjectReference Include="../../KommitEye/KommitEye.csproj" />
   </ItemGroup>
 </Project>

@@ -8,6 +8,7 @@ reports/
 bin/
 obj/
 dist/
+KommitEye.Tests/
 GitReviewer.Tests/
 TestResults/
 *.trx

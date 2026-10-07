@@ -3,10 +3,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using GitReviewer.Services;
-using Localization = GitReviewer.Services.Localization;
+using KommitEye.Services;
+using Localization = KommitEye.Services.Localization;
 
-namespace GitReviewer;
+namespace KommitEye;
 
 // Offscreen host for the production panel: no browser, real account or messages.
 public partial class MainWindow : Window
@@ -18,7 +18,7 @@ public partial class MainWindow : Window
     {
         _mail = new MailNotifications(root, _ => { }, startWorker: false,
             providers: [new PreviewProvider(connected)]);
-        _googleClientFile = "C:\\GitReviewer\\authMail\\client_secret_example.json";
+        _googleClientFile = "C:\\KommitEye\\authMail\\client_secret_example.json";
         BuildMailPanel();
         Content = new ScrollViewer { Background = SystemColors.WindowBrush, Content = MailPanel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     }
@@ -65,3 +65,4 @@ public partial class MainWindow : Window
         public Task SendAsync(MailJob job, CancellationToken token) => throw new NotSupportedException();
     }
 }
+

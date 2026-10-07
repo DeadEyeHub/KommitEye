@@ -31,13 +31,13 @@ jobs:
 
       - name: Publish application
         shell: pwsh
-        run: ./GitReviewer/publish-win-x64.ps1
+        run: ./KommitEye/publish-win-x64.ps1
 
       - name: Save build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GitReviewer-win-x64
-          path: GitReviewer/dist/GitReviewer-*-win-x64.exe
+          name: KommitEye-win-x64
+          path: KommitEye/dist/KommitEye-*-win-x64.exe
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -66,7 +66,7 @@ jobs:
       - name: Download built EXE
         uses: actions/download-artifact@v4
         with:
-          name: GitReviewer-win-x64
+          name: KommitEye-win-x64
           path: release-files
 
       - name: Create release if version is new
@@ -77,7 +77,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          [xml]$project = Get-Content "GitReviewer/GitReviewer.csproj"
+          [xml]$project = Get-Content "KommitEye/KommitEye.csproj"
           $version = [string](
             $project.Project.PropertyGroup |
               ForEach-Object { $_.Version } |
@@ -91,7 +91,7 @@ jobs:
           }
 
           $tag = "v$version"
-          $exe = "release-files/GitReviewer-$version-win-x64.exe"
+          $exe = "release-files/KommitEye-$version-win-x64.exe"
 
           if (-not (Test-Path -LiteralPath $exe)) {
             throw "Built executable not found: $exe"
@@ -129,7 +129,7 @@ jobs:
 
           gh release create $tag $exe `
             --target $env:GITHUB_SHA `
-            --title "Git Reviewer $version" `
+            --title "KommitEye $version" `
             --generate-notes
 
           if ($LASTEXITCODE -ne 0) {

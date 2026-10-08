@@ -8,6 +8,7 @@ namespace KommitEye.Services;
 public sealed class MicrosoftMailSession
 {
     public string ClientId { get; set; } = "";
+    public string TenantId { get; set; } = "common";
     public string AccountId { get; set; } = "";
     public string Email { get; set; } = "";
     public byte[] Cache { get; set; } = [];
@@ -16,7 +17,7 @@ public sealed class MicrosoftMailSession
 
 public interface IMicrosoftOAuthClient
 {
-    Task<MicrosoftMailSession> ConnectAsync(string clientId, CancellationToken token);
+    Task<MicrosoftMailSession> ConnectAsync(string clientId, string tenantId, CancellationToken token);
     Task<string> AccessTokenAsync(MicrosoftMailSession session, bool forceRefresh, CancellationToken token);
 }
 
@@ -25,10 +26,21 @@ public sealed class MicrosoftOAuthClient : IMicrosoftOAuthClient
     private static readonly string[] Scopes = ["https://graph.microsoft.com/User.Read", "https://graph.microsoft.com/Mail.Send"];
     private static readonly HttpClient Http = new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(30) };
 
+    public static string Authority(string tenantId)
+    {
+        tenantId = tenantId.Trim();
+        if (tenantId is "common" or "organizations" or "consumers")
+            return "https://login.microsoftonline.com/" + tenantId;
+        if (Guid.TryParse(tenantId, out var id)) return "https://login.microsoftonline.com/" + id.ToString("D");
+        throw new MailProviderException(Localization.Text(
+            "Enter the Directory (tenant) ID from Overview, or common for personal/multitenant accounts.",
+            "Укажите Directory (tenant) ID из Overview или common для личных аккаунтов и multitenant-приложений."));
+    }
+
     private static IPublicClientApplication Create(MicrosoftMailSession session)
     {
         var app = PublicClientApplicationBuilder.Create(session.ClientId)
-            .WithAuthority("https://login.microsoftonline.com/common")
+            .WithAuthority(Authority(session.TenantId))
             .WithRedirectUri("http://localhost").Build();
         app.UserTokenCache.SetBeforeAccess(args => { if (session.Cache.Length > 0) args.TokenCache.DeserializeMsalV3(session.Cache); });
         app.UserTokenCache.SetAfterAccess(args =>
@@ -38,11 +50,11 @@ public sealed class MicrosoftOAuthClient : IMicrosoftOAuthClient
         return app;
     }
 
-    public async Task<MicrosoftMailSession> ConnectAsync(string clientId, CancellationToken token)
+    public async Task<MicrosoftMailSession> ConnectAsync(string clientId, string tenantId, CancellationToken token)
     {
         if (!Guid.TryParse(clientId, out _)) throw new MailProviderException(Localization.Text(
             "Enter the Microsoft application (client) ID.", "Укажите идентификатор приложения Microsoft (client ID)."));
-        var session = new MicrosoftMailSession { ClientId = clientId };
+        var session = new MicrosoftMailSession { ClientId = clientId, TenantId = tenantId };
         var result = await Create(session).AcquireTokenInteractive(Scopes).WithPrompt(Prompt.SelectAccount)
             .WithUseEmbeddedWebView(false).ExecuteAsync(token);
         using var request = new HttpRequestMessage(HttpMethod.Get, "https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName");

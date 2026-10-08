@@ -16,6 +16,7 @@ public partial class MainWindow
     private readonly Dictionary<string, Controls.TextBlock> _mailStatuses = new();
     private string _mailProviderTab = "gmail";
     private string _microsoftClientId = "";
+    private string _microsoftTenantId = "";
     private readonly Dictionary<string, Action> _applyMailDrafts = new();
     private readonly Dictionary<string, Action> _captureMailDrafts = new();
     private readonly Dictionary<string, MailSettings> _mailDrafts = new();
@@ -96,11 +97,12 @@ public partial class MainWindow
         if (_googleClientFile.Length == 0 && _mail.GoogleAccount is null) _googleClientFile = FindGoogleClientFile();
         var clientFile = Field(google ? "Google Desktop OAuth JSON" : "Microsoft application (client) ID",
             google ? "OAuth JSON Google (Desktop app)" : "Идентификатор приложения Microsoft (client ID)", google ? _googleClientFile : _microsoftClientId);
+        var tenantField = google ? null : Field("Microsoft Directory (tenant) ID", "Microsoft Directory (tenant) ID организации", _microsoftTenantId);
         MailPanel.Children.Add(new Controls.TextBlock { Text = google ? Localization.Text(
             "Choose the downloaded JSON for the first connection. Leave blank to reuse saved client settings when reconnecting. Sign-in opens in your browser; no email password is stored.",
             "Для первого подключения выберите скачанный JSON. При повторном входе поле можно оставить пустым для использования сохранённых настроек. Вход откроется в браузере; пароль почты не сохраняется.") : Localization.Text(
-            "Use a public Desktop app registered for personal and work/school accounts, with http://localhost redirect and delegated User.Read + Mail.Send permissions. No client secret is needed. Leave blank to reuse saved client settings.",
-            "Укажите client ID Desktop-приложения для личных и рабочих аккаунтов, с redirect http://localhost и delegated-разрешениями User.Read + Mail.Send. Client secret не нужен. Пустое поле использует сохранённый client ID."),
+            "Copy Application (client) ID and Directory (tenant) ID from Overview. Do not use Secret ID or client secret. For personal/multitenant apps use common as tenant. Configure Desktop redirect http://localhost and delegated User.Read + Mail.Send. Blank fields reuse saved settings (new connections default to common).",
+            "Скопируйте Application (client) ID и Directory (tenant) ID из Overview. Secret ID и секрет не нужны. Для личных аккаунтов / multitenant укажите common. Настройте Desktop redirect http://localhost и delegated User.Read + Mail.Send. Пустые поля используют сохранённые настройки (новое подключение — common)."),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 6) });
         var accountButtons = new Controls.WrapPanel { Margin = new Thickness(0, 6, 0, 12) };
         Controls.Button Button(string en, string ru) => new() { Content = Localization.Text(en, ru), Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 6) };
@@ -138,6 +140,7 @@ public partial class MainWindow
         {
             var connected = _mail.GetAccount(provider) is not null;
             browse.IsEnabled = connect.IsEnabled = clientFile.IsEnabled = !_mailAccountBusy;
+            if (tenantField is not null) tenantField.IsEnabled = !_mailAccountBusy;
             disconnect.IsEnabled = connected && !_mailAccountBusy;
             cancel.IsEnabled = _mailAccountBusy && _mailAuthorizationCancellation is not null;
             save.IsEnabled = test.IsEnabled = retry.IsEnabled = connected && !_mailAccountBusy;
@@ -156,7 +159,7 @@ public partial class MainWindow
             Recipients = recipients.Text.Trim(), AttachmentFormat = attachmentFormat.SelectedItem as string ?? "html" };
         _captureMailDrafts[provider] = () =>
         {
-            if (google) _googleClientFile = clientFile.Text.Trim(); else _microsoftClientId = clientFile.Text.Trim();
+            if (google) _googleClientFile = clientFile.Text.Trim(); else { _microsoftClientId = clientFile.Text.Trim(); _microsoftTenantId = tenantField!.Text.Trim(); }
             _mailDrafts[provider] = Draft();
         };
         _applyMailDrafts[provider] = () =>
@@ -223,9 +226,11 @@ public partial class MainWindow
             UpdateButtons();
             try
             {
-                if (google) _googleClientFile = clientFile.Text.Trim(); else _microsoftClientId = clientFile.Text.Trim();
+                if (google) _googleClientFile = clientFile.Text.Trim(); else { _microsoftClientId = clientFile.Text.Trim(); _microsoftTenantId = tenantField!.Text.Trim(); }
                 status.Text = Localization.Text("Complete sign-in in your browser…", "Завершите вход в браузере…");
-                await _mail.ConnectAsync(provider, clientFile.Text.Trim(), cancellation.Token);
+                var configuration = google ? clientFile.Text.Trim() : System.Text.Json.JsonSerializer.Serialize(new
+                { clientId = clientFile.Text.Trim(), tenantId = tenantField!.Text.Trim() });
+                await _mail.ConnectAsync(provider, configuration, cancellation.Token);
                 enabled.IsChecked = _mail.Settings.Enabled;
                 status.Text = Localization.Text("Connected. Choose recipients, enable notifications and save settings.", "Аккаунт подключён. Укажите получателей, включите уведомления и сохраните настройки.");
             }

@@ -10,6 +10,14 @@ using var http = new HttpClient(handler);
 var provider = new OutlookEmailProvider(root, oauth, http);
 var count = 0;
 void Check(bool ok, string message) { if (!ok) throw new Exception(message); count++; }
+var tenant = Guid.NewGuid().ToString();
+Check(MicrosoftOAuthClient.Authority(tenant) == "https://login.microsoftonline.com/" + tenant, "single tenant authority");
+Check(MicrosoftOAuthClient.Authority("common").EndsWith("/common"), "multitenant authority retained");
+try { MicrosoftOAuthClient.Authority("https://untrusted.invalid"); throw new Exception("unsafe tenant accepted"); } catch (MailProviderException) { }
+await provider.ConnectAsync(System.Text.Json.JsonSerializer.Serialize(new { clientId = Guid.NewGuid().ToString(), tenantId = tenant }), default);
+Check(new OAuthVault(Path.Combine(root, "oauth", "outlook-account.bin")).Load<MicrosoftMailSession>()!.TenantId == tenant, "tenant persisted");
+await provider.ConnectAsync("", default);
+Check(new OAuthVault(Path.Combine(root, "oauth", "outlook-account.bin")).Load<MicrosoftMailSession>()!.TenantId == tenant, "reconnection reuses tenant");
 await provider.ConnectAsync(Guid.NewGuid().ToString(), default);
 var vault = Path.Combine(root, "oauth", "outlook-account.bin");
 Check(!Encoding.UTF8.GetString(File.ReadAllBytes(vault)).Contains("private-token"), "encrypted cache");
@@ -61,10 +69,10 @@ Console.WriteLine($"{count} Outlook checks passed");
 sealed class FakeOAuth : IMicrosoftOAuthClient
 {
     public int Forced; public bool Cancel;
-    public Task<MicrosoftMailSession> ConnectAsync(string client, CancellationToken token)
+    public Task<MicrosoftMailSession> ConnectAsync(string client, string tenantId, CancellationToken token)
     {
         if (Cancel) throw new OperationCanceledException();
-        return Task.FromResult(new MicrosoftMailSession { ClientId = Guid.Parse(client).ToString(), AccountId = "account", Email = "sender@example.invalid", Cache = Encoding.UTF8.GetBytes("private-token") });
+        return Task.FromResult(new MicrosoftMailSession { ClientId = Guid.Parse(client).ToString(), TenantId = tenantId, AccountId = "account", Email = "sender@example.invalid", Cache = Encoding.UTF8.GetBytes("private-token") });
     }
     public Task<string> AccessTokenAsync(MicrosoftMailSession session, bool force, CancellationToken token)
     { if(force) { Forced++; session.Cache = Encoding.UTF8.GetBytes("rotated-private-token"); } return Task.FromResult(force ? "new-token" : "token"); }

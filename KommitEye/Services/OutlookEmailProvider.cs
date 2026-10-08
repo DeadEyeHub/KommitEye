@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 
 namespace KommitEye.Services;
 
@@ -41,7 +42,21 @@ public sealed class OutlookEmailProvider : IEmailProvider
         await _gate.WaitAsync(token);
         try
         {
-            var session = await _oauth.ConnectAsync(string.IsNullOrWhiteSpace(clientFile) ? _session?.ClientId ?? "" : clientFile.Trim(), token);
+            var clientId = clientFile.Trim();
+            string? tenantId = null;
+            if (clientId.StartsWith("{"))
+            {
+                using var config = JsonDocument.Parse(clientId);
+                clientId = config.RootElement.GetProperty("clientId").GetString() ?? "";
+                tenantId = config.RootElement.GetProperty("tenantId").GetString();
+            }
+            if (string.IsNullOrWhiteSpace(clientId)) clientId = _session?.ClientId ?? "";
+            if (string.IsNullOrWhiteSpace(tenantId)) tenantId = _session?.TenantId ?? "common";
+            if (!Guid.TryParse(clientId, out _)) throw new MailProviderException(Localization.Text(
+                "Enter Application (client) ID from Overview, not a client secret or Secret ID.",
+                "Укажите Application (client) ID из Overview, а не секрет или Secret ID."));
+            _ = MicrosoftOAuthClient.Authority(tenantId);
+            var session = await _oauth.ConnectAsync(clientId, tenantId.Trim(), token);
             token.ThrowIfCancellationRequested();
             _vault.Save(session);
             _session = session;

@@ -82,10 +82,10 @@ The Mail section has separate Google and Outlook tabs; both connections and
 settings are retained. Switching tabs does not change the sender. Use
 **Save / use this account** to select the account for new reports.
 
-Register a Microsoft Entra application for personal and work/school accounts.
+Register a Microsoft Entra application for your organization or for personal and work/school accounts.
 Add the **Mobile and desktop applications** platform with `http://localhost`
 as its redirect URI and Microsoft Graph delegated permissions `User.Read` and
-`Mail.Send`. Enter the **Application (client) ID** in the Outlook tab and connect
+`Mail.Send`. Enter **Application (client) ID** and **Directory (tenant) ID** from Overview in the Outlook tab (use `common` for personal/multitenant apps), then connect
 through your browser. No client secret is required; organization policies may
 require administrator consent.
 

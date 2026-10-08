@@ -6,6 +6,7 @@ namespace KommitEye.Services;
 
 public sealed class ConfigurationStore
 {
+    public bool WritesEnabled { get; set; } = true;
     public ConfigurationStore() => AppPaths.EnsureCreated();
 
     private static string ProjectsPath => Path.Combine(AppPaths.DataDirectory, "projects.json");
@@ -117,6 +118,7 @@ public sealed class ConfigurationStore
 
     public void SaveSettings(AppSettings settings)
     {
+        if (!WritesEnabled) return;
         _ = new DailyModelSchedule(settings);
         if (File.Exists(ProjectsPath))
         {
@@ -200,6 +202,7 @@ public sealed class ConfigurationStore
 
     public void SaveModels(ModelsConfiguration configuration)
     {
+        if (!WritesEnabled) return;
         foreach (var profile in configuration.Profiles) profile.Parameters.Validate();
         var text = new StringBuilder()
             .AppendLine("# Local model profiles. This file must not be committed.")
@@ -225,12 +228,13 @@ public sealed class ConfigurationStore
         : AppPaths.ReadTemplate(Localization.Language == "ru" ? "system-prompt.ru.example.txt" : "system-prompt.example.txt");
     public void SavePrompt(string text)
     {
+        if (!WritesEnabled) return;
         if (string.IsNullOrWhiteSpace(text) || text.Length > 32000)
             throw new InvalidOperationException(Localization.Text("Prompt must contain 1–32000 characters.", "Промпт должен содержать от 1 до 32000 символов."));
         File.WriteAllText(CustomPromptPath + ".tmp", text, Encoding.UTF8);
         File.Move(CustomPromptPath + ".tmp", CustomPromptPath, true);
     }
-    public void ResetPrompt() => File.Delete(CustomPromptPath);
+    public void ResetPrompt() { if (WritesEnabled) File.Delete(CustomPromptPath); }
 
     private static IEnumerable<(string Key, string Value)> ReadSimpleValues(string path)
     {

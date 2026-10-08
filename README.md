@@ -40,24 +40,27 @@ Output: `KommitEye/dist/KommitEye-<version>-win-x64.exe`. The .NET runtime is in
   after review. This requires a clean working copy. Select a remote-tracking
   branch to leave working files unchanged.
 - Local-only repositories, linked worktrees, submodules, and private remotes
-  are supported. Configure SSH/HTTPS authentication on the Project tab.
+  are supported. Configure SSH/HTTPS authentication in **Menu → Project**.
 
 When the model is unavailable, the app keeps the commit pending and probes until
 recovery. Configure the probe interval and response inactivity threshold in model
 settings. At the review deadline, a silent model triggers availability checking;
 recent responses instead produce an incomplete-review report. **Stop** cancels waiting.
 
-**Apply changes** stays at the bottom while scrolling or switching tabs. It saves
-edited settings and remains visible if validation fails. Checkboxes do not show
-this bar. Model and prompt changes affect subsequent reviews, not an active request.
+The main window shows the project dashboard. **Menu** opens Project, Models,
+Mail, System prompt, and Journal in separate windows. **Apply changes** saves and
+keeps the window open; **OK** saves and closes it. **Cancel** or closing the window
+discards edits since the last Apply, including checkbox changes. Model and prompt
+changes affect subsequent reviews, not an active request.
 
 ## Gmail notifications
 
 1. Enable Gmail API in Google Cloud and configure the OAuth consent screen.
    In Testing mode, add your account to the test users.
 2. Create a **Desktop app** OAuth client and download its JSON.
-3. In **Mail**, select the JSON and connect Google through your browser.
-4. Set recipients (separated by `;`), save, and enable notifications.
+3. In **Menu → Mail**, select the JSON and click Connect, then **Apply changes**
+   to authorize Google through your browser.
+4. Set recipients (separated by `;`), enable notifications, and apply changes.
    **Send test email** checks delivery using a message without repository data.
 
 The app requests `gmail.send`, `openid`, and `email`; it does not read your inbox.
@@ -80,7 +83,8 @@ Keep OAuth JSON files and token caches out of Git; `authMail/` and
 
 The Mail section has separate Google and Outlook tabs; both connections and
 settings are retained. Switching tabs does not change the sender. Use
-**Save / use this account** to select the account for new reports.
+**Use this account**, then **Apply changes**, to select the sender for new reports.
+Connecting and disconnecting accounts also take effect only after Apply or OK.
 
 Register a Microsoft Entra application for your organization or for personal and work/school accounts.
 Add the **Mobile and desktop applications** platform with `http://localhost`

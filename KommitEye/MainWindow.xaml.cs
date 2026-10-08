@@ -217,7 +217,8 @@ public partial class MainWindow : Window
         _trayIcon.DoubleClick += (_, _) => Dispatch(ShowFromTray);
         ApplyLanguage();
 
-        InitializeApplyChanges();
+        InitializeSettingsWindows();
+        _configuration.WritesEnabled = false;
         Closing += MainWindow_Closing;
         StateChanged += (_, _) =>
         {
@@ -262,6 +263,7 @@ public partial class MainWindow : Window
         if (_loadingLanguage || LanguageComboBox.SelectedItem is not LanguageOption option)
             return;
 
+        if (!_configuration.WritesEnabled) { MarkSettingsChanged("project"); return; }
         Localization.SetLanguage(option.Code);
         var settings = _configuration.LoadSettings();
         settings.Language = option.Code;
@@ -272,15 +274,15 @@ public partial class MainWindow : Window
 
     private void ApplyLanguage()
     {
+        RefreshSettingsMenu();
         RenderProjectButtons();
         SaveCustomPromptButton.Content = Localization.Text("Save custom prompt", "Сохранить свой промпт");
         ResetCustomPromptButton.Content = Localization.Text("Use built-in prompt", "Использовать встроенный");
         CaptureMailDrafts();
         BuildMailPanel();
-        RefreshApplyChangesBar();
         ParametersHelpText.Text = Localization.Text(
-            "Generation and review limits (per profile). Save to persist. Changes apply to the next review, not a running review. Decimal separator: dot or comma. Limits are shown in brackets.",
-            "Генерация и лимиты ревью (для каждого профиля). Нажмите «Сохранить». Изменения применятся к следующей проверке, не к текущей. Дробные числа: точка или запятая. Диапазоны указаны в скобках.");
+            "Generation and review limits (per profile). Apply changes or OK to save. Changes apply to the next review, not a running review. Decimal separator: dot or comma. Limits are shown in brackets.",
+            "Генерация и лимиты ревью (для каждого профиля). Нажмите «Применить изменения» или OK. Изменения применятся к следующей проверке, не к текущей. Дробные числа: точка или запятая. Диапазоны указаны в скобках.");
         ParametersGrid.Items.Refresh();
         Title = Localization.Format(
             "KommitEye {0}",
@@ -454,7 +456,7 @@ public partial class MainWindow : Window
                     "SSH private keys|id_*;*.pem;*.key|All files|*.*",
                     "Приватные SSH-ключи|id_*;*.pem;*.key|Все файлы|*.*")
         };
-        if (dialog.ShowDialog(this) == true)
+        if (dialog.ShowDialog(_settingsWindow ?? this) == true)
         {
             SshKeyPathTextBox.Text = dialog.FileName;
             MarkSettingsChanged("project");
@@ -471,7 +473,7 @@ public partial class MainWindow : Window
                 "PuTTY Plink|plink.exe|Executable files|*.exe",
                 "PuTTY Plink|plink.exe|Исполняемые файлы|*.exe")
         };
-        if (dialog.ShowDialog(this) == true)
+        if (dialog.ShowDialog(_settingsWindow ?? this) == true)
         {
             PlinkPathTextBox.Text = dialog.FileName;
             MarkSettingsChanged("project");
@@ -617,6 +619,9 @@ public partial class MainWindow : Window
 
     private void LoadProfiles(string? selectName = null)
     {
+        _loadingProfileList = true;
+        try
+        {
         ProfilesComboBox.ItemsSource = null;
         ProfilesComboBox.ItemsSource = _models.Profiles.Select(profile => profile.Name).ToList();
         var name = selectName ?? _models.ActiveProfile;
@@ -624,6 +629,9 @@ public partial class MainWindow : Window
             .FirstOrDefault(profile => profile.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Name;
         if (ProfilesComboBox.SelectedItem is null && _models.Profiles.Count > 0)
             ProfilesComboBox.SelectedIndex = 0;
+        }
+        finally { _loadingProfileList = false; }
+
     }
 
     private void BrowseRepository_Click(object sender, RoutedEventArgs e)
@@ -634,7 +642,7 @@ public partial class MainWindow : Window
         };
         if (!string.IsNullOrWhiteSpace(RepositoryPathTextBox.Text) && Directory.Exists(RepositoryPathTextBox.Text))
             dialog.InitialDirectory = RepositoryPathTextBox.Text;
-        if (dialog.ShowDialog(this) == true)
+        if (dialog.ShowDialog(_settingsWindow ?? this) == true)
         {
             RepositoryPathTextBox.Text = dialog.FolderName;
             MarkSettingsChanged("project");
@@ -752,12 +760,25 @@ public partial class MainWindow : Window
 
     private void ProfilesComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (!_loadingProfileList && _settingsSection == "models")
+        {
+            try { CaptureModelDraft(); }
+            catch (Exception error)
+            {
+                ProfilesComboBox.SelectionChanged -= ProfilesComboBox_SelectionChanged;
+                try { ProfilesComboBox.SelectedItem = _loadedProfileName; }
+                finally { ProfilesComboBox.SelectionChanged += ProfilesComboBox_SelectionChanged; }
+                ShowError(error.Message);
+                return;
+            }
+        }
         ModelConnection_Changed(sender, e);
         if (ProfilesComboBox.SelectedItem is not string name)
             return;
         var profile = _models.Profiles.FirstOrDefault(item => item.Name == name);
         if (profile is null)
             return;
+        _loadedProfileName = profile.Name;
         ProfileNameTextBox.Text = profile.Name;
         EndpointTextBox.Text = profile.Endpoint;
         ModelNameComboBox.Text = profile.Model;
@@ -769,6 +790,8 @@ public partial class MainWindow : Window
 
     private void AddProfile_Click(object sender, RoutedEventArgs e)
     {
+        try { CaptureModelDraft(); } catch (Exception error) { ShowError(error.Message); return; }
+        _loadedProfileName = null;
         ProfilesComboBox.SelectedItem = null;
         ProfileNameTextBox.Clear();
         EndpointTextBox.Clear();
@@ -805,6 +828,7 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
 
+        _loadedProfileName = null;
         _models.Profiles.RemoveAll(profile => profile.Name == name);
         _models.ActiveProfile = _models.Profiles.FirstOrDefault()?.Name ?? string.Empty;
         _configuration.SaveModels(_models);
@@ -874,7 +898,7 @@ public partial class MainWindow : Window
     private void ResetCustomPrompt_Click(object sender, RoutedEventArgs e)
     {
         if (System.Windows.MessageBox.Show(Localization.Text("Remove the custom prompt for this language and use the built-in version?", "Удалить свой промпт для этого языка и использовать встроенный?"), "KommitEye", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
-        try { _configuration.ResetPrompt(); PromptTextBox.Text = _configuration.LoadPrompt(); }
+        try { _resetPromptPending = true; PromptTextBox.Text = AppPaths.ReadTemplate(Localization.Language == "ru" ? "system-prompt.ru.example.txt" : "system-prompt.example.txt"); MarkSettingsChanged("prompt"); }
         catch (Exception ex) { ShowError(ex.Message); }
     }
 
@@ -1299,7 +1323,7 @@ public partial class MainWindow : Window
             (_nextAutomaticRun is { } next ? Duration(next > now ? next - now : TimeSpan.Zero) :
                 _runner.IsRunning ? Localization.Text("After this cycle", "После текущего цикла") : "—");
         DashboardRepositoryText.Text = string.IsNullOrWhiteSpace(_repositoryPath)
-            ? Localization.Text("Select a repository on the Project tab", "Выберите репозиторий на вкладке «Проект»")
+            ? Localization.Text("Select a repository in Menu → Project", "Выберите репозиторий в меню «Проект»")
             : $"{_repositoryPath}\n{_selectedBranch}";
         UsageNoteText.Text = _tokenUsage.Error ?? Localization.Format(
             "Provider-reported input/output tokens, including retries. Older totals may lack a breakdown; + ? means incomplete data. Requests without usage: {0} today / {1} total.",

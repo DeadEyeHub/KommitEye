@@ -40,7 +40,7 @@ public partial class MainWindow
         panel.Children.Add(input);
         var buttons = new Controls.StackPanel { Orientation = Controls.Orientation.Horizontal,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
-        var save = new Controls.Button { Content = Localization.Text("Save", "Сохранить"), IsDefault = true, Padding = new Thickness(12, 5, 12, 5) };
+        var save = new Controls.Button { Content = "OK", IsDefault = true, Padding = new Thickness(12, 5, 12, 5) };
         var cancel = new Controls.Button { Content = Localization.Text("Cancel", "Отмена"), IsCancel = true,
             Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(8, 0, 0, 0) };
         save.Click += (_, _) => {
@@ -117,12 +117,6 @@ public partial class MainWindow
             if (target == -2 && (catalog.Projects.Count == 1 || System.Windows.MessageBox.Show(
                 Localization.Text("Remove this project from the list? Repository files, reports and review progress will be kept.", "Убрать проект из списка? Файлы репозитория, отчёты и позиция проверки сохранятся."),
                 "KommitEye", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)) return;
-            if (_pendingSettings.Count > 0)
-            {
-                ApplyPendingSettings();
-                MarkSettingsChanged("applied"); // Keep the user's acknowledgement visible across projects.
-            }
-            SaveProjectDraft();
             _switchingProject = true;
             MainTabs.IsEnabled = ProjectButtons.IsEnabled = AddProjectButton.IsEnabled = RemoveProjectButton.IsEnabled = false;
             // Removing a project stops only its own worker; ordinary switching never stops it.

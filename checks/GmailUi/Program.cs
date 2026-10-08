@@ -12,6 +12,9 @@ namespace KommitEye;
 public partial class MainWindow : Window
 {
     private readonly MailNotifications _mail;
+    private Window? _settingsWindow;
+    private string? _draftMailSender;
+    private readonly Dictionary<string, string?> _pendingMailConnections = new();
     private readonly StackPanel MailPanel = new() { Margin = new Thickness(16) };
     private readonly TabItem MailTab = new();
     public MainWindow(string root, bool connected, string provider)

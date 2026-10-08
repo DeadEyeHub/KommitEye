@@ -5,9 +5,14 @@
         MinHeight="620" MinWidth="820"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="16">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
 
         <TabControl x:Name="MainTabs" Grid.Row="1">
+            <TabControl.Template>
+                <ControlTemplate TargetType="TabControl">
+                    <ContentPresenter Content="{TemplateBinding SelectedContent}" ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
+                </ControlTemplate>
+            </TabControl.Template>
             <TabItem x:Name="DashboardTab" Header="Dashboard">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="20">
@@ -57,7 +62,7 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-            <TabItem x:Name="ProjectTab" Header="Project">
+            <TabItem x:Name="ProjectTab" Header="Project" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <Grid Margin="16">
                     <Grid.ColumnDefinitions>
@@ -162,7 +167,7 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem x:Name="ModelsTab" Header="Models">
+            <TabItem x:Name="ModelsTab" Header="Models" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <Grid Margin="16">
                     <Grid.ColumnDefinitions>
@@ -254,10 +259,10 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem x:Name="MailTab" Header="Mail">
+            <TabItem x:Name="MailTab" Header="Mail" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel x:Name="MailPanel" Margin="16" /></ScrollViewer>
             </TabItem>
-            <TabItem x:Name="PromptTab" Header="System prompt">
+            <TabItem x:Name="PromptTab" Header="System prompt" Visibility="Collapsed">
                 <Grid Margin="16">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*" />
@@ -273,7 +278,7 @@
                 </Grid>
             </TabItem>
 
-            <TabItem x:Name="LogTab" Header="Journal">
+            <TabItem x:Name="LogTab" Header="Journal" Visibility="Collapsed">
                 <Grid Margin="16">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <Button x:Name="ClearJournalButton" Content="Clear journal" Click="ClearJournal_Click" HorizontalAlignment="Right" Padding="12,6" Margin="0,0,0,10" />
@@ -283,16 +288,18 @@
                 </Grid>
             </TabItem>
         </TabControl>
-        <Border x:Name="ApplyChangesBar" Grid.Row="2" Visibility="Collapsed" Background="#F3F6FA"
-                BorderBrush="#D0D0D0" BorderThickness="0,1,0,0" Padding="12" Margin="0,8,0,0">
-            <DockPanel LastChildFill="True">
-                <Button x:Name="ApplyChangesButton" DockPanel.Dock="Right" Content="Apply changes" Padding="18,7"
-                        Margin="16,0,0,0" Click="ApplyChanges_Click" />
-                <TextBlock x:Name="ApplyChangesText" Text="Settings changed" VerticalAlignment="Center" TextWrapping="Wrap" />
-            </DockPanel>
-        </Border>
         <Border Grid.Row="0" BorderBrush="#D0D0D0" BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,8">
             <DockPanel>
+                <Menu DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Center">
+                    <MenuItem x:Name="SettingsMenu" Header="Menu">
+                        <MenuItem x:Name="ProjectMenu" Header="Project…" Tag="project" Click="OpenSettings_Click" />
+                        <MenuItem x:Name="ModelsMenu" Header="Models…" Tag="models" Click="OpenSettings_Click" />
+                        <MenuItem x:Name="MailMenu" Header="Mail…" Tag="mail" Click="OpenSettings_Click" />
+                        <MenuItem x:Name="PromptMenu" Header="System prompt…" Tag="prompt" Click="OpenSettings_Click" />
+                        <Separator />
+                        <MenuItem x:Name="JournalMenu" Header="Journal…" Tag="journal" Click="OpenSettings_Click" />
+                    </MenuItem>
+                </Menu>
                 <TextBlock x:Name="ProjectsLabel" Text="Projects:" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <Button x:Name="AddProjectButton" DockPanel.Dock="Right" Content="+" Width="36" Margin="8,0,0,0" Click="AddProject_Click" />
                 <Button x:Name="RemoveProjectButton" DockPanel.Dock="Right" Content="−" Width="36" Margin="8,0,0,0" Click="RemoveProject_Click" />

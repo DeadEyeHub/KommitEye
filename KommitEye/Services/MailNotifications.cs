@@ -273,13 +273,13 @@ public sealed class MailNotifications : IAsyncDisposable
         }
     }
 
-    public async Task TestAsync(MailSettings settings, CancellationToken token)
+    public async Task TestAsync(MailSettings settings, CancellationToken token, bool saveSettings = true)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
         token = linked.Token;
         settings.Validate();
         if (settings.Addresses().Count == 0) throw new InvalidOperationException("Enter an explicit recipient for the test email.");
-        SaveSettings(settings);
+        if (saveSettings) SaveSettings(settings);
         await _sending.WaitAsync(token);
         var job = new MailJob { MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(),
             Provider = settings.Provider, AccountId = settings.AccountId,

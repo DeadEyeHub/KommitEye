@@ -2,6 +2,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -12,51 +13,117 @@ class Program
 {
     [STAThread] static void Main()
     {
-        Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", Path.Combine(Path.GetTempPath(), "apply-check-" + Guid.NewGuid()));
+        var root = Path.Combine(Path.GetTempPath(), "settings-windows-" + Guid.NewGuid());
+        Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", root);
         var app = new Application();
         var window = new MainWindow();
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         object? Call(string name, params object[] args) => typeof(MainWindow).GetMethod(name, flags)!.Invoke(window, args);
         T Field<T>(string name) => (T)typeof(MainWindow).GetField(name, flags)!.GetValue(window)!;
-        var bar = Field<Border>("ApplyChangesBar");
-        var tabs = Field<TabControl>("MainTabs");
+        void Set(string name, object? value) => typeof(MainWindow).GetField(name, flags)!.SetValue(window, value);
+        void Apply(string section) => ((Task)Call("ApplySettingsSectionAsync", section)!).GetAwaiter().GetResult();
         var count = 0;
-        void Check(bool result, string name) { if(!result) throw new Exception(name); count++; }
-        Check(bar.Visibility == Visibility.Collapsed, "initially hidden");
+        void Check(bool ok, string name) { if(!ok) throw new Exception(name); count++; Console.WriteLine("PASS: " + name); }
+        var store = new ConfigurationStore();
+        var projectFile = Path.Combine(root, "projects.json");
+        var original = File.ReadAllText(projectFile);
+        var interval = Field<TextBox>("IntervalTextBox");
+        interval.Text = "90";
         Field<CheckBox>("PullEnabledCheckBox").IsChecked = false;
-        Check(bar.Visibility == Visibility.Collapsed, "checkbox does not show banner");
-        var input = Field<TextBox>("IntervalTextBox");
-        Check((string?)Call("SettingsScope", input) == "project", "project input mapped");
-        Call("MarkSettingsChanged", "project");
-        tabs.SelectedItem = Field<TabItem>("ModelsTab");
-        Check(bar.Visibility == Visibility.Visible, "banner survives navigation");
-        input.Text = "invalid";
-        try { Call("ApplyPendingSettings"); throw new Exception("invalid accepted"); }
-        catch(TargetInvocationException e) when(e.InnerException is InvalidOperationException) { }
-        Check(bar.Visibility == Visibility.Visible, "failed apply retains banner");
-        input.Text = "90";
-        Call("ApplyPendingSettings");
-        Check(bar.Visibility == Visibility.Collapsed, "successful apply hides banner");
-        Check(new ConfigurationStore().LoadSettings().PollIntervalSeconds == 90, "project settings persisted");
-        var actions = Field<Dictionary<string, Action>>("_applyMailDrafts");
-        var applied = 0;
-        actions["gmail"] = () => applied++;
-        actions["outlook"] = () => applied++;
-        Call("MarkSettingsChanged", "mail:gmail"); Call("MarkSettingsChanged", "mail:outlook");
-        Call("ApplyPendingSettings");
-        Check(applied == 2 && bar.Visibility == Visibility.Collapsed, "both mail drafts apply");
-        Call("MarkSettingsChanged", "applied");
-        tabs.SelectedItem = Field<TabItem>("MailTab");
-        var surface = (FrameworkElement)window.Content;
-        ((Grid)surface).Background = SystemColors.WindowBrush;
-        surface.Measure(new Size(900, 650)); surface.Arrange(new Rect(0,0,900,650)); surface.UpdateLayout();
-        var bitmap = new RenderTargetBitmap(900,650,96,96,PixelFormats.Pbgra32); bitmap.Render(surface);
-        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        var image = Path.Combine(AppContext.BaseDirectory,"apply-changes.png");
-        using(var output = File.Create(image)) encoder.Save(output);
-        Check(Grid.GetRow(bar) == 2 && bar.Parent is Grid, "bar outside scrolling tabs");
-        Console.WriteLine($"{count} Apply changes checks passed; {image}");
-        Call("ExitApplicationAsync");
-        app.Shutdown();
+        Call("SaveAuthenticationPreferences");
+        Check(File.ReadAllText(projectFile) == original, "editing does not persist preferences");
+        Apply("project");
+        Check(store.LoadSettings().PollIntervalSeconds == 90 && !store.LoadSettings().PullEnabled, "Apply saves fields and checkboxes");
+        interval.Text = "invalid";
+        try { Apply("project"); throw new Exception("invalid accepted"); } catch (InvalidOperationException) { }
+        Check(store.LoadSettings().PollIntervalSeconds == 90, "failed validation preserves committed settings");
+        Call("RestoreSavedSettings", "project");
+        Check(interval.Text == "90", "Cancel restores last applied values");
+        var prompt = Field<TextBox>("PromptTextBox");
+        var oldPrompt = store.LoadPrompt();
+        prompt.Text = "Draft prompt";
+        Check(store.LoadPrompt() == oldPrompt, "prompt remains draft");
+        Apply("prompt");
+        Check(store.LoadPrompt() == "Draft prompt", "prompt applied");
+        prompt.Text = "Discard me"; Call("RestoreSavedSettings", "prompt");
+        Check(prompt.Text == "Draft prompt", "prompt canceled");
+        var endpoint = Field<TextBox>("EndpointTextBox");
+        var savedEndpoint = endpoint.Text;
+        endpoint.Text = "https://draft.example.invalid/v1";
+        Call("RestoreSavedSettings", "models");
+        Check(endpoint.Text == savedEndpoint, "model edits canceled without saving");
+        _ = Field<MailNotifications>("_mail").DisposeAsync();
+        var mail = new MailNotifications(root, _ => {}, startWorker:false, providers:[new Provider("gmail"), new Provider("outlook")]);
+        Set("_mail", mail); Call("BuildMailPanel");
+        var mailPanel = Field<StackPanel>("MailPanel");
+        var googlePanel = (StackPanel)((TabItem)((TabControl)mailPanel.Children[0]).Items[0]).Content;
+        var recipients = googlePanel.Children.OfType<TextBox>().Last();
+        recipients.Text = "recipient@example.invalid";
+        googlePanel.Children.OfType<CheckBox>().First().IsChecked = true;
+        Check(!File.Exists(Path.Combine(root,"mail-settings.json")), "mail checkbox and recipient do not save");
+        Set("_draftMailSender", "gmail"); Apply("mail");
+        Check(mail.Settings.Enabled && mail.Settings.Recipients == recipients.Text, "mail Apply persists preferences");
+        Field<Dictionary<string,string?>>("_pendingMailConnections")["gmail"] = null;
+        Field<Dictionary<string,string?>>("_pendingMailConnections")["outlook"] = "draft-client";
+        Call("RestoreSavedSettings", "mail");
+        Check(Field<Dictionary<string,string?>>("_pendingMailConnections").Count == 0,
+            "Cancel discards queued OAuth and disconnect without provider calls");
+        var tabs = Field<TabControl>("MainTabs");
+        Check(ReferenceEquals(tabs.SelectedItem, Field<TabItem>("DashboardTab")), "main stays on dashboard");
+        var menu = Field<MenuItem>("SettingsMenu");
+        Check(menu.Items.OfType<MenuItem>().Count() == 5, "all five sections available in submenu");
+        void Render(FrameworkElement surface, string name, double width, double height)
+        {
+            surface.Measure(new Size(width,height)); surface.Arrange(new Rect(0,0,width,height)); surface.UpdateLayout();
+            var bitmap = new RenderTargetBitmap((int)width,(int)height,96,96,PixelFormats.Pbgra32); bitmap.Render(surface);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var file = File.Create(Path.Combine(AppContext.BaseDirectory,name+".png")); encoder.Save(file);
+        }
+        ((Grid)window.Content).Background = SystemColors.WindowBrush;
+        Render((FrameworkElement)window.Content,"dashboard",940,660);
+        window.WindowStartupLocation = WindowStartupLocation.Manual; window.Left = -10000; window.Top = -10000;
+        window.ShowActivated = false; window.ShowInTaskbar = false; window.Show();
+        foreach(var section in new[]{"project","models","mail","prompt","journal"})
+        {
+            Exception? failure = null;
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var dialog = Field<Window>("_settingsWindow");
+                try
+                {
+                    Check(dialog is not null && dialog.Owner == window, section+" separate owned window");
+                    var surface = (FrameworkElement)dialog!.Content;
+                    Render(surface,section,surface.ActualWidth,surface.ActualHeight);
+                    if(section == "project")
+                    {
+                        interval.Text = "120";
+                        var grid = (Grid)dialog.Content;
+                        var footer = (Border)grid.Children[1];
+                        var buttons = ((StackPanel)footer.Child).Children.OfType<Button>().ToArray();
+                        buttons[0].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        Check(dialog.IsVisible && store.LoadSettings().PollIntervalSeconds == 120, "Apply keeps window open");
+                        interval.Text = "130";
+                        buttons[1].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        Check(!dialog.IsVisible && store.LoadSettings().PollIntervalSeconds == 130, "OK saves and closes");
+                    }
+                    else dialog.Close();
+                }
+                catch(Exception error) { failure=error; dialog?.Close(); }
+            }));
+            Call("OpenSettingsWindow", section);
+            if(failure is not null) throw failure;
+            Check(Field<Window?>("_settingsWindow") is null, "dialog ownership cleared");
+        }
+        Console.WriteLine($"{count} settings window checks passed; images: {AppContext.BaseDirectory}");
+        Call("ExitApplicationAsync"); app.Shutdown();
+    }
+    sealed class Provider(string id) : IEmailProvider
+    {
+        public string Id => id;
+        public EmailAccount Account => new(id,id+"-id",id+"@example.invalid",false);
+        public string? StatusError => null;
+        public Task<EmailAccount> ConnectAsync(string config,CancellationToken token) => throw new Exception("Unexpected OAuth");
+        public Task DisconnectAsync(CancellationToken token) => throw new Exception("Unexpected disconnect");
+        public Task SendAsync(MailJob job,CancellationToken token) => throw new Exception("Unexpected send");
     }
 }

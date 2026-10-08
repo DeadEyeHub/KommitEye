@@ -40,14 +40,14 @@ Output: `KommitEye/dist/KommitEye-<version>-win-x64.exe`. The .NET runtime is in
   after review. This requires a clean working copy. Select a remote-tracking
   branch to leave working files unchanged.
 - Local-only repositories, linked worktrees, submodules, and private remotes
-  are supported. Configure SSH/HTTPS authentication in **Menu → Project**.
+  are supported. Configure SSH/HTTPS authentication in **Project**.
 
 When the model is unavailable, the app keeps the commit pending and probes until
 recovery. Configure the probe interval and response inactivity threshold in model
 settings. At the review deadline, a silent model triggers availability checking;
 recent responses instead produce an incomplete-review report. **Stop** cancels waiting.
 
-The main window shows the project dashboard. **Menu** opens Project, Models,
+The main window shows the project dashboard. Five buttons below **Recent journal entries** open Project, Models,
 Mail, System prompt, and Journal in separate windows. **Apply changes** saves and
 keeps the window open; **OK** saves and closes it. **Cancel** or closing the window
 discards edits since the last Apply, including checkbox changes. Model and prompt
@@ -58,7 +58,7 @@ changes affect subsequent reviews, not an active request.
 1. Enable Gmail API in Google Cloud and configure the OAuth consent screen.
    In Testing mode, add your account to the test users.
 2. Create a **Desktop app** OAuth client and download its JSON.
-3. In **Menu → Mail**, select the JSON and click Connect, then **Apply changes**
+3. In **Mail**, select the JSON and click Connect, then **Apply changes**
    to authorize Google through your browser.
 4. Set recipients (separated by `;`), enable notifications, and apply changes.
    **Send test email** checks delivery using a message without repository data.

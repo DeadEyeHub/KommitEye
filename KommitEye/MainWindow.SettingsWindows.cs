@@ -38,18 +38,17 @@ public partial class MainWindow
 
     private void RefreshSettingsMenu()
     {
-        if (SettingsMenu is null) return;
-        SettingsMenu.Header = Localization.Text("Menu", "Меню");
-        ProjectMenu.Header = Localization.Text("Project…", "Проект…");
-        ModelsMenu.Header = Localization.Text("Models…", "Модели…");
-        MailMenu.Header = Localization.Text("Mail…", "Почта…");
-        PromptMenu.Header = Localization.Text("System prompt…", "Системный промпт…");
-        JournalMenu.Header = Localization.Text("Journal…", "Журнал…");
+        if (SettingsButtons is null) return;
+        ProjectSettingsButton.Content = Localization.Text("Project", "Проект");
+        ModelsSettingsButton.Content = Localization.Text("Models", "Модели");
+        MailSettingsButton.Content = Localization.Text("Mail", "Почта");
+        ((TextBlock)PromptSettingsButton.Content).Text = Localization.Text("System prompt", "Системный промпт");
+        JournalSettingsButton.Content = Localization.Text("Journal", "Журнал");
     }
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Controls.MenuItem { Tag: string section }) OpenSettingsWindow(section);
+        if (sender is Controls.Button { Tag: string section }) OpenSettingsWindow(section);
     }
 
     private void OpenSettingsWindow(string section)

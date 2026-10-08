@@ -1323,7 +1323,7 @@ public partial class MainWindow : Window
             (_nextAutomaticRun is { } next ? Duration(next > now ? next - now : TimeSpan.Zero) :
                 _runner.IsRunning ? Localization.Text("After this cycle", "После текущего цикла") : "—");
         DashboardRepositoryText.Text = string.IsNullOrWhiteSpace(_repositoryPath)
-            ? Localization.Text("Select a repository in Menu → Project", "Выберите репозиторий в меню «Проект»")
+            ? Localization.Text("Select a repository using the Project button below", "Выберите репозиторий кнопкой «Проект» ниже")
             : $"{_repositoryPath}\n{_selectedBranch}";
         UsageNoteText.Text = _tokenUsage.Error ?? Localization.Format(
             "Provider-reported input/output tokens, including retries. Older totals may lack a breakdown; + ? means incomplete data. Requests without usage: {0} today / {1} total.",

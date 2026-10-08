@@ -70,8 +70,8 @@ class Program
             "Cancel discards queued OAuth and disconnect without provider calls");
         var tabs = Field<TabControl>("MainTabs");
         Check(ReferenceEquals(tabs.SelectedItem, Field<TabItem>("DashboardTab")), "main stays on dashboard");
-        var menu = Field<MenuItem>("SettingsMenu");
-        Check(menu.Items.OfType<MenuItem>().Count() == 5, "all five sections available in submenu");
+        var settingsButtons = Field<UniformGrid>("SettingsButtons");
+        Check(settingsButtons.Children.OfType<Button>().Count() == 5, "all five sections available as dashboard buttons");
         void Render(FrameworkElement surface, string name, double width, double height)
         {
             surface.Measure(new Size(width,height)); surface.Arrange(new Rect(0,0,width,height)); surface.UpdateLayout();
@@ -110,7 +110,8 @@ class Program
                 }
                 catch(Exception error) { failure=error; dialog?.Close(); }
             }));
-            Call("OpenSettingsWindow", section);
+            settingsButtons.Children.OfType<Button>().Single(b => (string)b.Tag == section)
+                .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             if(failure is not null) throw failure;
             Check(Field<Window?>("_settingsWindow") is null, "dialog ownership cleared");
         }

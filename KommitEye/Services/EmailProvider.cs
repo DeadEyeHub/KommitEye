@@ -15,8 +15,8 @@ public interface IEmailProvider
 public sealed class MailAuthorizationException : Exception
 {
     public MailAuthorizationException() : base(Localization.Text(
-        "Google authorization is required. Reconnect your account and allow email sending.",
-        "Требуется авторизация Google. Подключите аккаунт заново и разрешите отправку писем.")) { }
+        "Email authorization is required. Reconnect your account and allow email sending.",
+        "Требуется авторизация почты. Подключите аккаунт заново и разрешите отправку писем.")) { }
 }
 
 public sealed class MailProviderException(string message) : Exception(message);

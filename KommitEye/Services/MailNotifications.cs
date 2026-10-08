@@ -34,7 +34,7 @@ public sealed class MailSettings
     public void Validate()
     {
         if (AttachmentFormat is not ("html" or "md")) throw new InvalidOperationException("Attachment format must be html or md.");
-        if (Provider == "gmail")
+        if (Provider is "gmail" or "outlook")
         {
             if (string.IsNullOrWhiteSpace(AccountId)) throw new MailAuthorizationException();
             if (From.Any(char.IsControl) || Recipients.Any(char.IsControl)) throw new InvalidOperationException("Invalid mail address.");
@@ -81,7 +81,7 @@ public sealed class MailNotifications : IAsyncDisposable
         lock (_gate)
         {
             if (_settings.Provider == provider) return _settings.Clone();
-            if (provider != "gmail") throw new ArgumentException(nameof(provider));
+            if (provider is not ("gmail" or "outlook")) throw new ArgumentException(nameof(provider));
             var path = _settingsPath + "." + provider;
             return File.Exists(path) ? JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(path)) ?? throw new InvalidDataException()
                 : new MailSettings { Provider = provider };
@@ -106,7 +106,7 @@ public sealed class MailNotifications : IAsyncDisposable
     public MailNotifications(string directory, Action<string> log,
         Func<MailSettings, MailJob, CancellationToken, Task>? send = null, bool startWorker = true, Func<DateTimeOffset>? now = null, IEnumerable<IEmailProvider>? providers = null)
     {
-        _providers = (providers ?? [new GmailEmailProvider(directory)]).ToDictionary(p => p.Id, StringComparer.Ordinal);
+        _providers = (providers ?? [new GmailEmailProvider(directory), new OutlookEmailProvider(directory)]).ToDictionary(p => p.Id, StringComparer.Ordinal);
         _settingsPath = Path.Combine(directory, "mail-settings.json");
         _queuePath = Path.Combine(directory, "mail-queue.json");
         // A UI/logging failure must never terminate the delivery worker.
@@ -147,7 +147,7 @@ public sealed class MailNotifications : IAsyncDisposable
     }
     public void SaveSettings(MailSettings settings, bool activate = true)
     {
-        if (settings.Provider == "gmail")
+        if (settings.Provider is "gmail" or "outlook")
         {
             var account = GetAccount(settings.Provider);
             if (account is null || settings.AccountId != account.Id) throw new MailAuthorizationException();
@@ -166,7 +166,7 @@ public sealed class MailNotifications : IAsyncDisposable
                 Save(_settingsPath + "." + settings.Provider, settings);
                 return;
             }
-            if (_settings.Provider == "gmail") Save(_settingsPath + "." + _settings.Provider, _settings);
+            if (_settings.Provider is "gmail" or "outlook") Save(_settingsPath + "." + _settings.Provider, _settings);
             Save(_settingsPath, settings);
             _settings = settings.Clone();
         }

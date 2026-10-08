@@ -14,6 +14,8 @@ public partial class MainWindow
     private string _googleClientFile = "";
 
     private readonly Dictionary<string, Controls.TextBlock> _mailStatuses = new();
+    private string _mailProviderTab = "gmail";
+    private string _microsoftClientId = "";
     private readonly Dictionary<string, Action> _applyMailDrafts = new();
     private readonly Dictionary<string, Action> _captureMailDrafts = new();
     private readonly Dictionary<string, MailSettings> _mailDrafts = new();
@@ -59,14 +61,27 @@ public partial class MainWindow
         MailPanel.Children.Clear();
         _mailStatuses.Clear();
         _mailCountLabels.Clear();
-        MailPanel.Tag = "mail:gmail";
-        BuildMailProviderPanel(MailPanel, "gmail");
+        var tabs = new Controls.TabControl();
+        foreach (var provider in new[] { "gmail", "outlook" })
+        {
+            var panel = new Controls.StackPanel { Margin = new Thickness(12), Tag = "mail:" + provider };
+            var tab = new Controls.TabItem { Header = provider == "gmail" ? "Google" : "Outlook", Content = panel, Tag = provider };
+            tabs.Items.Add(tab);
+            BuildMailProviderPanel(panel, provider);
+            if (_mailProviderTab == provider) tabs.SelectedItem = tab;
+        }
+        tabs.SelectionChanged += (_, e) =>
+        {
+            if (ReferenceEquals(e.Source, tabs) && tabs.SelectedItem is Controls.TabItem tab) _mailProviderTab = (string)tab.Tag;
+        };
+        MailPanel.Children.Add(tabs);
     }
 
     private void BuildMailProviderPanel(Controls.StackPanel MailPanel, string provider)
     {
+        var google = provider == "gmail";
         var settings = _mailDrafts.GetValueOrDefault(provider) ?? _mail.GetSettings(provider);
-        MailPanel.Children.Add(new Controls.TextBlock { Text = "Google · Gmail API", FontSize = 18, FontWeight = FontWeights.SemiBold });
+        MailPanel.Children.Add(new Controls.TextBlock { Text = google ? "Google · Gmail API" : "Outlook · Microsoft Graph", FontSize = 18, FontWeight = FontWeights.SemiBold });
         _mailAccountStatus = new Controls.TextBlock { Margin = new Thickness(0, 8, 0, 8), TextWrapping = TextWrapping.Wrap };
         MailPanel.Children.Add(_mailAccountStatus);
         _mailStatuses[provider] = _mailAccountStatus;
@@ -79,18 +94,21 @@ public partial class MainWindow
             return box;
         }
         if (_googleClientFile.Length == 0 && _mail.GoogleAccount is null) _googleClientFile = FindGoogleClientFile();
-        var clientFile = Field("Google Desktop OAuth JSON", "OAuth JSON Google (Desktop app)", _googleClientFile);
-        MailPanel.Children.Add(new Controls.TextBlock { Text = Localization.Text(
+        var clientFile = Field(google ? "Google Desktop OAuth JSON" : "Microsoft application (client) ID",
+            google ? "OAuth JSON Google (Desktop app)" : "Идентификатор приложения Microsoft (client ID)", google ? _googleClientFile : _microsoftClientId);
+        MailPanel.Children.Add(new Controls.TextBlock { Text = google ? Localization.Text(
             "Choose the downloaded JSON for the first connection. Leave blank to reuse saved client settings when reconnecting. Sign-in opens in your browser; no email password is stored.",
-            "Для первого подключения выберите скачанный JSON. При повторном входе поле можно оставить пустым для использования сохранённых настроек. Вход откроется в браузере; пароль почты не сохраняется."),
+            "Для первого подключения выберите скачанный JSON. При повторном входе поле можно оставить пустым для использования сохранённых настроек. Вход откроется в браузере; пароль почты не сохраняется.") : Localization.Text(
+            "Use a public Desktop app registered for personal and work/school accounts, with http://localhost redirect and delegated User.Read + Mail.Send permissions. No client secret is needed. Leave blank to reuse saved client settings.",
+            "Укажите client ID Desktop-приложения для личных и рабочих аккаунтов, с redirect http://localhost и delegated-разрешениями User.Read + Mail.Send. Client secret не нужен. Пустое поле использует сохранённый client ID."),
             TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 6) });
         var accountButtons = new Controls.WrapPanel { Margin = new Thickness(0, 6, 0, 12) };
         Controls.Button Button(string en, string ru) => new() { Content = Localization.Text(en, ru), Padding = new Thickness(12, 6, 12, 6), Margin = new Thickness(0, 0, 8, 6) };
         var browse = Button("Browse…", "Выбрать файл…");
-        var connect = Button("Connect / reconnect Google", "Подключить Google / войти заново");
+        var connect = Button(google ? "Connect / reconnect Google" : "Connect / reconnect Microsoft", google ? "Подключить Google / войти заново" : "Подключить Microsoft / войти заново");
         var disconnect = Button("Disconnect", "Отключить");
         var cancel = Button("Cancel sign-in", "Отменить вход");
-        accountButtons.Children.Add(browse); accountButtons.Children.Add(connect); accountButtons.Children.Add(disconnect); accountButtons.Children.Add(cancel);
+        if (google) accountButtons.Children.Add(browse); accountButtons.Children.Add(connect); accountButtons.Children.Add(disconnect); accountButtons.Children.Add(cancel);
         MailPanel.Children.Add(accountButtons);
         var enabled = new Controls.CheckBox { Content = Localization.Text("Enable email notifications", "Включить почтовые уведомления"),
             IsChecked = settings.Enabled, Margin = new Thickness(0, 0, 0, 12) };
@@ -106,7 +124,7 @@ public partial class MainWindow
             Width = 120, HorizontalAlignment = System.Windows.HorizontalAlignment.Left };
         MailPanel.Children.Add(attachmentFormat);
         var buttons = new Controls.WrapPanel { Margin = new Thickness(0, 12, 0, 8) };
-        var save = Button("Save", "Сохранить");
+        var save = Button("Save / use this account", "Сохранить / использовать аккаунт");
         var test = Button("Send test email", "Отправить тестовое письмо");
         var retry = Button("Retry failed mail", "Повторить неотправленные");
         buttons.Children.Add(save); buttons.Children.Add(test); buttons.Children.Add(retry);
@@ -138,7 +156,7 @@ public partial class MainWindow
             Recipients = recipients.Text.Trim(), AttachmentFormat = attachmentFormat.SelectedItem as string ?? "html" };
         _captureMailDrafts[provider] = () =>
         {
-            _googleClientFile = clientFile.Text.Trim();
+            if (google) _googleClientFile = clientFile.Text.Trim(); else _microsoftClientId = clientFile.Text.Trim();
             _mailDrafts[provider] = Draft();
         };
         _applyMailDrafts[provider] = () =>
@@ -205,7 +223,7 @@ public partial class MainWindow
             UpdateButtons();
             try
             {
-                _googleClientFile = clientFile.Text.Trim();
+                if (google) _googleClientFile = clientFile.Text.Trim(); else _microsoftClientId = clientFile.Text.Trim();
                 status.Text = Localization.Text("Complete sign-in in your browser…", "Завершите вход в браузере…");
                 await _mail.ConnectAsync(provider, clientFile.Text.Trim(), cancellation.Token);
                 enabled.IsChecked = _mail.Settings.Enabled;

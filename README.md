@@ -4,7 +4,7 @@
 
 Windows desktop app for reviewing Git commits with a local or cloud
 OpenAI-compatible model. Supports multiple projects, Markdown reports,
-Gmail notifications, and English/Russian interfaces.
+Gmail/Outlook notifications, and English/Russian interfaces.
 
 ## Requirements and setup
 
@@ -76,6 +76,23 @@ Google Testing refresh tokens generally expire after seven days; see
 Keep OAuth JSON files and token caches out of Git; `authMail/` and
 `client_secret_*.json` are ignored.
 
+## Outlook / Microsoft 365
+
+The Mail section has separate Google and Outlook tabs; both connections and
+settings are retained. Switching tabs does not change the sender. Use
+**Save / use this account** to select the account for new reports.
+
+Register a Microsoft Entra application for personal and work/school accounts.
+Add the **Mobile and desktop applications** platform with `http://localhost`
+as its redirect URI and Microsoft Graph delegated permissions `User.Read` and
+`Mail.Send`. Enter the **Application (client) ID** in the Outlook tab and connect
+through your browser. No client secret is required; organization policies may
+require administrator consent.
+
+Tokens refresh automatically and the MSAL cache is protected with Windows DPAPI.
+Disconnect removes local tokens; it does not revoke Microsoft consent or sign out
+the browser. Queued messages stay tied to their original provider and account.
+
 ## Data and compatibility
 
 Settings, review positions, reports, queues, and logs live in
@@ -96,6 +113,7 @@ model or email accounts:
 ```powershell
 dotnet build KommitEye/KommitEye.csproj
 dotnet run --project checks/Gmail/Gmail.csproj
+dotnet run --project checks/Outlook/Outlook.csproj
 dotnet run --project checks/ApplyChanges/ApplyChanges.csproj
 dotnet run --project checks/CommitPaging/CommitPaging.csproj
 dotnet run --project checks/ReportRepair/ReportRepair.csproj

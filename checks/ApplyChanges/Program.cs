@@ -41,9 +41,10 @@ class Program
         var actions = Field<Dictionary<string, Action>>("_applyMailDrafts");
         var applied = 0;
         actions["gmail"] = () => applied++;
-        Call("MarkSettingsChanged", "mail:gmail");
+        actions["outlook"] = () => applied++;
+        Call("MarkSettingsChanged", "mail:gmail"); Call("MarkSettingsChanged", "mail:outlook");
         Call("ApplyPendingSettings");
-        Check(applied == 1 && bar.Visibility == Visibility.Collapsed, "Gmail draft applies");
+        Check(applied == 2 && bar.Visibility == Visibility.Collapsed, "both mail drafts apply");
         Call("MarkSettingsChanged", "applied");
         tabs.SelectedItem = Field<TabItem>("MailTab");
         var surface = (FrameworkElement)window.Content;

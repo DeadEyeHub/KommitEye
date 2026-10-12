@@ -62,4 +62,4 @@ public sealed record ReviewProgress(ReviewStage Stage, string Model, string Comm
 
 public sealed record CommitReviewed(string RepositoryPath, string BranchRef, string Sha,
     int FindingCount, bool HasUnstructuredResponse, bool EmptyDiff, bool Manual,
-    string ReportMarkdown = "", string RepositoryIdentity = "", string AuthorEmail = "");
+    string ReportMarkdown = "", string RepositoryIdentity = "", string AuthorEmail = "", bool Failed = false);

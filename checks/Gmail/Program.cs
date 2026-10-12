@@ -133,10 +133,34 @@ var legacy = Path.Combine(root, "legacy"); Directory.CreateDirectory(legacy);
 var oldSettings = new MailSettings { Enabled = true, Host = "old-smtp", From = "old@example.invalid", Recipients = "recipient@example.invalid" };
 oldSettings.SetPassword("old-password");
 await File.WriteAllTextAsync(Path.Combine(legacy, "mail-settings.json"), JsonSerializer.Serialize(oldSettings));
-await using (var mail = new MailNotifications(legacy, logs.Add, startWorker: false))
+await using (var mail = new MailNotifications(legacy, logs.Add, startWorker: false,
+    providers: [new GmailEmailProvider(legacy, new FakeOAuth(), queueHttp)]))
 {
-    Check(!mail.Settings.Enabled && mail.Settings.EncryptedPassword.Length == 0, "legacy SMTP disabled and password removed");
-    Check(JsonSerializer.Deserialize<MailSettings>(await File.ReadAllTextAsync(Path.Combine(legacy, "mail-settings.json")))!.EncryptedPassword.Length == 0, "legacy password removed on disk");
+    Check(mail.Settings.Enabled && mail.Settings.GetPassword() == "old-password", "SMTP settings and protected password survive restart");
+    await mail.ConnectGoogleAsync(config, default);
+    Check(mail.GetSettings("smtp").GetPassword() == "old-password", "SMTP retained when switching to Google");
+    mail.SaveSettings(mail.GetSettings("smtp"));
+    Check(mail.Settings.Provider == "smtp", "SMTP can be selected again");
+}
+var failureRoot = Path.Combine(root, "failures");
+var delivered = new List<MailJob>();
+await using (var mail = new MailNotifications(failureRoot, logs.Add, startWorker: false,
+    send: (_, message, _) => { delivered.Add(message); return Task.CompletedTask; }))
+{
+    var settings = oldSettings.Clone(); settings.SendToAuthor = true; settings.SendWithoutBugs = false;
+    mail.SaveSettings(settings);
+    var failed = new CommitReviewed(root, "main", "failed-sha", 0, false, false, false,
+        "Review failed: fixture error", root, "author@example.invalid", Failed: true);
+    mail.Enqueue(failed); mail.Enqueue(failed);
+    await mail.ProcessOnceAsync(default);
+    Check(delivered.Count == 1 && delivered[0].Recipients == "recipient@example.invalid", "failure bypasses clean filter, excludes author and deduplicates");
+    Check(delivered[0].Subject.Contains("review failed"), "failure is identified in subject");
+    mail.Enqueue(failed with { Failed = false, FindingCount = 1 });
+    await mail.ProcessOnceAsync(default);
+    Check(delivered.Count == 2 && delivered[1].Recipients.Contains("author@example.invalid"), "successful retry sends normal report with author");
+    settings.Recipients = ""; mail.SaveSettings(settings);
+    mail.Enqueue(failed with { Sha = "author-only" });
+    Check(mail.Counts().Pending == 0, "failure never falls back to author when primary recipients are empty");
 }
 Console.WriteLine($"PASS: {checks} Gmail/OAuth checks; no real accounts accessed or mail sent.");
 

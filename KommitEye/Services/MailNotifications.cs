@@ -81,7 +81,7 @@ public sealed class MailNotifications : IAsyncDisposable
         lock (_gate)
         {
             if (_settings.Provider == provider) return _settings.Clone();
-            if (provider is not ("gmail" or "outlook")) throw new ArgumentException(nameof(provider));
+            if (provider is not ("gmail" or "outlook" or "smtp")) throw new ArgumentException(nameof(provider));
             var path = _settingsPath + "." + provider;
             return File.Exists(path) ? JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(path)) ?? throw new InvalidDataException()
                 : new MailSettings { Provider = provider };
@@ -111,7 +111,7 @@ public sealed class MailNotifications : IAsyncDisposable
         _queuePath = Path.Combine(directory, "mail-queue.json");
         // A UI/logging failure must never terminate the delivery worker.
         _log = message => { try { log(message); } catch { } };
-        _send = send ?? ((settings, job, token) => _providers.TryGetValue(job.Provider, out var provider)
+        _send = send ?? ((settings, job, token) => job.Provider == "smtp" ? SendSmtpAsync(settings, job, token, _log) : _providers.TryGetValue(job.Provider, out var provider)
             ? provider.SendAsync(job, token) : throw new MailAuthorizationException());
         _now = now ?? (() => DateTimeOffset.UtcNow);
         try
@@ -121,20 +121,12 @@ public sealed class MailNotifications : IAsyncDisposable
             _jobs = File.Exists(_queuePath) ? JsonSerializer.Deserialize<List<MailJob>>(File.ReadAllText(_queuePath))
                 ?? throw new InvalidDataException() : [];
             if (_jobs.Any(j => j is null || string.IsNullOrWhiteSpace(j.Key) || j.Attempts < 0)) throw new InvalidDataException();
-            if (send is null && _settings.Provider == "smtp")
-            {
-                _settings.Enabled = false;
-                _settings.EncryptedPassword = "";
-                if (File.Exists(_settingsPath)) Save(_settingsPath, _settings);
-            }
         }
         catch (Exception e)
         {
             _settings = new(); _jobs = [];
             LoadError = "Mail settings/queue could not be loaded (" + e.GetType().Name + "). Existing files are preserved.";
         }
-        // Legacy SMTP jobs remain saved but cannot be sent through a newly connected account.
-        if (send is null && _settings.Provider == "smtp") _settings.Enabled = false;
         _worker = startWorker ? Task.Run(WorkerAsync) : Task.CompletedTask;
     }
 
@@ -166,7 +158,7 @@ public sealed class MailNotifications : IAsyncDisposable
                 Save(_settingsPath + "." + settings.Provider, settings);
                 return;
             }
-            if (_settings.Provider is "gmail" or "outlook") Save(_settingsPath + "." + _settings.Provider, _settings);
+            Save(_settingsPath + "." + _settings.Provider, _settings);
             Save(_settingsPath, settings);
             _settings = settings.Clone();
         }
@@ -214,18 +206,18 @@ public sealed class MailNotifications : IAsyncDisposable
 
     public void Enqueue(CommitReviewed review)
     {
-        if (review.HasUnstructuredResponse) { _log("Mail: incomplete review skipped: " + review.Sha); return; }
+        if (review.HasUnstructuredResponse && !review.Failed) { _log("Mail: incomplete review skipped: " + review.Sha); return; }
         lock (_gate)
         {
             if (LoadError is not null) { _log(LoadError); return; }
             if (!_settings.Enabled) { _log("Mail: notifications disabled; skipped: " + review.Sha); return; }
-            if ((review.FindingCount == 0 || review.EmptyDiff) && !_settings.SendWithoutBugs)
+            if (!review.Failed && (review.FindingCount == 0 || review.EmptyDiff) && !_settings.SendWithoutBugs)
             { _log("Mail: no findings; clean-review notifications disabled; skipped: " + review.Sha); return; }
             try
             {
                 _settings.Validate();
                 var recipients = _settings.Addresses();
-                if (_settings.SendToAuthor && !string.IsNullOrWhiteSpace(review.AuthorEmail))
+                if (!review.Failed && _settings.SendToAuthor && !string.IsNullOrWhiteSpace(review.AuthorEmail))
                 {
                     // Commit metadata is untrusted: accept exactly one bare mailbox, never a header/list.
                     var email = review.AuthorEmail.Trim();
@@ -240,12 +232,12 @@ public sealed class MailNotifications : IAsyncDisposable
                 if (string.IsNullOrWhiteSpace(review.ReportMarkdown)) throw new InvalidDataException("Report is unavailable.");
                 var identity = Path.GetFullPath(string.IsNullOrEmpty(review.RepositoryIdentity) ? review.RepositoryPath : review.RepositoryIdentity);
                 if (OperatingSystem.IsWindows()) identity = identity.ToUpperInvariant();
-                var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity + "\n" + review.BranchRef + "\n" + review.Sha)));
+                var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity + "\n" + review.BranchRef + "\n" + review.Sha + (review.Failed ? "\nfailure" : ""))));
                 if (_jobs.Any(j => j.Key == key)) { _log("Mail: this commit is already queued or sent: " + review.Sha); return; }
                 var job = new MailJob { Key = key, MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(),
                     Provider = _settings.Provider, AccountId = _settings.AccountId,
                     AttachmentFormat = _settings.AttachmentFormat,
-                    Subject = Clean($"[KommitEye] {Path.GetFileName(review.RepositoryPath)} / {review.BranchRef} / {review.Sha[..Math.Min(8, review.Sha.Length)]} — bugs: {review.FindingCount}"),
+                    Subject = Clean($"[KommitEye] {Path.GetFileName(review.RepositoryPath)} / {review.BranchRef} / {review.Sha[..Math.Min(8, review.Sha.Length)]} — " + (review.Failed ? "review failed" : $"bugs: {review.FindingCount}")),
                     Report = review.ReportMarkdown, From = _settings.From, Recipients = string.Join(";", recipients.Select(r => r.ToString())), NextAttempt = _now() };
                 _jobs.Add(job);
                 try { Save(_queuePath, _jobs); } catch { _jobs.Remove(job); throw; }

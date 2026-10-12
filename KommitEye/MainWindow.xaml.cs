@@ -1435,7 +1435,9 @@ public partial class MainWindow : Window
     private void NotifyReviewed(CommitReviewed reviewed)
     {
         if (_exitRequested) return;
-        var result = reviewed.EmptyDiff
+        var result = reviewed.Failed
+            ? Localization.Text("Review failed; inspect the report.", "Проверка завершилась с ошибкой; смотрите отчёт.")
+            : reviewed.EmptyDiff
             ? Localization.Text("Empty diff; no model request.", "Пустой diff; без запроса к модели.")
             : reviewed.HasUnstructuredResponse
                 ? Localization.Text("Unstructured response; inspect the report.", "Неструктурированный ответ; проверьте отчет.")
@@ -1444,7 +1446,7 @@ public partial class MainWindow : Window
         {
             _trayIcon.ShowBalloonTip(5000, Localization.Text("Commit review completed", "Проверка коммита завершена"),
                 $"{reviewed.Sha[..Math.Min(8, reviewed.Sha.Length)]} | {reviewed.BranchRef}\n{result}",
-                reviewed.HasUnstructuredResponse ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info);
+                reviewed.Failed || reviewed.HasUnstructuredResponse ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info);
         }
         catch (Exception) { /* Notifications are best-effort and must not affect persisted reviews. */ }
     }

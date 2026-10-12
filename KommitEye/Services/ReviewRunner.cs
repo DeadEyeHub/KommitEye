@@ -491,6 +491,7 @@ public sealed class ReviewRunner
                 {
                     var failed = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message), AnalysisDuration = analysisClock.Elapsed };
                     await _reportWriter.AppendAsync(repositoryPath, branch, commit, failed, true, cancellationToken, repositoryIdentity);
+                    PublishFailedReview(repositoryPath, branch, sha, failed, true);
                     throw;
                 }
                 Emit(ReviewStage.Failed, profile, sha, exception.Message);
@@ -513,8 +514,13 @@ public sealed class ReviewRunner
         result.AnalysisDuration = analysisClock.Elapsed;
         await _reportWriter.AppendAsync(
             repositoryPath, branch, commit, result, manualReview, cancellationToken, repositoryIdentity);
+        if (result.Failure is not null) PublishFailedReview(repositoryPath, branch, sha, result, manualReview);
         return result;
     }
+
+    private void PublishFailedReview(string path, string branch, string sha, ReviewResult result, bool manual) =>
+        Publish(Reviewed, new CommitReviewed(path, branch, sha, 0, false, false, manual,
+            result.ReportMarkdown, result.RepositoryIdentity, result.AuthorEmail, Failed: true));
 
     private async Task<ReviewResult> AnalyzeAsync(string repositoryPath, string branch, string sha,
         ModelProfile profile, string repositoryIdentity, CancellationToken cancellationToken)

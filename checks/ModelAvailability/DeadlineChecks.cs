@@ -42,6 +42,8 @@ static class DeadlineChecks
             var state = new StateStore();
             var runner = new ReviewRunner(git, new ModelClient(http, activeHandler.Clock), config, state, new ReportWriter());
             var skipped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var notifications = new List<CommitReviewed>();
+            runner.Reviewed += notifications.Add;
             runner.Log += message => { if (message.Contains("failure saved in report")) skipped.TrySetResult(); };
             Check(runner.Start(settings, profile), "automatic review starts");
             try { await skipped.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
@@ -49,6 +51,7 @@ static class DeadlineChecks
             var report = await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single());
             Check(report.Contains("probably too complex"), "complexity explanation saved in report");
             Check(activeHandler.Reviews == 1 && activeHandler.Probes == 0, "active model is not retried or probed");
+            Check(notifications.Count == 1 && notifications[0].Failed && notifications[0].ReportMarkdown.Contains("probably too complex"), "terminal failure publishes saved report for notification");
             Console.WriteLine("PASS: active deadline writes complexity report without retries.");
         }
 
@@ -58,6 +61,8 @@ static class DeadlineChecks
         using (var cancellation = new CancellationTokenSource())
         {
             var runner = new ReviewRunner(git, new ModelClient(http, silentHandler.Clock), config, new StateStore(), new ReportWriter());
+            var notifications = new List<CommitReviewed>();
+            runner.Reviewed += notifications.Add;
             var review = runner.ReviewSingleCommitAsync(settings, profile, await git.GetHeadAsync(repo, default), cancellation.Token);
             try
             {
@@ -68,8 +73,25 @@ static class DeadlineChecks
             try { await review; throw new Exception("Review must cancel"); }
             catch (OperationCanceledException) { }
             Check(silentHandler.Probes == 1, "silent deadline probes immediately");
+            Check(notifications.Count == 0, "temporary outage and cancellation do not notify failure");
             Check(reportsBefore == await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single()), "silent deadline produces no failed report");
             Console.WriteLine("PASS: silent deadline probes immediately and remains cancellable, with no failure report.");
+        }
+        var manualHandler = new DeadlineHandler(new ReviewClock(), "content");
+        using (var http = new HttpClient(manualHandler))
+        {
+            var runner = new ReviewRunner(git, new ModelClient(http, manualHandler.Clock), config, new StateStore(), new ReportWriter());
+            var notifications = new List<CommitReviewed>();
+            runner.Reviewed += notifications.Add;
+            try
+            {
+                await runner.ReviewSingleCommitAsync(settings, profile, await git.GetHeadAsync(repo, default), default);
+                throw new Exception("Expected manual review failure");
+            }
+            catch (ReviewComplexityException) { }
+            Check(notifications.Count == 1 && notifications[0].Failed && notifications[0].Manual && notifications[0].ReportMarkdown.Length > 0,
+                "manual terminal failure publishes persisted report exactly once");
+            Console.WriteLine("PASS: manual failure publishes saved report for notification.");
         }
     }
 

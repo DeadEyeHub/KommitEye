@@ -29,19 +29,19 @@ public partial class MainWindow : Window
 
     private void MarkSettingsChanged(string scope) { }
 
-    public void Render(string path)
+    public void Render(string path, int width = 880, int height = 700, bool dispose = true)
     {
         var surface = (FrameworkElement)Content;
-        surface.Measure(new Size(880, 700));
-        surface.Arrange(new Rect(0, 0, 880, 700));
+        surface.Measure(new Size(width, height));
+        surface.Arrange(new Rect(0, 0, width, height));
         surface.UpdateLayout();
-        var image = new RenderTargetBitmap(880, 700, 96, 96, PixelFormats.Pbgra32);
+        var image = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         image.Render(surface);
         var png = new PngBitmapEncoder();
         png.Frames.Add(BitmapFrame.Create(image));
         using var output = File.Create(path);
         png.Save(output);
-        _mail.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (dispose) _mail.DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     [STAThread]
@@ -50,10 +50,20 @@ public partial class MainWindow : Window
         var root = Path.Combine(Path.GetTempPath(), "gmail-ui-" + Guid.NewGuid());
         foreach (var language in new[] { "en", "ru" })
         foreach (var connected in new[] { false, true })
-        foreach (var provider in new[] { "gmail", "outlook" })
+        foreach (var provider in new[] { "gmail", "outlook", "smtp" })
         {
             Localization.SetLanguage(language);
             var window = new MainWindow(root, connected, provider);
+            if (provider == "smtp" && !connected)
+            {
+                new System.Windows.Interop.WindowInteropHelper(window).EnsureHandle();
+                var dialog = window.CreateSmtpSettingsWindow(new MailSettings(), _ => { });
+                var original = window.Content;
+                var content = dialog.Content; dialog.Content = null;
+                window.Content = content;
+                window.Render(Path.Combine(AppContext.BaseDirectory, $"smtp-dialog-{language}.png"), 520, 600, dispose: false);
+                window.Content = original;
+            }
             var path = Path.Combine(AppContext.BaseDirectory, $"mail-{provider}-{language}-{connected}.png");
             window.Render(path);
             Console.WriteLine(path);

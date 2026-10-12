@@ -70,6 +70,9 @@ removes local authorization and attempts to revoke Google access.
 
 Reports can be attached as HTML or Markdown. Sending clean reviews or sending to
 commit authors is optional; enable author delivery only for trusted repositories.
+Terminal review failures are sent to the configured **Recipients**, without adding
+the commit author, even when clean-review notifications are disabled. Notifications
+must be enabled. Canceled reviews and temporary model outages do not send failure mail.
 Pending messages survive restarts and stay tied to their original account.
 Provider acceptance does not guarantee inbox delivery, and retries after an
 ambiguous network failure can produce duplicates.
@@ -81,10 +84,18 @@ Keep OAuth JSON files and token caches out of Git; `authMail/` and
 
 ## Outlook / Microsoft 365
 
-The Mail section has separate Google and Outlook tabs; both connections and
+The Mail section has separate Google, Outlook, and SMTP tabs; connections and
 settings are retained. Switching tabs does not change the sender. Use
 **Use this account**, then **Apply changes**, to select the sender for new reports.
 Connecting and disconnecting accounts also take effect only after Apply or OK.
+
+For SMTP, open **Mail → SMTP → SMTP server settings…**. The separate dialog contains
+the host, port, security mode, username, password, and sender address. Port 587 with
+StartTLS is the default; SSL-on-connect and unencrypted connections are also available.
+A blank password keeps the saved password; use **Clear saved password** to remove it.
+Passwords are protected with Windows DPAPI. Confirm the dialog, set recipients and
+notification preferences in Mail, and click **Apply changes** or **OK** to save.
+Use **Send test email** to test the current settings without saving them.
 
 Register a Microsoft Entra application for your organization or for personal and work/school accounts.
 Add the **Mobile and desktop applications** platform with `http://localhost`

@@ -14,6 +14,8 @@ import { Jobs } from "./features/Jobs";
 function App() {
   const [signed, setSigned] = useState<boolean | null>(null),
     [password, setPassword] = useState(""),
+    [confirmation, setConfirmation] = useState(""),
+    [setup, setSetup] = useState<Data | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("projects"),
@@ -22,6 +24,9 @@ function App() {
     [tick, setTick] = useState(0),
     [lang, setLang] = useState(language);
   useEffect(() => {
+    api<Data>("/setup")
+      .then(setSetup)
+      .catch((e) => setError(e.message));
     api("/session")
       .then(() => setSigned(true))
       .catch(() => setSigned(false));
@@ -75,20 +80,39 @@ function App() {
     setBusy(true);
     setError("");
     try {
-      await api("/login", { password });
+      if (setup?.required && password !== confirmation)
+        throw new Error(t("Пароли не совпадают", "Passwords do not match"));
+      await api(setup?.required ? "/setup" : "/login", { password });
+      setSetup({ required: false });
+      setConfirmation("");
       setPassword("");
       setSigned(true);
     } catch (e) {
       setError((e as Error).message);
+      api<Data>("/setup")
+        .then(setSetup)
+        .catch(() => {});
     } finally {
       setBusy(false);
     }
   };
-  if (signed === null)
+  const weakPassword =
+    password.length > 0 &&
+    (password.length < 8 ||
+      /^(.)\1+$/.test(password) ||
+      [
+        "password",
+        "password123",
+        "12345678",
+        "123456789",
+        "qwerty123",
+        "qwertyuiop",
+      ].includes(password.toLowerCase()));
+  if (signed === null || (!signed && setup === null))
     return (
       <main className="login">
         <h1>KommitEye</h1>
-        <p>{t("Подключение к серверу…", "Connecting to server…")}</p>
+        <p>{error || t("Подключение к серверу…", "Connecting to server…")}</p>
       </main>
     );
   if (!signed)
@@ -98,16 +122,28 @@ function App() {
           KommitEye<span> / web server</span>
         </div>
         <h1>
-          {t(
-            "Проверки коммитов.\nВ одном месте.",
-            "Commit reviews.\nOne workspace.",
-          )}
+          {setup?.required
+            ? t("Создайте пароль", "Create your password")
+            : t(
+                "Проверки коммитов.\nВ одном месте.",
+                "Commit reviews.\nOne workspace.",
+              )}
         </h1>
         <p>
-          {t(
-            "Войдите для управления проектами на этом сервере.",
-            "Sign in to manage projects on this server.",
-          )}
+          {setup?.required
+            ? setup.local
+              ? t(
+                  "Первый запуск: задайте пароль администратора сервера.",
+                  "First launch: choose the server administrator password.",
+                )
+              : t(
+                  "Для первоначальной настройки откройте localhost с портом сервера на самом сервере. Затем можно входить из локальной сети.",
+                  "For initial setup, open localhost with the server port on the server computer. You can then sign in over the LAN.",
+                )
+            : t(
+                "Войдите для управления проектами на этом сервере.",
+                "Sign in to manage projects on this server.",
+              )}
         </p>
         <form onSubmit={login}>
           <label className="field">
@@ -115,14 +151,43 @@ function App() {
             <input
               autoFocus
               type="password"
-              autoComplete="current-password"
+              autoComplete={
+                setup?.required ? "new-password" : "current-password"
+              }
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
           </label>
-          <button className="primary" disabled={busy}>
-            {busy ? t("Вход…", "Signing in…") : t("Войти", "Sign in")}
+          {setup?.required && (
+            <label className="field">
+              <span>{t("Повторите пароль", "Confirm password")}</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+                required
+              />
+            </label>
+          )}
+          {setup?.required && weakPassword && (
+            <p role="status" className="password-warning">
+              {t(
+                "Пароль очень слабый, его легко угадать. Лучше выбрать более длинный и непредсказуемый. Вы можете продолжить с этим паролем.",
+                "This password is very weak and easy to guess. Consider a longer, less predictable password. You may still continue with this password.",
+              )}
+            </p>
+          )}
+          <button
+            className="primary"
+            disabled={busy || (setup?.required && !setup.local)}
+          >
+            {busy
+              ? t("Подождите…", "Working…")
+              : setup?.required
+                ? t("Сохранить пароль и войти", "Save password and sign in")
+                : t("Войти", "Sign in")}
           </button>
           {error && (
             <p className="error" role="alert">
@@ -130,12 +195,6 @@ function App() {
             </p>
           )}
         </form>
-        <p className="muted">
-          {t(
-            "При первом запуске пароль находится в initial-password.txt в папке данных сервера.",
-            "On first launch, find the password in initial-password.txt in the server data folder.",
-          )}
-        </p>
       </main>
     );
   return (

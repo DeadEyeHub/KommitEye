@@ -33,7 +33,7 @@ void Start()
 {
     var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
     start.ArgumentList.Add(serverDll); start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
-    start.Environment["KOMMITEYE_DATA_DIR"] = Path.Combine(root, "data"); start.Environment["KOMMITEYE_ADMIN_PASSWORD"] = "fixture-password-12345";
+    start.Environment["KOMMITEYE_DATA_DIR"] = Path.Combine(root, "data"); start.Environment.Remove("KOMMITEYE_ADMIN_PASSWORD");
     server = Process.Start(start)!;
     server.OutputDataReceived += (_, e) => { if (e.Data is not null) lock(outputLog) outputLog.Add(e.Data); };
     server.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock(outputLog) outputLog.Add(e.Data); };
@@ -63,12 +63,15 @@ async Task<JsonNode?> Post(string path, object value)
 try
 {
     Start(); await Wait();
+    Check((await Get("setup"))["required"]!.GetValue<bool>() && !File.Exists(Path.Combine(root,"data","initial-password.txt")) && !File.Exists(Path.Combine(root,"data","admin.json")),"first launch waits for user password without generating one");
     Check((await http.GetAsync("projects")).StatusCode == HttpStatusCode.Unauthorized,"anonymous project access denied");
-    Check((await http.PostAsJsonAsync("login",new {password="fixture-password-12345"})).StatusCode == HttpStatusCode.Forbidden,"cross-site form commands blocked");
+    Check((await http.PostAsJsonAsync("login",new {password="1"})).StatusCode == HttpStatusCode.Forbidden,"cross-site form commands blocked");
     http.DefaultRequestHeaders.Add("X-KommitEye-Client","web");
     Check((await http.PostAsJsonAsync("repositories/browse",new {path=repo})).StatusCode == HttpStatusCode.Unauthorized,"server file browsing requires authentication");
     Check((await http.PostAsJsonAsync("login",new {password="incorrect"})).StatusCode == HttpStatusCode.Unauthorized,"wrong password denied");
-    await Post("login",new {password="fixture-password-12345"});
+    await Post("setup",new {password="1"});
+    Check(!(await Get("setup"))["required"]!.GetValue<bool>(),"one-character password is accepted during setup");
+    Check((await http.PostAsJsonAsync("setup",new {password="replacement"})).StatusCode==HttpStatusCode.Conflict,"setup cannot replace an existing administrator password");
     var snapshot = await Get("projects");
     var project = snapshot["projects"]![0]!.Deserialize<AppSettings>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     project.DisplayName="Fixture";project.RepositoryPath=repo;project.BranchRef="refs/heads/main";project.PullEnabled=false;
@@ -100,6 +103,14 @@ try
     for(var i=0;i<100;i++){job=await Get("jobs/"+(string)job!["id"]!);if((string)job["status"]! !="running")break;await Task.Delay(100);}
     Check((string)job!["status"]! == "completed","manual review completed without a model request for empty diff");
     Check((await Get("reports")).AsArray().Count==1,"persisted report available through API");
+    var reportName=(string)(await Get("reports"))[0]!["name"]!;
+    using(var htmlResponse=await http.GetAsync("reports/"+Uri.EscapeDataString(reportName)+"?format=html"))
+    {
+        var html=await htmlResponse.Content.ReadAsStringAsync();
+        Check(htmlResponse.Content.Headers.ContentType?.MediaType=="text/html" && htmlResponse.Content.Headers.ContentDisposition is not null && html.Contains("<!doctype html>") && html.Contains("<h2>"),"HTML report is a downloadable standalone formatted document");
+    }
+    var hostileHtml=KommitEye.Server.HtmlReport.Render("<script>title</script>","## `<img src=x onerror=alert(1)>`\n<script>alert(1)</script>\n```text\n</code><script>alert(1)</script>\n```");
+    Check(!hostileHtml.Contains("<script>") && !hostileHtml.Contains("<img") && hostileHtml.Contains("&lt;script&gt;"),"HTML rendering escapes executable Git and model content");
     Check((await Get($"projects/{project.ProjectId}/commits?offset=0"))["commits"]!.AsArray().Count==1,"commit paging uses server repository");
     await Post($"projects/{project.ProjectId}/start-commit",new {requestKey=Guid.NewGuid().ToString(),sha});
     var smtp=await Get("mail/smtp");smtp["settings"]!["host"]="smtp.example.invalid";smtp["settings"]!["from"]="sender@example.invalid";smtp["settings"]!["recipients"]="recipient@example.invalid";
@@ -107,7 +118,7 @@ try
     Check(!(await http.GetStringAsync("mail/smtp")).Contains("fixture-mail-secret"),"SMTP API does not expose password");
     var monitoring = await Post($"projects/{project.ProjectId}/start",new {requestKey=Guid.NewGuid().ToString()});
     await Post("logout",new {});
-    await Post("login",new {password="fixture-password-12345"});
+    await Post("login",new {password="1"});
     Check((await Get("projects"))["statuses"]![0]!["running"]!.GetValue<bool>(),"signing out does not stop server monitoring");
     Check((await http.PostAsJsonAsync($"projects/{project.ProjectId}/delete",new {revision=(long)(await Get("projects"))["revision"]!})).StatusCode==HttpStatusCode.Conflict,"running project cannot be deleted");
     await Post($"projects/{project.ProjectId}/stop",new {});
@@ -118,7 +129,7 @@ try
     Directory.CreateDirectory(Path.GetDirectoryName(detailPath)!);
     await File.WriteAllTextAsync(detailPath,"fixture detail log\n"); await File.WriteAllTextAsync(detailPath+".1","fixture archived log\n");
     Start(); await Wait();
-    await Post("login",new {password="fixture-password-12345"});
+    await Post("login",new {password="1"});
     var journalBefore=await http.GetStringAsync($"projects/{project.ProjectId}/log");
     Check((await http.GetStringAsync($"projects/{project.ProjectId}/log?details=true")).Contains("fixture archived log"),"detail log includes persisted rotated history");
     await Post($"projects/{project.ProjectId}/log/clear?details=true",new {});
@@ -134,7 +145,7 @@ try
     await Post($"projects/{project.ProjectId}/delete",new {revision=deleteRevision});
     Check((await Get("projects"))["projects"]!.AsArray().Count==0 && (await Get("projects"))["statuses"]!.AsArray().Count==0,"last project can be deleted without a placeholder");
     Check(Directory.Exists(Path.Combine(repo,".git")) && (await Get("reports")).AsArray().Count==1 && (await Get("jobs")).AsArray().Count==3,"project deletion preserves repository reports and job history");
-    Stop(); Start(); await Wait(); await Post("login",new {password="fixture-password-12345"});
+    Stop(); Start(); await Wait(); await Post("login",new {password="1"});
     Check((await Get("projects"))["projects"]!.AsArray().Count==0,"empty project catalog survives restart");
     project.ProjectId="";
     await Post("projects",new {revision=(long)(await Get("projects"))["revision"]!,settings=project});

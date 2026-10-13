@@ -49,7 +49,15 @@ export function Reports({ tick }: { tick: number }) {
           </Action>
           <small>{new Date(r.modified).toLocaleString()}</small>
           <a href={"/api/v1/reports/" + encodeURIComponent(r.name)} download>
-            {t("Скачать", "Download")}
+            {t("Скачать Markdown", "Download Markdown")}
+          </a>
+          <a
+            href={
+              "/api/v1/reports/" + encodeURIComponent(r.name) + "?format=html"
+            }
+            download
+          >
+            {t("Скачать HTML", "Download HTML")}
           </a>
         </div>
       ))}

@@ -57,9 +57,14 @@ The startup script keeps data in the extracted package's `data` folder; supply
 launch defaults to `%LOCALAPPDATA%/KommitEye.Server`; override with
 `KOMMITEYE_DATA_DIR` or `--data-dir <absolute-path>`.
 
-The initial administrator password is generated into `initial-password.txt` in
-the data directory, or supplied through `KOMMITEYE_ADMIN_PASSWORD` before the
-first launch. The login verifier is PBKDF2-hashed in `admin.json`; authentication
+On first launch, open `http://localhost:5080` on the server computer and choose
+your administrator password in the setup form. No password is generated. Any
+nonempty password is accepted; very weak passwords show a nonblocking warning.
+Initial setup is restricted to loopback connections; subsequent sign-in works
+over the LAN. Set up before exposing a reverse proxy. An existing `admin.json`
+preserves the current password and disables setup. An explicitly supplied
+`KOMMITEYE_ADMIN_PASSWORD` can also initialize a new installation.
+The login verifier is PBKDF2-hashed in `admin.json`; authentication
 cookies are HttpOnly/SameSite and their signing keys are DPAPI protected.
 Keep the data directory private. LAN HTTP is for trusted test networks; configure
 TLS at a reverse proxy when transport encryption is required. No internet exposure,
@@ -160,3 +165,11 @@ model/Git views, two-second refresh, optional auto-scroll, line filtering and a
 download of the displayed tail. The tail is bounded to 500 entries / 128,000
 characters. Clear requires confirmation and deletes only the selected log and its
 rotated archive; it preserves reports, token counters and the other log type.
+
+### HTML report export
+
+The Reports page offers Markdown and HTML downloads for every saved report.
+HTML is generated on demand from the current Markdown report, including old
+reports, and contains its own styles for offline viewing and printing. Model
+and Git text is HTML-escaped; no scripts or external assets are included.
+The Markdown source remains the persisted report used by the review engine.

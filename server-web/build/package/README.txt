@@ -3,8 +3,9 @@ KommitEye Web Server — LAN distribution
 1. Extract the archive. Install Git for Windows if it is not in PATH.
 2. Run Start-KommitEye.ps1 in PowerShell.
 3. Open http://localhost:5080 on the server or http://<server-address>:5080 in your LAN.
-4. Read data/initial-password.txt for the generated administrator password.
-   Alternatively set KOMMITEYE_ADMIN_PASSWORD (12+ characters) before the FIRST launch.
+4. On first launch, open localhost on the server computer and choose your password.
+   Weak passwords show a warning but are accepted. Existing passwords are preserved.
+   Alternatively supply KOMMITEYE_ADMIN_PASSWORD before the FIRST launch.
 5. Configure a repository path ON THE SERVER and a model endpoint reachable by it.
 
 Web Server includes both the server and web interface in one distribution.

@@ -6,27 +6,45 @@ namespace KommitEye.Server;
 public sealed class ServerSecurity
 {
     private sealed record PasswordData(string Salt, string Hash);
-    private readonly PasswordData _password;
+    private readonly object _gate = new();
+    private readonly string _path;
+    private PasswordData? _password;
+    public bool NeedsSetup { get { lock (_gate) return _password is null; } }
     public ServerSecurity(string directory)
     {
-        var path = Path.Combine(directory, "admin.json");
-        if (File.Exists(path)) _password = JsonSerializer.Deserialize<PasswordData>(File.ReadAllText(path))!;
+        _path = Path.Combine(directory, "admin.json");
+        if (File.Exists(_path)) _password = JsonSerializer.Deserialize<PasswordData>(File.ReadAllText(_path))
+            ?? throw new InvalidDataException("Invalid administrator configuration.");
         else
         {
             var password = Environment.GetEnvironmentVariable("KOMMITEYE_ADMIN_PASSWORD");
-            if (string.IsNullOrWhiteSpace(password))
-            {
-                password = Convert.ToHexString(RandomNumberGenerator.GetBytes(18));
-                File.WriteAllText(Path.Combine(directory, "initial-password.txt"), password);
-                Console.WriteLine("Initial administrator password is in " + Path.Combine(directory, "initial-password.txt"));
-            }
-            if (password.Length < 12) throw new InvalidOperationException("Administrator password must contain at least 12 characters.");
+            if (!string.IsNullOrEmpty(password)) Setup(password);
+            else Console.WriteLine("Open this server in a browser on localhost to create your administrator password.");
+        }
+    }
+    public void Setup(string password)
+    {
+        lock (_gate)
+        {
+            if (_password is not null) throw new InvalidOperationException("Administrator password is already configured. Sign in.");
+            if (string.IsNullOrEmpty(password)) throw new ArgumentException("Enter a password.");
             var salt = RandomNumberGenerator.GetBytes(32);
-            _password = new(Convert.ToBase64String(salt), Convert.ToBase64String(Hash(password, salt)));
-            File.WriteAllText(path, JsonSerializer.Serialize(_password));
+            var value = new PasswordData(Convert.ToBase64String(salt), Convert.ToBase64String(Hash(password, salt)));
+            var temporary = _path + ".tmp";
+            using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, value); stream.Flush(true);
+            }
+            File.Move(temporary, _path, false);
+            _password = value;
         }
     }
     private static byte[] Hash(string value, byte[] salt) => Rfc2898DeriveBytes.Pbkdf2(value, salt, 210000, HashAlgorithmName.SHA256, 32);
-    public bool Verify(string password) => password.Length <= 1024 && CryptographicOperations.FixedTimeEquals(
-        Hash(password, Convert.FromBase64String(_password.Salt)), Convert.FromBase64String(_password.Hash));
+    public bool Verify(string password)
+    {
+        PasswordData? saved;
+        lock (_gate) saved = _password;
+        return saved is not null && CryptographicOperations.FixedTimeEquals(
+            Hash(password, Convert.FromBase64String(saved.Salt)), Convert.FromBase64String(saved.Hash));
+    }
 }

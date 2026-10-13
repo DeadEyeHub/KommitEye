@@ -536,3 +536,10 @@ dialog.modal:has(.project-log) {
     flex-direction: column;
   }
 }
+
+.password-warning {
+  color: #754000;
+  background: #fff4da;
+  padding: 12px;
+  border-radius: 8px;
+}

@@ -73,6 +73,17 @@ app.Use(async (context, next) =>
     }
 });
 app.UseAuthentication(); app.UseAuthorization(); app.UseRateLimiter();
+app.MapGet("/api/v1/setup", (HttpContext context, ServerSecurity security) => new { required = security.NeedsSetup,
+    local = context.Connection.RemoteIpAddress is { } address && System.Net.IPAddress.IsLoopback(address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address) });
+app.MapPost("/api/v1/setup", async (LoginRequest request, HttpContext context, ServerSecurity security) =>
+{
+    var address = context.Connection.RemoteIpAddress;
+    if (address is null || !System.Net.IPAddress.IsLoopback(address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address))
+        return Results.Json(new { error = "Open localhost on the server computer to create the first administrator password." }, statusCode: 403);
+    security.Setup(request.Password);
+    await context.SignInAsync(new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "admin")], CookieAuthenticationDefaults.AuthenticationScheme)));
+    return Results.Ok();
+}).RequireRateLimiting("login");
 app.MapPost("/api/v1/login", async (LoginRequest request, HttpContext context, ServerSecurity security) =>
 {
     if (!security.Verify(request.Password)) return Results.Unauthorized();
@@ -104,10 +115,11 @@ api.MapPost("/projects/{id}/log/clear", (string id, bool? details, ProjectCoordi
 api.MapGet("/jobs", (JobStore jobs) => jobs.List().Take(200));
 api.MapGet("/jobs/{id}", (string id, JobStore jobs) => jobs.List().FirstOrDefault(j => j.Id == id) is { } job ? Results.Ok(job) : Results.NotFound());
 api.MapGet("/reports", () => Directory.GetFiles(AppPaths.ReportsDirectory, "*.md").Select(path => new { name = Path.GetFileName(path), modified = File.GetLastWriteTimeUtc(path), size = new FileInfo(path).Length }).OrderByDescending(r => r.modified));
-api.MapGet("/reports/{name}", (string name) =>
+api.MapGet("/reports/{name}", (string name, string? format) =>
 {
     if (name != Path.GetFileName(name) || !name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest();
     var path = Path.Combine(AppPaths.ReportsDirectory, name);
+    if (format == "html" && File.Exists(path)) return Results.File(System.Text.Encoding.UTF8.GetBytes(HtmlReport.Render(name, File.ReadAllText(path))), "text/html; charset=utf-8", Path.ChangeExtension(name, ".html"));
     return File.Exists(path) ? Results.File(path, "text/plain; charset=utf-8") : Results.NotFound();
 });
 api.MapGet("/projects/{id}/commits", async (string id, int? offset, string? head, ProjectCoordinator coordinator) =>

@@ -92,13 +92,14 @@ api.MapGet("/usage", (ProjectCoordinator coordinator) => coordinator.Usage());
 api.MapPost("/repositories/branches", async (RepositoryRequest request, CancellationToken token) => await new GitService().GetBranchesAsync(request.Path, token));
 api.MapPost("/projects/{id}/start-commit", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
 { await coordinator.SetStartCommitAsync(id, request.Sha ?? throw new ArgumentException("SHA required.")); return Results.Ok(); });
-api.MapPost("/projects", async (ProjectUpdate request, ProjectCoordinator coordinator) => { await coordinator.SaveProjectAsync(request.Settings, request.Revision); return Results.Ok(); });
+api.MapPost("/projects", async (ProjectUpdate request, ProjectCoordinator coordinator) => { RepositoryApi.ValidateMode(request.Settings); await coordinator.SaveProjectAsync(request.Settings, request.Revision); return Results.Ok(); });
 api.MapPost("/projects/{id}/start", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
     Results.Accepted(value: await coordinator.StartAsync(id, null, request.RequestKey)));
 api.MapPost("/projects/{id}/reviews", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
     Results.Accepted(value: await coordinator.StartAsync(id, request.Sha ?? throw new ArgumentException("SHA required."), request.RequestKey)));
 api.MapPost("/projects/{id}/stop", async (string id, ProjectCoordinator coordinator) => { await coordinator.StopAsync(id); return Results.Ok(); });
 api.MapGet("/projects/{id}/log", (string id, bool? details, ProjectCoordinator coordinator) => Results.Text(coordinator.Log(id, details == true)));
+api.MapPost("/projects/{id}/log/clear", (string id, bool? details, ProjectCoordinator coordinator) => { coordinator.ClearLog(id, details == true); return Results.Ok(); });
 api.MapGet("/jobs", (JobStore jobs) => jobs.List().Take(200));
 api.MapGet("/jobs/{id}", (string id, JobStore jobs) => jobs.List().FirstOrDefault(j => j.Id == id) is { } job ? Results.Ok(job) : Results.NotFound());
 api.MapGet("/reports", () => Directory.GetFiles(AppPaths.ReportsDirectory, "*.md").Select(path => new { name = Path.GetFileName(path), modified = File.GetLastWriteTimeUtc(path), size = new FileInfo(path).Length }).OrderByDescending(r => r.modified));
@@ -122,6 +123,7 @@ api.MapGet("/projects/{id}/branches", async (string id, ProjectCoordinator coord
     return await new GitService().GetBranchesAsync(project.RepositoryPath, default);
 });
 SettingsApi.Map(api);
+RepositoryApi.Map(api);
 var coordinator = app.Services.GetRequiredService<ProjectCoordinator>();
 var hub = app.Services.GetRequiredService<IHubContext<EventsHub>>();
 coordinator.Changed += value => { _ = Broadcast(value); };

@@ -66,11 +66,26 @@ try
     Check((await http.GetAsync("projects")).StatusCode == HttpStatusCode.Unauthorized,"anonymous project access denied");
     Check((await http.PostAsJsonAsync("login",new {password="fixture-password-12345"})).StatusCode == HttpStatusCode.Forbidden,"cross-site form commands blocked");
     http.DefaultRequestHeaders.Add("X-KommitEye-Client","web");
+    Check((await http.PostAsJsonAsync("repositories/browse",new {path=repo})).StatusCode == HttpStatusCode.Unauthorized,"server file browsing requires authentication");
     Check((await http.PostAsJsonAsync("login",new {password="incorrect"})).StatusCode == HttpStatusCode.Unauthorized,"wrong password denied");
     await Post("login",new {password="fixture-password-12345"});
     var snapshot = await Get("projects");
     var project = snapshot["projects"]![0]!.Deserialize<AppSettings>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     project.DisplayName="Fixture";project.RepositoryPath=repo;project.BranchRef="refs/heads/main";project.PullEnabled=false;
+    var fixtureKey = Path.Combine(repo,"fixture.key"); await File.WriteAllTextAsync(fixtureKey,"PRIVATE-KEY-CONTENT-MUST-NOT-LEAVE-SERVER");
+    var folders = await Post("repositories/browse",new {path=repo,files=false});
+    Check(folders!["entries"]!.AsArray().All(e => e!["directory"]!.GetValue<bool>()),"repository picker lists directories only");
+    var files = await Post("repositories/browse",new {path=fixtureKey,files=true});
+    Check(files!["entries"]!.AsArray().Any(e => (string)e!["path"]! == fixtureKey) && !files.ToJsonString().Contains("PRIVATE-KEY-CONTENT"),"key picker returns metadata without private key contents");
+    Check((string)(await Post("repositories/detect",project))!["mode"]! == "ssh-agent","authentication detection supports local repositories");
+    foreach(var mode in new[]{"auto","ssh-agent","ssh-key","putty-key","https"})
+    {
+        project.GitAuthenticationMode=mode;
+        Check((string)(await Post("repositories/test",project))!["remote"]! == "","connection test validates local repository in "+mode+" mode");
+    }
+    project.GitAuthenticationMode="invalid";
+    Check((await http.PostAsJsonAsync("repositories/test",project)).StatusCode==HttpStatusCode.BadRequest,"unsupported authentication mode rejected");
+    project.GitAuthenticationMode="auto";
     await Post("projects",new {revision=(long)snapshot["revision"]!,settings=project});
     Check((await http.PostAsJsonAsync("projects",new {revision=(long)snapshot["revision"]!,settings=project})).StatusCode==HttpStatusCode.Conflict,"stale project edit rejected");
     var models=await Get("models");
@@ -97,8 +112,17 @@ try
     await Post($"projects/{project.ProjectId}/stop",new {});
     Check((string)(await Get("jobs/"+(string)monitoring!["id"]!))["status"]! == "canceled","explicit Stop persists canceled job");
     var interrupted = await Post($"projects/{project.ProjectId}/start",new {requestKey=Guid.NewGuid().ToString()});
-    Stop(); Start(); await Wait();
+    Stop();
+    var detailPath=Path.Combine(root,"data","logs",project.ProjectId,"model.log");
+    Directory.CreateDirectory(Path.GetDirectoryName(detailPath)!);
+    await File.WriteAllTextAsync(detailPath,"fixture detail log\n"); await File.WriteAllTextAsync(detailPath+".1","fixture archived log\n");
+    Start(); await Wait();
     await Post("login",new {password="fixture-password-12345"});
+    var journalBefore=await http.GetStringAsync($"projects/{project.ProjectId}/log");
+    Check((await http.GetStringAsync($"projects/{project.ProjectId}/log?details=true")).Contains("fixture archived log"),"detail log includes persisted rotated history");
+    await Post($"projects/{project.ProjectId}/log/clear?details=true",new {});
+    Check((await http.GetStringAsync($"projects/{project.ProjectId}/log?details=true")) == "" && !File.Exists(detailPath) && !File.Exists(detailPath+".1"),"clear removes detailed log and rotated archive");
+    Check(await http.GetStringAsync($"projects/{project.ProjectId}/log") == journalBefore && (await Get("reports")).AsArray().Count==1,"clearing details preserves journal and reports");
     Check((await Get("jobs")).AsArray().Count==3,"job history survives restart");
     Check((string)(await Get("jobs/"+(string)interrupted!["id"]!))["status"]! == "interrupted","crashed monitoring is visible as interrupted after restart");
     var after=await Post($"projects/{project.ProjectId}/reviews",new {requestKey=key,sha});

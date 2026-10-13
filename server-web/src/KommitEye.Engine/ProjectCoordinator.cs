@@ -79,6 +79,7 @@ public sealed class ProjectCoordinator : IAsyncDisposable
             var branches = await git.GetBranchesAsync(project.RepositoryPath, default);
             if (!branches.Contains(project.BranchRef) && branches.Contains("refs/heads/" + project.BranchRef)) project.BranchRef = "refs/heads/" + project.BranchRef;
             project.BranchRef = await git.ResolveBranchAsync(project.RepositoryPath, project.BranchRef, default);
+            if (project.GitAuthenticationMode == "auto") project.GitAuthenticationMode = await git.DetectAuthenticationModeAsync(project.RepositoryPath, default, project.BranchRef);
             var catalog = _configuration.LoadProjects();
             if (string.IsNullOrEmpty(project.ProjectId)) project.ProjectId = Guid.NewGuid().ToString("N");
             var index = catalog.Projects.FindIndex(p => p.ProjectId == project.ProjectId);
@@ -195,6 +196,15 @@ public sealed class ProjectCoordinator : IAsyncDisposable
             var runtime = _runtimes.GetValueOrDefault(id) ?? throw new KeyNotFoundException();
             return (details ? runtime.Details : runtime.Journal).Snapshot(true) ?? "";
         }
+    }
+    public void ClearLog(string id, bool details)
+    {
+        lock (_stateGate)
+        {
+            var runtime = _runtimes.GetValueOrDefault(id) ?? throw new KeyNotFoundException();
+            (details ? runtime.Details : runtime.Journal).Clear();
+        }
+        Changed?.Invoke(new(id, "log-cleared", "", DateTimeOffset.UtcNow));
     }
     public async ValueTask DisposeAsync()
     {

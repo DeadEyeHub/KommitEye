@@ -143,4 +143,21 @@ GitHub Actions verifies changes on master, codex branches and pull requests. A
 four-product matrix creates Full, Server, Web and Desktop artifacts. Only master
 publishes an official version; all packages must succeed. A draft release receives
 all artifacts/checksums before publication. Existing releases are not overwritten.
-Local commits do not themselves run GitHub Actions until pushed.
+Local commits do not themselves run GitHub Actions until pushed. This standalone
+copy is now under `server-web/`: its nested `.github/workflows` is preserved as a
+reference and does not run automatically. The legacy root workflow is unchanged.
+
+### Web repository connection and logs (3.4.1)
+
+Project settings provide SSH Agent, SSH key file, PuTTY (.ppk), HTTPS and automatic
+remote detection. Browse buttons select existing folders and files on the server;
+they do not upload a client repository or transfer private key contents. Git
+Credential Manager, SSH Agent and Pageant must be configured for the account
+running the server (or its Windows service). Connection testing uses the same
+Git access test as Desktop and does not fetch or advance the working branch.
+
+Each project has a Logs button opening a separate dialog with journal and detailed
+model/Git views, two-second refresh, optional auto-scroll, line filtering and a
+download of the displayed tail. The tail is bounded to 500 entries / 128,000
+characters. Clear requires confirmation and deletes only the selected log and its
+rotated archive; it preserves reports, token counters and the other log type.

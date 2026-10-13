@@ -492,3 +492,47 @@ dialog.modal::backdrop {
     max-width: 100%;
   }
 }
+.path-field {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.path-field .field {
+  flex: 1;
+  min-width: 0;
+}
+.repository-connection {
+  margin-bottom: 28px;
+}
+.server-files {
+  list-style: none;
+  padding: 0;
+  max-height: 40vh;
+  overflow: auto;
+}
+.server-files li {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.server-files button {
+  text-align: left;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+.project-log .log {
+  height: 44vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+dialog.modal:has(.project-log) {
+  width: min(1100px, 94vw);
+  max-width: 94vw;
+}
+@media (max-width: 600px) {
+  .path-field {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

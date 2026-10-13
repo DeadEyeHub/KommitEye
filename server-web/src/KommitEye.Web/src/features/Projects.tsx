@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { RepositoryConnection } from "./RepositoryConnection";
+import { ProjectLog } from "./ProjectLog";
 import {
   t,
   language,
@@ -22,6 +24,7 @@ export function Projects({ tick }: { tick: number }) {
     [selected, setSelected] = useState(""),
     [log, setLog] = useState(""),
     [details, setDetails] = useState(false),
+    [logProject, setLogProject] = useState<Data | null>(null),
     [sha, setSha] = useState(""),
     [commits, setCommits] = useState<Data[]>([]),
     [offset, setOffset] = useState(0),
@@ -40,14 +43,22 @@ export function Projects({ tick }: { tick: number }) {
       .catch(() => {});
   }, [tick]);
   useEffect(() => {
+    let active = true;
     if (selected)
       api<string>(`/projects/${selected}/log?details=${details}`)
-        .then(setLog)
+        .then((value) => {
+          if (active) setLog(value);
+        })
         .catch((e) => setError(e.message));
+    return () => {
+      active = false;
+    };
   }, [selected, details, tick]);
+  useEffect(() => {
+    setBranches([]);
+  }, [edit?.repositoryPath]);
   const fields = [
     "displayName",
-    "repositoryPath",
     "branchRef",
     "pollIntervalSeconds",
     "pullEnabled",
@@ -56,9 +67,6 @@ export function Projects({ tick }: { tick: number }) {
     "quietHoursEnabled",
     "quietHoursStart",
     "quietHoursEnd",
-    "gitAuthenticationMode",
-    "sshPrivateKeyPath",
-    "plinkPath",
   ];
   const newProject = () =>
     setEdit({
@@ -106,6 +114,7 @@ export function Projects({ tick }: { tick: number }) {
               "Paths and Git keys refer to the server computer.",
             )}
           </p>
+          <RepositoryConnection value={edit} set={setEdit} />
           <div className="form-grid">
             <ObjectFields value={edit} set={setEdit} keys={fields} />
             <label className="field">
@@ -263,6 +272,9 @@ export function Projects({ tick }: { tick: number }) {
                           >
                             {t("Настроить", "Configure")}
                           </button>
+                          <button onClick={() => setLogProject(p)}>
+                            {t("Логи", "Logs")}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -370,6 +382,13 @@ export function Projects({ tick }: { tick: number }) {
             </section>
           )}
         </>
+      )}
+      {logProject && (
+        <ProjectLog
+          id={logProject.projectId}
+          name={logProject.displayName || logProject.repositoryPath}
+          close={() => setLogProject(null)}
+        />
       )}
     </>
   );

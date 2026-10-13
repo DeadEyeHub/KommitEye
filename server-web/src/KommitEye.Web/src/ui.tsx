@@ -3,9 +3,11 @@ export type Data = Record<string, any>;
 export function Modal({
   children,
   onClose,
+  titleId = "smtp-title",
 }: {
   children: ReactNode;
   onClose: () => void;
+  titleId?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
@@ -16,7 +18,7 @@ export function Modal({
     <dialog
       ref={ref}
       className="modal"
-      aria-labelledby="smtp-title"
+      aria-labelledby={titleId}
       onCancel={(e) => {
         e.preventDefault();
         onClose();

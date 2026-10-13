@@ -139,6 +139,12 @@ export function Models() {
               />
               {t("Активный профиль", "Active profile")}
             </label>
+            <p className="muted">
+              {t(
+                "Использовать эту модель и её параметры для проверок всех проектов. Выбор применяется после сохранения; текущая проверка продолжит работу с прежними настройками.",
+                "Use this model and its parameters for reviews in all projects. The selection applies after saving; the current review keeps its existing settings.",
+              )}
+            </p>
             <details>
               <summary>
                 {t(

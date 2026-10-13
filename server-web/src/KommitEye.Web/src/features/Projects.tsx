@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { RepositoryConnection } from "./RepositoryConnection";
+import { BranchSelect } from "./BranchSelect";
 import { ProjectLog } from "./ProjectLog";
 import {
   t,
@@ -21,6 +22,7 @@ export function Projects({ tick }: { tick: number }) {
     }),
     [error, setError] = useState(""),
     [edit, setEdit] = useState<Data | null>(null),
+    [deleting, setDeleting] = useState<Data | null>(null),
     [selected, setSelected] = useState(""),
     [log, setLog] = useState(""),
     [details, setDetails] = useState(false),
@@ -30,7 +32,6 @@ export function Projects({ tick }: { tick: number }) {
     [offset, setOffset] = useState(0),
     [head, setHead] = useState(""),
     [hasMore, setHasMore] = useState(true),
-    [branches, setBranches] = useState<string[]>([]),
     [usage, setUsage] = useState<Data | null>(null);
   const load = () =>
     api("/projects")
@@ -54,12 +55,8 @@ export function Projects({ tick }: { tick: number }) {
       active = false;
     };
   }, [selected, details, tick]);
-  useEffect(() => {
-    setBranches([]);
-  }, [edit?.repositoryPath]);
   const fields = [
     "displayName",
-    "branchRef",
     "pollIntervalSeconds",
     "pullEnabled",
     "fetchSubmodules",
@@ -115,6 +112,15 @@ export function Projects({ tick }: { tick: number }) {
             )}
           </p>
           <RepositoryConnection value={edit} set={setEdit} />
+          <BranchSelect
+            path={edit.repositoryPath}
+            value={edit.branchRef}
+            change={(branchRef) =>
+              setEdit((current) =>
+                current ? { ...current, branchRef } : current,
+              )
+            }
+          />
           <div className="form-grid">
             <ObjectFields value={edit} set={setEdit} keys={fields} />
             <label className="field">
@@ -127,32 +133,6 @@ export function Projects({ tick }: { tick: number }) {
                 <option value="en">English</option>
               </select>
             </label>
-          </div>
-          <div className="buttons">
-            <Action
-              onClick={async () =>
-                setBranches(
-                  await api("/repositories/branches", {
-                    path: edit.repositoryPath,
-                  }),
-                )
-              }
-            >
-              {t("Загрузить ветки", "Load branches")}
-            </Action>
-            {branches.length > 0 && (
-              <select
-                aria-label="Repository branches"
-                value={edit.branchRef}
-                onChange={(e) =>
-                  setEdit({ ...edit, branchRef: e.target.value })
-                }
-              >
-                {branches.map((b) => (
-                  <option key={b}>{b}</option>
-                ))}
-              </select>
-            )}
           </div>
           <div className="buttons">
             <Action
@@ -272,6 +252,23 @@ export function Projects({ tick }: { tick: number }) {
                           >
                             {t("Настроить", "Configure")}
                           </button>
+                          <button
+                            className="danger"
+                            disabled={status.running}
+                            title={
+                              status.running
+                                ? t(
+                                    "Сначала остановите проект",
+                                    "Stop the project first",
+                                  )
+                                : undefined
+                            }
+                            onClick={() =>
+                              setDeleting({ ...p, _revision: data.revision })
+                            }
+                          >
+                            {t("Удалить", "Delete")}
+                          </button>
                           <button onClick={() => setLogProject(p)}>
                             {t("Логи", "Logs")}
                           </button>
@@ -382,6 +379,46 @@ export function Projects({ tick }: { tick: number }) {
             </section>
           )}
         </>
+      )}
+      {deleting && (
+        <Modal titleId="delete-project-title" onClose={() => setDeleting(null)}>
+          <h2 id="delete-project-title">
+            {t("Удалить проект?", "Delete project?")}
+          </h2>
+          <p>
+            {deleting.displayName ||
+              deleting.repositoryPath ||
+              t("Без названия", "Untitled")}
+          </p>
+          <p>
+            {t(
+              "Проект будет удалён из списка. Репозиторий, отчёты, логи и история проверок сохранятся.",
+              "The project will be removed from the list. Repository files, reports, logs and review history will be kept.",
+            )}
+          </p>
+          <div className="buttons">
+            <Action
+              danger
+              onClick={async () => {
+                await api(`/projects/${deleting.projectId}/delete`, {
+                  revision: deleting._revision,
+                });
+                if (selected === deleting.projectId) {
+                  setSelected("");
+                  setLog("");
+                  setCommits([]);
+                }
+                setDeleting(null);
+                await load();
+              }}
+            >
+              {t("Удалить проект", "Delete project")}
+            </Action>
+            <button onClick={() => setDeleting(null)}>
+              {t("Отмена", "Cancel")}
+            </button>
+          </div>
+        </Modal>
       )}
       {logProject && (
         <ProjectLog

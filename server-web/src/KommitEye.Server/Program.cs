@@ -36,7 +36,7 @@ builder.Services.AddRateLimiter(options => options.AddPolicy("login", context =>
     RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new()
     { PermitLimit = 8, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })));
 builder.Services.AddSingleton(new ServerSecurity(AppPaths.DataDirectory));
-builder.Services.AddSingleton<ConfigurationStore>(); builder.Services.AddSingleton<ModelClient>();
+builder.Services.AddSingleton(new ConfigurationStore { AllowEmptyProjects = true }); builder.Services.AddSingleton<ModelClient>();
 builder.Services.AddSingleton<StateStore>(); builder.Services.AddSingleton<ReportWriter>();
 builder.Services.AddSingleton(new JobStore(AppPaths.DataDirectory));
 builder.Services.AddSingleton<OAuthOperations>();
@@ -93,6 +93,7 @@ api.MapPost("/repositories/branches", async (RepositoryRequest request, Cancella
 api.MapPost("/projects/{id}/start-commit", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
 { await coordinator.SetStartCommitAsync(id, request.Sha ?? throw new ArgumentException("SHA required.")); return Results.Ok(); });
 api.MapPost("/projects", async (ProjectUpdate request, ProjectCoordinator coordinator) => { RepositoryApi.ValidateMode(request.Settings); await coordinator.SaveProjectAsync(request.Settings, request.Revision); return Results.Ok(); });
+api.MapPost("/projects/{id}/delete", async (string id, ProjectDelete request, ProjectCoordinator coordinator) => { await coordinator.DeleteProjectAsync(id, request.Revision); return Results.Ok(); });
 api.MapPost("/projects/{id}/start", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
     Results.Accepted(value: await coordinator.StartAsync(id, null, request.RequestKey)));
 api.MapPost("/projects/{id}/reviews", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
@@ -136,6 +137,7 @@ await app.RunAsync();
 public sealed class EventsHub : Hub;
 public sealed record LoginRequest(string Password);
 public sealed record ProjectUpdate(long Revision, AppSettings Settings);
+public sealed record ProjectDelete(long Revision);
 public sealed record StartRequest(string RequestKey, string? Sha);
 public sealed record OAuthRequest(string Configuration);
 public sealed record RepositoryRequest(string Path);

@@ -7,6 +7,7 @@ namespace KommitEye.Services;
 public sealed class ConfigurationStore
 {
     public bool WritesEnabled { get; set; } = true;
+    public bool AllowEmptyProjects { get; init; }
     public ConfigurationStore() => AppPaths.EnsureCreated();
 
     private static string ProjectsPath => Path.Combine(AppPaths.DataDirectory, "projects.json");
@@ -21,8 +22,9 @@ public sealed class ConfigurationStore
         return catalog;
     }
 
-    private static void ValidateProjects(ProjectCatalog catalog)
+    private void ValidateProjects(ProjectCatalog catalog)
     {
+        if (AllowEmptyProjects && catalog.Version == 1 && catalog.Projects is { Count: 0 } && catalog.ActiveIndex == 0) return;
         if (catalog.Version != 1 || catalog.Projects is null || catalog.Projects.Count == 0 ||
             catalog.ActiveIndex < 0 || catalog.ActiveIndex >= catalog.Projects.Count ||
             catalog.Projects.Any(p => p is null || p.RepositoryPath is null || p.BranchRef is null))

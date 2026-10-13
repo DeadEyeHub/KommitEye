@@ -150,6 +150,26 @@ public sealed class ProjectCoordinator : IAsyncDisposable
         }
         finally { _commands.Release(); }
     }
+    public async Task DeleteProjectAsync(string id, long revision)
+    {
+        await _commands.WaitAsync();
+        try
+        {
+            if (revision != _jobs.Revision()) throw new InvalidOperationException("Settings changed in another browser. Reload before deleting.");
+            var runtime = _runtimes.GetValueOrDefault(id) ?? throw new KeyNotFoundException("Project not found.");
+            if (runtime.Status.Running) throw new InvalidOperationException("Stop the project before deleting it.");
+            var catalog = _configuration.LoadProjects();
+            var index = catalog.Projects.FindIndex(p => p.ProjectId == id);
+            if (index < 0) throw new KeyNotFoundException("Project not found.");
+            catalog.Projects.RemoveAt(index);
+            catalog.ActiveIndex = Math.Clamp(catalog.ActiveIndex > index ? catalog.ActiveIndex - 1 : catalog.ActiveIndex, 0, Math.Max(0, catalog.Projects.Count - 1));
+            _jobs.AdvanceRevision(); _configuration.SaveProjects(catalog);
+            lock (_stateGate) _runtimes.Remove(id);
+            runtime.Cancellation?.Dispose();
+            Changed?.Invoke(new(id, "project-deleted", "", DateTimeOffset.UtcNow));
+        }
+        finally { _commands.Release(); }
+    }
     public async Task StopAsync(string id)
     {
         await _commands.WaitAsync();

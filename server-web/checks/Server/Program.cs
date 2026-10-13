@@ -109,6 +109,7 @@ try
     await Post("logout",new {});
     await Post("login",new {password="fixture-password-12345"});
     Check((await Get("projects"))["statuses"]![0]!["running"]!.GetValue<bool>(),"signing out does not stop server monitoring");
+    Check((await http.PostAsJsonAsync($"projects/{project.ProjectId}/delete",new {revision=(long)(await Get("projects"))["revision"]!})).StatusCode==HttpStatusCode.Conflict,"running project cannot be deleted");
     await Post($"projects/{project.ProjectId}/stop",new {});
     Check((string)(await Get("jobs/"+(string)monitoring!["id"]!))["status"]! == "canceled","explicit Stop persists canceled job");
     var interrupted = await Post($"projects/{project.ProjectId}/start",new {requestKey=Guid.NewGuid().ToString()});
@@ -128,6 +129,16 @@ try
     var after=await Post($"projects/{project.ProjectId}/reviews",new {requestKey=key,sha});
     Check((string)after!["id"]! == (string)job["id"]!,"request deduplication survives restart");
     Check((await Get("mail/smtp"))["passwordConfigured"]!.GetValue<bool>(),"SMTP secret survives restart");
+    var deleteRevision=(long)(await Get("projects"))["revision"]!;
+    Check((await http.PostAsJsonAsync($"projects/{project.ProjectId}/delete",new {revision=deleteRevision-1})).StatusCode==HttpStatusCode.Conflict,"stale deletion rejected");
+    await Post($"projects/{project.ProjectId}/delete",new {revision=deleteRevision});
+    Check((await Get("projects"))["projects"]!.AsArray().Count==0 && (await Get("projects"))["statuses"]!.AsArray().Count==0,"last project can be deleted without a placeholder");
+    Check(Directory.Exists(Path.Combine(repo,".git")) && (await Get("reports")).AsArray().Count==1 && (await Get("jobs")).AsArray().Count==3,"project deletion preserves repository reports and job history");
+    Stop(); Start(); await Wait(); await Post("login",new {password="fixture-password-12345"});
+    Check((await Get("projects"))["projects"]!.AsArray().Count==0,"empty project catalog survives restart");
+    project.ProjectId="";
+    await Post("projects",new {revision=(long)(await Get("projects"))["revision"]!,settings=project});
+    Check((await Get("projects"))["projects"]!.AsArray().Count==1,"project can be added after deleting the last project");
     await Post("logout",new {});
     Check((await http.GetAsync("projects")).StatusCode==HttpStatusCode.Unauthorized,"logout invalidates browser session");
     Console.WriteLine($"PASS: {checks} server integration checks. Fixture: {root}");

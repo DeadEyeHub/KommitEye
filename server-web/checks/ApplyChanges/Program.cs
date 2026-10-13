@@ -1,0 +1,130 @@
+using System.IO;
+using System.Reflection;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using KommitEye;
+using KommitEye.Services;
+
+class Program
+{
+    [STAThread] static void Main()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "settings-windows-" + Guid.NewGuid());
+        Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", root);
+        var app = new Application();
+        var window = new MainWindow();
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        object? Call(string name, params object[] args) => typeof(MainWindow).GetMethod(name, flags)!.Invoke(window, args);
+        T Field<T>(string name) => (T)typeof(MainWindow).GetField(name, flags)!.GetValue(window)!;
+        void Set(string name, object? value) => typeof(MainWindow).GetField(name, flags)!.SetValue(window, value);
+        void Apply(string section) => ((Task)Call("ApplySettingsSectionAsync", section)!).GetAwaiter().GetResult();
+        var count = 0;
+        void Check(bool ok, string name) { if(!ok) throw new Exception(name); count++; Console.WriteLine("PASS: " + name); }
+        var store = new ConfigurationStore();
+        var projectFile = Path.Combine(root, "projects.json");
+        var original = File.ReadAllText(projectFile);
+        var interval = Field<TextBox>("IntervalTextBox");
+        interval.Text = "90";
+        Field<CheckBox>("PullEnabledCheckBox").IsChecked = false;
+        Call("SaveAuthenticationPreferences");
+        Check(File.ReadAllText(projectFile) == original, "editing does not persist preferences");
+        Apply("project");
+        Check(store.LoadSettings().PollIntervalSeconds == 90 && !store.LoadSettings().PullEnabled, "Apply saves fields and checkboxes");
+        interval.Text = "invalid";
+        try { Apply("project"); throw new Exception("invalid accepted"); } catch (InvalidOperationException) { }
+        Check(store.LoadSettings().PollIntervalSeconds == 90, "failed validation preserves committed settings");
+        Call("RestoreSavedSettings", "project");
+        Check(interval.Text == "90", "Cancel restores last applied values");
+        var prompt = Field<TextBox>("PromptTextBox");
+        var oldPrompt = store.LoadPrompt();
+        prompt.Text = "Draft prompt";
+        Check(store.LoadPrompt() == oldPrompt, "prompt remains draft");
+        Apply("prompt");
+        Check(store.LoadPrompt() == "Draft prompt", "prompt applied");
+        prompt.Text = "Discard me"; Call("RestoreSavedSettings", "prompt");
+        Check(prompt.Text == "Draft prompt", "prompt canceled");
+        var endpoint = Field<TextBox>("EndpointTextBox");
+        var savedEndpoint = endpoint.Text;
+        endpoint.Text = "https://draft.example.invalid/v1";
+        Call("RestoreSavedSettings", "models");
+        Check(endpoint.Text == savedEndpoint, "model edits canceled without saving");
+        _ = Field<MailNotifications>("_mail").DisposeAsync();
+        var mail = new MailNotifications(root, _ => {}, startWorker:false, providers:[new Provider("gmail"), new Provider("outlook")]);
+        Set("_mail", mail); Call("BuildMailPanel");
+        var mailPanel = Field<StackPanel>("MailPanel");
+        var googlePanel = (StackPanel)((TabItem)((TabControl)mailPanel.Children[0]).Items[0]).Content;
+        var recipients = googlePanel.Children.OfType<TextBox>().Last();
+        recipients.Text = "recipient@example.invalid";
+        googlePanel.Children.OfType<CheckBox>().First().IsChecked = true;
+        Check(!File.Exists(Path.Combine(root,"mail-settings.json")), "mail checkbox and recipient do not save");
+        Set("_draftMailSender", "gmail"); Apply("mail");
+        Check(mail.Settings.Enabled && mail.Settings.Recipients == recipients.Text, "mail Apply persists preferences");
+        Field<Dictionary<string,string?>>("_pendingMailConnections")["gmail"] = null;
+        Field<Dictionary<string,string?>>("_pendingMailConnections")["outlook"] = "draft-client";
+        Call("RestoreSavedSettings", "mail");
+        Check(Field<Dictionary<string,string?>>("_pendingMailConnections").Count == 0,
+            "Cancel discards queued OAuth and disconnect without provider calls");
+        var tabs = Field<TabControl>("MainTabs");
+        Check(ReferenceEquals(tabs.SelectedItem, Field<TabItem>("DashboardTab")), "main stays on dashboard");
+        var settingsButtons = Field<UniformGrid>("SettingsButtons");
+        Check(settingsButtons.Children.OfType<Button>().Count() == 5, "all five sections available as dashboard buttons");
+        void Render(FrameworkElement surface, string name, double width, double height)
+        {
+            surface.Measure(new Size(width,height)); surface.Arrange(new Rect(0,0,width,height)); surface.UpdateLayout();
+            var bitmap = new RenderTargetBitmap((int)width,(int)height,96,96,PixelFormats.Pbgra32); bitmap.Render(surface);
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var file = File.Create(Path.Combine(AppContext.BaseDirectory,name+".png")); encoder.Save(file);
+        }
+        ((Grid)window.Content).Background = SystemColors.WindowBrush;
+        Render((FrameworkElement)window.Content,"dashboard",940,660);
+        window.WindowStartupLocation = WindowStartupLocation.Manual; window.Left = -10000; window.Top = -10000;
+        window.ShowActivated = false; window.ShowInTaskbar = false; window.Show();
+        foreach(var section in new[]{"project","models","mail","prompt","journal"})
+        {
+            Exception? failure = null;
+            window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+            {
+                var dialog = Field<Window>("_settingsWindow");
+                try
+                {
+                    Check(dialog is not null && dialog.Owner == window, section+" separate owned window");
+                    var surface = (FrameworkElement)dialog!.Content;
+                    Render(surface,section,surface.ActualWidth,surface.ActualHeight);
+                    if(section == "project")
+                    {
+                        interval.Text = "120";
+                        var grid = (Grid)dialog.Content;
+                        var footer = (Border)grid.Children[1];
+                        var buttons = ((StackPanel)footer.Child).Children.OfType<Button>().ToArray();
+                        buttons[0].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        Check(dialog.IsVisible && store.LoadSettings().PollIntervalSeconds == 120, "Apply keeps window open");
+                        interval.Text = "130";
+                        buttons[1].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                        Check(!dialog.IsVisible && store.LoadSettings().PollIntervalSeconds == 130, "OK saves and closes");
+                    }
+                    else dialog.Close();
+                }
+                catch(Exception error) { failure=error; dialog?.Close(); }
+            }));
+            settingsButtons.Children.OfType<Button>().Single(b => (string)b.Tag == section)
+                .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+            if(failure is not null) throw failure;
+            Check(Field<Window?>("_settingsWindow") is null, "dialog ownership cleared");
+        }
+        Console.WriteLine($"{count} settings window checks passed; images: {AppContext.BaseDirectory}");
+        Call("ExitApplicationAsync"); app.Shutdown();
+    }
+    sealed class Provider(string id) : IEmailProvider
+    {
+        public string Id => id;
+        public EmailAccount Account => new(id,id+"-id",id+"@example.invalid",false);
+        public string? StatusError => null;
+        public Task<EmailAccount> ConnectAsync(string config,CancellationToken token) => throw new Exception("Unexpected OAuth");
+        public Task DisconnectAsync(CancellationToken token) => throw new Exception("Unexpected disconnect");
+        public Task SendAsync(MailJob job,CancellationToken token) => throw new Exception("Unexpected send");
+    }
+}

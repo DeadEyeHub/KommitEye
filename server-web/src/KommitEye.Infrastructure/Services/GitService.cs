@@ -435,6 +435,7 @@ public sealed class GitService
             }
         }
 
+        ValidateWorkingDirectory(repositoryPath);
         using var process = new Process { StartInfo = startInfo };
         token.ThrowIfCancellationRequested();
         PublishTrace("started");
@@ -450,9 +451,14 @@ public sealed class GitService
         catch (Exception exception) when (exception is not GitException)
         {
             PublishTrace("start_failed", failure: exception.Message);
-            throw new GitException(Localization.Text(
-                "Git was not found or could not be started.",
-                "Git не найден или не может быть запущен.") +
+            var message = exception is System.ComponentModel.Win32Exception native ? native.NativeErrorCode switch
+            {
+                2 => Localization.Text("Git executable was not found. Install Git and make it available in PATH for the account running KommitEye.", "Исполняемый файл Git не найден. Установите Git и добавьте его в PATH пользователя, запускающего KommitEye."),
+                3 or 267 => Localization.Text("The repository folder is missing or its path is invalid. Check the repository path on this computer.", "Папка репозитория отсутствует или путь к ней некорректен. Проверьте путь на этом компьютере."),
+                5 => Localization.Text("Access denied when starting Git. Check permissions for Git and the repository folder.", "Отказано в доступе при запуске Git. Проверьте права на Git и папку репозитория."),
+                _ => Localization.Text("Could not start Git. See the system error below.", "Не удалось запустить Git. Причина указана в системной ошибке ниже.")
+            } : Localization.Text("Could not start Git. See the system error below.", "Не удалось запустить Git. Причина указана в системной ошибке ниже.");
+            throw new GitException(message +
                 $" Operation: {operation}; repository: {repositoryPath}; reason: {SanitizeDiagnostic(exception.Message)}", exception);
         }
 
@@ -632,6 +638,31 @@ public sealed class GitService
     {
         try { return process.HasExited ? process.ExitCode : null; }
         catch (InvalidOperationException) { return null; }
+    }
+
+    private static void ValidateWorkingDirectory(string path)
+    {
+        if (OperatingSystem.IsWindows() && System.Text.RegularExpressions.Regex.IsMatch(path, @"^[\\/][A-Za-z]:"))
+            throw new GitException(Localization.Text(
+                $"Invalid repository path: {path}. Remove the leading slash before the drive letter, for example D:/Projects/Repository.",
+                $"Некорректный путь к репозиторию: {path}. Уберите начальный слеш перед буквой диска, например D:/Projects/Repository."));
+        try
+        {
+            if ((File.GetAttributes(path) & FileAttributes.Directory) == 0)
+                throw new GitException(Localization.Text($"Repository path points to a file, not a folder: {path}.", $"Путь репозитория указывает на файл, а не на папку: {path}."));
+        }
+        catch (Exception e) when (e is DirectoryNotFoundException or FileNotFoundException)
+        {
+            throw new GitException(Localization.Text($"Repository folder does not exist on this computer: {path}. Check the path; in Web it must refer to the server computer.", $"Папка репозитория не найдена на этом компьютере: {path}. Проверьте путь; в Web он должен относиться к компьютеру сервера."), e);
+        }
+        catch (UnauthorizedAccessException e)
+        {
+            throw new GitException(Localization.Text($"Access denied to repository folder: {path}. Check permissions for the account running KommitEye.", $"Нет доступа к папке репозитория: {path}. Проверьте права пользователя, запускающего KommitEye."), e);
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or IOException)
+        {
+            throw new GitException(Localization.Text($"Cannot open repository folder: {path}. Check the path and drive availability.", $"Не удалось открыть папку репозитория: {path}. Проверьте путь и доступность диска.") + " " + SanitizeDiagnostic(e.Message), e);
+        }
     }
 
     private static void ApplyAuthentication(ProcessStartInfo startInfo, AppSettings settings)

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet('All','Full','Server','Web','Desktop')][string]$Product = 'All',
+    [ValidateSet('All','Full','Desktop')][string]$Product = 'All',
     [string]$Pnpm = 'pnpm',
     [switch]$SkipWebBuild
 )
@@ -12,8 +12,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve source commit.' }
 $artifacts = Join-Path $repo 'artifacts'
 $stage = Join-Path $artifacts ('stage-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $stage | Out-Null
-$products = if ($Product -eq 'All') { @('Full','Server','Web','Desktop') } else { @($Product) }
-if (@($products | Where-Object { $_ -in @('Full','Web') }).Count -gt 0 -and !$SkipWebBuild) {
+$products = if ($Product -eq 'All') { @('Full','Desktop') } else { @($Product) }
+if ('Full' -in $products -and !$SkipWebBuild) {
     Push-Location (Join-Path $repo 'src/KommitEye.Web')
     try {
         & $Pnpm install --frozen-lockfile
@@ -26,11 +26,7 @@ $files = @()
 foreach ($item in $products) {
     $destination = Join-Path $stage $item
     New-Item -ItemType Directory -Force $destination | Out-Null
-    if ($item -eq 'Web') {
-        Copy-Item -Path (Join-Path $repo 'src/KommitEye.Web/dist/*') -Destination $destination -Recurse
-        Copy-Item -LiteralPath (Join-Path $repo 'build/nginx.example.conf') -Destination $destination
-        $name = "KommitEye-Web-$version.zip"
-    } elseif ($item -eq 'Desktop') {
+    if ($item -eq 'Desktop') {
         & (Join-Path $repo 'KommitEye/publish-win-x64.ps1')
         if ($LASTEXITCODE -ne 0) { throw 'Desktop publish failed.' }
         $exe = Join-Path $repo "KommitEye/dist/KommitEye-$version-win-x64.exe"

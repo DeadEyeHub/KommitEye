@@ -2,9 +2,9 @@
 
 The `codex/server-web-refactor` branch introduces the **LAN server + React web UI**.
 See [server/web setup, migration and builds](docs/server-web.md). Build all testing
-packages with `./build/publish.ps1`; Full includes the server and web page, while
-Server and Web are also available separately. The WPF application below remains
-available as a compatibility build using the same shared review engine.
+packages with `./build/publish.ps1`: Full includes the server and web page.
+Desktop is the compatibility WPF build using the same shared review engine.
+Server and Web remain source projects but are not distributed separately.
 
 <img src="KommitEye/Assets/app-icon.png" alt="KommitEye logo" width="160" />
 

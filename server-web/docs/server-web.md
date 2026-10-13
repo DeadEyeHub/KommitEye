@@ -37,14 +37,12 @@ pnpm dev
 
 The Vite development proxy forwards API/events to localhost:5080. This development
 address is not included in production JavaScript. The Full package serves both
-the built UI and API itself. Separate Web hosting requires the provided reverse
-proxy example, configured with the actual server address at installation time.
+the built UI and API itself. Server and Web are internal source projects; only
+Full and Desktop are packaged for distribution.
 
 ```powershell
-./build/publish.ps1                     # all four packages
+./build/publish.ps1                     # Full and Desktop
 ./build/publish.ps1 -Product Full       # full server + Web
-./build/publish.ps1 -Product Server     # API server only
-./build/publish.ps1 -Product Web        # static browser assets
 ./build/publish.ps1 -Product Desktop    # compatibility WPF executable
 ```
 
@@ -140,7 +138,7 @@ Existing Gmail/Outlook, paging and WPF checks remain available. Browser QA cover
 desktop and narrow layouts, login, connection status and the SMTP dialog.
 
 GitHub Actions verifies changes on master, codex branches and pull requests. A
-four-product matrix creates Full, Server, Web and Desktop artifacts. Only master
+two-product matrix creates Full and Desktop artifacts. Only master
 publishes an official version; all packages must succeed. A draft release receives
 all artifacts/checksums before publication. Existing releases are not overwritten.
 Local commits do not themselves run GitHub Actions until pushed. This standalone

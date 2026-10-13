@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        product: [Full, Server, Web, Desktop]
+        product: [Full, Desktop]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
@@ -99,7 +99,7 @@ jobs:
           $version = [string]$props.Project.PropertyGroup.Version
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           $tag = "v$version"
-          $files = @("KommitEye-Full-$version-win-x64.zip", "KommitEye-Server-$version-win-x64.zip", "KommitEye-Web-$version.zip", "KommitEye-Desktop-$version-win-x64.exe")
+          $files = @("KommitEye-Full-$version-win-x64.zip", "KommitEye-Desktop-$version-win-x64.exe")
           foreach ($file in $files) {
             if (!(Test-Path -LiteralPath "release-files/$file")) { throw "Missing $file" }
           }

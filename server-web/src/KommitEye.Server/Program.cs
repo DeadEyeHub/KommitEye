@@ -86,7 +86,7 @@ app.MapGet("/api/v1/oauth/google/callback", (string state, string? code, string?
     oauth.Callback(state, code, error) ? Results.Text("Sign-in received. Return to KommitEye.") : Results.BadRequest());
 api.MapGet("/session", () => new { user = "admin" });
 api.MapPost("/logout", async (HttpContext context) => { await context.SignOutAsync(); return Results.NoContent(); });
-api.MapGet("/system/info", () => new { version = typeof(ProjectCoordinator).Assembly.GetName().Version?.ToString(), apiVersion = 1, machine = Environment.MachineName, dataDirectory = AppPaths.DataDirectory });
+api.MapGet("/system/info", () => new { version = typeof(EventsHub).Assembly.GetName().Version?.ToString(3), apiVersion = 1, machine = Environment.MachineName, dataDirectory = AppPaths.DataDirectory });
 api.MapGet("/projects", (ProjectCoordinator coordinator) => coordinator.SnapshotAsync());
 api.MapGet("/usage", (ProjectCoordinator coordinator) => coordinator.Usage());
 api.MapPost("/repositories/branches", async (RepositoryRequest request, CancellationToken token) => await new GitService().GetBranchesAsync(request.Path, token));

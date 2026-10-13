@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        product: [Full, Desktop]
+        product: [WebServer, Desktop]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
@@ -54,11 +54,11 @@ jobs:
       - name: Publish package
         shell: pwsh
         run: ./build/publish.ps1 -Product '${{ matrix.product }}'
-      - name: Verify packaged Full server
-        if: matrix.product == 'Full'
+      - name: Verify packaged Web Server
+        if: matrix.product == 'WebServer'
         shell: pwsh
         run: |
-          $archive = Get-ChildItem artifacts/KommitEye-Full-*-win-x64.zip | Select-Object -First 1
+          $archive = Get-ChildItem artifacts/KommitEye-WebServer-*-win-x64.zip | Select-Object -First 1
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath artifacts/package-check
           dotnet run --project checks/Server/Server.csproj -c Release -- "$((Get-Location).Path)/artifacts/package-check/KommitEye.Server.dll"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
@@ -96,10 +96,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           [xml]$props = Get-Content Directory.Build.props
-          $version = [string]$props.Project.PropertyGroup.Version
+          $version = [string]$props.Project.PropertyGroup.WebServerVersion
+          $desktopVersion = [string]$props.Project.PropertyGroup.Version
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
-          $tag = "v$version"
-          $files = @("KommitEye-Full-$version-win-x64.zip", "KommitEye-Desktop-$version-win-x64.exe")
+          $tag = "web-server-v$version"
+          $files = @("KommitEye-WebServer-$version-win-x64.zip", "KommitEye-Desktop-$desktopVersion-win-x64.exe")
           foreach ($file in $files) {
             if (!(Test-Path -LiteralPath "release-files/$file")) { throw "Missing $file" }
           }
@@ -114,7 +115,7 @@ jobs:
             if ($commit.Trim() -ne $env:GITHUB_SHA) { throw 'Tag belongs to another commit; bump version.' }
           } elseif ($LASTEXITCODE -ne 1) { throw 'Cannot inspect release tag' }
           $assets = @($files | ForEach-Object { "release-files/$_" }) + @('release-files/SHA256SUMS.txt')
-          gh release create $tag @assets --draft --target $env:GITHUB_SHA --title "KommitEye $version" --generate-notes
+          gh release create $tag @assets --draft --target $env:GITHUB_SHA --title "KommitEye Web Server $version" --generate-notes
           if ($LASTEXITCODE -ne 0) { throw 'Draft release upload failed' }
           $uploaded = gh release view $tag --json assets --jq '.assets[].name'
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify release assets' }

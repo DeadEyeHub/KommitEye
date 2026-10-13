@@ -95,7 +95,7 @@ function App() {
     return (
       <main className="login">
         <div className="brand">
-          KommitEye<span> / web</span>
+          KommitEye<span> / web server</span>
         </div>
         <h1>
           {t(
@@ -142,7 +142,7 @@ function App() {
     <div className="shell">
       <aside>
         <div className="brand">
-          KommitEye<span> / web</span>
+          KommitEye<span> / web server</span>
         </div>
         <nav>
           {[

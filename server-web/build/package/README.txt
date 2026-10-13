@@ -1,4 +1,4 @@
-KommitEye 3.4 — LAN test distribution
+KommitEye Web Server — LAN distribution
 
 1. Extract the archive. Install Git for Windows if it is not in PATH.
 2. Run Start-KommitEye.ps1 in PowerShell.
@@ -7,8 +7,7 @@ KommitEye 3.4 — LAN test distribution
    Alternatively set KOMMITEYE_ADMIN_PASSWORD (12+ characters) before the FIRST launch.
 5. Configure a repository path ON THE SERVER and a model endpoint reachable by it.
 
-Full includes the web interface. Server contains API only. The Web archive can be
-served by a separate web server that proxies /api and /hubs to this server.
+Web Server includes both the server and web interface in one distribution.
 The frontend does not contain a hardcoded LAN address.
 
 Data belongs to the running Windows account. Keep the data folder private to the

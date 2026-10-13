@@ -2,7 +2,7 @@
 
 The `codex/server-web-refactor` branch introduces the **LAN server + React web UI**.
 See [server/web setup, migration and builds](docs/server-web.md). Build all testing
-packages with `./build/publish.ps1`: Full includes the server and web page.
+packages with `./build/publish.ps1`: Web Server includes the server and web page.
 Desktop is the compatibility WPF build using the same shared review engine.
 Server and Web remain source projects but are not distributed separately.
 

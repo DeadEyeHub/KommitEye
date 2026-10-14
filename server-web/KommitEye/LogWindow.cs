@@ -21,6 +21,7 @@ public sealed class LogWindow : Window
 
     public LogWindow()
     {
+        Style = (Style)FindResource(typeof(Window));
         Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/app.ico"));
         Width = 900;
         Height = 420;

@@ -26,6 +26,7 @@ public sealed class CommitSearchWindow : Window
 
     public CommitSearchWindow(GitService git, string path, string branch)
     {
+        Style = (Style)FindResource(typeof(Window));
         Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/app.ico"));
         Title = Localization.Text("Find commit", "Поиск коммита");
         Width = 850; Height = 520; MinWidth = 500; MinHeight = 300;

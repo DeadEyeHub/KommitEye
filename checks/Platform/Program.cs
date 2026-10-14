@@ -13,6 +13,10 @@ void Check(bool condition, string message)
 }
 try
 {
+    var posix = new PosixGitExecutables();
+    Check(posix.GitFileName == "git" && posix.FindAgentSsh() == "ssh", "POSIX uses Git and OpenSSH from PATH");
+    Check(!posix.SupportsPutty && posix.FindPlink() is null, "POSIX explicitly excludes Windows PuTTY mode");
+    Check(GitExecutables.Current.GitFileName == (OperatingSystem.IsWindows() ? "git.exe" : "git"), "host selects platform Git tools");
     if (OperatingSystem.IsWindows())
     {
         var legacy = ProtectedData.Protect(Encoding.UTF8.GetBytes("old-password"), null, DataProtectionScope.CurrentUser);

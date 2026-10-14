@@ -115,8 +115,8 @@ public sealed class ProjectCoordinator : IAsyncDisposable
             var identity = await runtime.Git.GetRepositoryIdentityAsync(project.RepositoryPath, default);
             var branch = await runtime.Git.ResolveBranchAsync(project.RepositoryPath, project.BranchRef, default);
             if (_runtimes.Values.Any(r => r != runtime && r.Status.Running &&
-                (r.WorkTree.Equals(identity.WorkTreeRoot, StringComparison.OrdinalIgnoreCase) ||
-                r.Identity.Equals(identity.CommonGitDirectory, StringComparison.OrdinalIgnoreCase) && r.Branch == branch)))
+                (r.WorkTree.Equals(identity.WorkTreeRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ||
+                r.Identity.Equals(identity.CommonGitDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) && r.Branch == branch)))
                 throw new InvalidOperationException("This repository/worktree is already running in another project.");
             runtime.WorkTree = identity.WorkTreeRoot; runtime.Identity = identity.CommonGitDirectory; runtime.Branch = branch;
             var job = new ReviewJob(Guid.NewGuid().ToString("N"), id, requestKey, sha ?? "", sha is null ? "monitor" : "review", "running", DateTimeOffset.UtcNow);

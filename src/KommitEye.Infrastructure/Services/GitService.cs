@@ -1,3 +1,4 @@
+using KommitEye.Platform;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
@@ -672,6 +673,9 @@ public sealed class GitService
 
         if (settings.GitAuthenticationMode == "putty-key")
         {
+            if (!GitExecutables.Current.SupportsPutty)
+                throw new GitException(Localization.Text("PuTTY authentication is only supported on Windows. Use OpenSSH.",
+                    "Авторизация PuTTY поддерживается только в Windows. Используйте OpenSSH."));
             var puttyKeyPath = GetPrivateKeyPath(settings, "PuTTY");
             var plinkPath = FindPlinkExecutable(settings.PlinkPath);
             startInfo.Environment["GIT_SSH_COMMAND"] =
@@ -683,13 +687,12 @@ public sealed class GitService
         var sshExecutable = "ssh";
         if (settings.GitAuthenticationMode == "ssh-agent")
         {
-            var windowsDirectory = Environment.GetEnvironmentVariable("WINDIR") ?? @"C:\Windows";
-            var windowsSsh = Path.Combine(windowsDirectory, "System32", "OpenSSH", "ssh.exe");
-            if (!File.Exists(windowsSsh))
+            var agentSsh = GitExecutables.Current.FindAgentSsh();
+            if (agentSsh is null)
                 throw new GitException(Localization.Text(
                     "Windows OpenSSH Client is not installed. Install it or select another authentication mode.",
                     "Клиент Windows OpenSSH не установлен. Установите его или выберите другой режим аутентификации."));
-            sshExecutable = QuoteForShell(windowsSsh.Replace('\\', '/'));
+            sshExecutable = QuoteForShell(agentSsh.Replace('\\', '/'));
         }
 
         var sshCommand = $"{sshExecutable} -o BatchMode=yes -o StrictHostKeyChecking=yes";
@@ -739,18 +742,7 @@ public sealed class GitService
             return fullPath;
         }
 
-        var candidates = new List<string>();
-        foreach (var environmentVariable in new[] { "ProgramFiles", "ProgramFiles(x86)" })
-        {
-            var directory = Environment.GetEnvironmentVariable(environmentVariable);
-            if (!string.IsNullOrWhiteSpace(directory))
-                candidates.Add(Path.Combine(directory, "PuTTY", "plink.exe"));
-        }
-
-        var path = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
-        candidates.AddRange(path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            .Select(directory => Path.Combine(directory.Trim('"'), "plink.exe")));
-        var executable = candidates.FirstOrDefault(File.Exists);
+        var executable = GitExecutables.Current.FindPlink();
         return executable ?? throw new GitException(Localization.Text(
             "plink.exe was not found. Select its path, install PuTTY, or add its folder to PATH.",
             "Файл plink.exe не найден. Укажите путь, установите PuTTY или добавьте его папку в PATH."));

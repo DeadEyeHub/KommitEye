@@ -15,7 +15,13 @@ class Program
     {
         var root = Path.Combine(Path.GetTempPath(), "settings-windows-" + Guid.NewGuid());
         Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", root);
-        var app = new Application();
+        // Load the same application resources as the real desktop entry point.
+        // Constructing Application alone omits Theme.xaml and breaks StaticResource lookups.
+        var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        app.Resources.MergedDictionaries.Add(new ResourceDictionary
+        {
+            Source = new Uri("/KommitEye;component/Theme.xaml", UriKind.Relative)
+        });
         var window = new MainWindow();
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         object? Call(string name, params object[] args) => typeof(MainWindow).GetMethod(name, flags)!.Invoke(window, args);

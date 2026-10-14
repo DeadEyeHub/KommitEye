@@ -94,6 +94,10 @@ The local build is unsigned unless a signing step is configured separately.
 `Build and Release` builds the MSI alongside the portable server on pushes to
 `master` and `codex/**`, pull requests targeting `master`, and manual runs.
 The `KommitEye-WebServer` artifact includes the MSI, ZIP and SHA-256 checksums.
+On `master`, a new `WebServerVersion` in `Directory.Build.props` automatically
+publishes `web-server-v<version>` with the MSI, ZIP and checksums after checks pass.
+Desktop releases use the separate `Version` and `v<version>` tag; changing one
+product's version does not require changing the other. Existing releases are kept.
 
 For a standalone server build, open **Actions → Build Server Installer → Run workflow**.
 This manual workflow builds the web UI, self-contained server and WiX MSI, runs

@@ -83,8 +83,11 @@ Local installers are unsigned. The desktop-only helper
 - **Build and Release** verifies the code and builds both Desktop and Web Server
   on pushes to `master`/`codex/**`, pull requests to `master`, and manual runs.
   Download `KommitEye-Desktop` and `KommitEye-WebServer` from the run's **Artifacts**.
-  Successful push/manual runs on `master` publish a release when its server-version
-  tag does not already exist; existing releases are left unchanged.
+  Successful push/manual runs on `master` publish independent releases:
+  `Version` in `Directory.Build.props` creates Desktop tag `v<version>` (EXE),
+  and `WebServerVersion` creates `web-server-v<version>` (MSI + ZIP).
+  Bump either version and push to `master` to build and publish that version;
+  existing releases are left unchanged.
 - **Build Server Installer** is a manual server-only build: **Actions → Build Server
   Installer → Run workflow**. Download `KommitEye-WebServer-Installer` for the MSI,
   portable ZIP and checksums. This workflow does not publish a release.

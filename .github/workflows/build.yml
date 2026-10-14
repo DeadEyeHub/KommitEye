@@ -76,10 +76,14 @@ jobs:
           retention-days: 14
           compression-level: 0
   release:
-    name: Publish complete release
+    name: Publish ${{ matrix.product }} release
     needs: build
     if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [WebServer, Desktop]
     permissions:
       contents: write
     steps:
@@ -88,22 +92,30 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
-          pattern: KommitEye-*
-          merge-multiple: true
+          name: KommitEye-${{ matrix.product }}
           path: release-files
-      - name: Publish all products together
+      - name: Publish product version
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_PRODUCT: ${{ matrix.product }}
         run: |
           $ErrorActionPreference = 'Stop'
           [xml]$props = Get-Content Directory.Build.props
-          $version = [string]$props.Project.PropertyGroup.WebServerVersion
-          $desktopVersion = [string]$props.Project.PropertyGroup.Version
+          $product = $env:RELEASE_PRODUCT
+          if ($product -eq 'WebServer') {
+            $version = [string]$props.Project.PropertyGroup.WebServerVersion
+            $tag = "web-server-v$version"
+            $title = "KommitEye Web Server $version"
+            $files = @("KommitEye-WebServer-$version-win-x64.zip", "KommitEye-WebServer-$version-win-x64.msi")
+          } else {
+            $version = [string]$props.Project.PropertyGroup.Version
+            $tag = "v$version"
+            $title = "KommitEye Desktop $version"
+            $files = @("KommitEye-Desktop-$version-win-x64.exe")
+          }
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
-          $tag = "web-server-v$version"
-          $files = @("KommitEye-WebServer-$version-win-x64.zip", "KommitEye-WebServer-$version-win-x64.msi", "KommitEye-Desktop-$desktopVersion-win-x64.exe")
           foreach ($file in $files) {
             if (!(Test-Path -LiteralPath "release-files/$file")) { throw "Missing $file" }
           }
@@ -118,7 +130,7 @@ jobs:
             if ($commit.Trim() -ne $env:GITHUB_SHA) { throw 'Tag belongs to another commit; bump version.' }
           } elseif ($LASTEXITCODE -ne 1) { throw 'Cannot inspect release tag' }
           $assets = @($files | ForEach-Object { "release-files/$_" }) + @('release-files/SHA256SUMS.txt')
-          gh release create $tag @assets --draft --target $env:GITHUB_SHA --title "KommitEye Web Server $version" --generate-notes
+          gh release create $tag @assets --draft --target $env:GITHUB_SHA --title $title --generate-notes
           if ($LASTEXITCODE -ne 0) { throw 'Draft release upload failed' }
           $uploaded = gh release view $tag --json assets --jq '.assets[].name'
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify release assets' }

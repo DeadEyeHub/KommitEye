@@ -1,6 +1,6 @@
 # Windows Web Server installer
 
-`artifacts/KommitEye-WebServer-1.0.0-win-x64.msi` installs the server and its
+`artifacts/KommitEye-WebServer-1.0.1-win-x64.msi` installs the server and its
 compiled React UI for all users. The .NET 10 runtime is included. Git for Windows
 must already be installed. Setup requires an administrator and .NET Framework
 4.7.2 or newer, which is included in supported Windows 10/11 installations.
@@ -70,7 +70,7 @@ To rebuild just the MSI from an already published server directory:
 ```powershell
 ./build/publish-installer.ps1 -PayloadDirectory '<absolute path to published WebServer>'
 dotnet run --project checks/Installer -c Release
-./build/verify-installer.ps1 -Path artifacts/KommitEye-WebServer-1.0.0-win-x64.msi
+./build/verify-installer.ps1 -Path artifacts/KommitEye-WebServer-1.0.1-win-x64.msi
 ```
 
 The checks validate inputs, inspect the real MSI tables and invoke only the

@@ -1,7 +1,7 @@
 # Server and web refactor
 
-KommitEye Web Server starts at version 1.0.0. `Directory.Build.props` stores
-`WebServerVersion` separately from the Desktop `Version` (3.5.1).
+KommitEye Web Server is currently version 1.0.1. `Directory.Build.props` stores
+`WebServerVersion` separately from the Desktop `Version` (3.5.2).
 The existing WPF application remains a compatibility host. Web Server is now the LAN
 server plus the browser UI, not the WPF executable.
 

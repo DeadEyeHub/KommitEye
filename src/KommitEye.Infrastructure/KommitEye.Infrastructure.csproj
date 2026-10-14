@@ -4,6 +4,8 @@
     <ProjectReference Include="../KommitEye.Core/KommitEye.Core.csproj" />
     <PackageReference Include="Google.Apis.Auth" Version="1.73.0" />
     <PackageReference Include="MailKit" Version="4.18.1" />
+    <!-- Override MimeKit's older transitive dependency with the CMS DoS fixes. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.90.1" />

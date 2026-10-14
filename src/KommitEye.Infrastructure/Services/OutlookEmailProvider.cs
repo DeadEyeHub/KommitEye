@@ -1,3 +1,4 @@
+using KommitEye.Platform;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -18,9 +19,9 @@ public sealed class OutlookEmailProvider : IEmailProvider
     public EmailAccount? Account => _session is { } s ? new(Id, s.AccountId, s.Email, s.NeedsAuthorization) : null;
     public string? StatusError { get; private set; }
 
-    public OutlookEmailProvider(string directory, IMicrosoftOAuthClient? oauth = null, HttpClient? http = null)
+    public OutlookEmailProvider(string directory, IMicrosoftOAuthClient? oauth = null, HttpClient? http = null, ISecretProtector? protector = null)
     {
-        _vault = new OAuthVault(Path.Combine(directory, "oauth", "outlook-account.bin"));
+        _vault = new OAuthVault(Path.Combine(directory, "oauth", "outlook-account.bin"), protector);
         _oauth = oauth ?? new MicrosoftOAuthClient();
         _http = http ?? DefaultHttp;
         try

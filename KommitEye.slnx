@@ -2,6 +2,7 @@
   <Project Path="KommitEye/KommitEye.csproj" />
   <Folder Name="/src/">
     <Project Path="src/KommitEye.Core/KommitEye.Core.csproj" />
+    <Project Path="src/KommitEye.Platform/KommitEye.Platform.csproj" />
     <Project Path="src/KommitEye.Infrastructure/KommitEye.Infrastructure.csproj" />
     <Project Path="src/KommitEye.Engine/KommitEye.Engine.csproj" />
     <Project Path="src/KommitEye.Server/KommitEye.Server.csproj" />

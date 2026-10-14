@@ -1,3 +1,4 @@
+using KommitEye.Platform;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -19,9 +20,9 @@ public sealed class GmailEmailProvider : IEmailProvider
     public EmailAccount? Account => _session is { } s ? new(Id, s.AccountId, s.Email, s.NeedsAuthorization) : null;
     public string? StatusError { get; private set; }
 
-    public GmailEmailProvider(string directory, IGoogleOAuthClient? oauth = null, HttpClient? http = null)
+    public GmailEmailProvider(string directory, IGoogleOAuthClient? oauth = null, HttpClient? http = null, ISecretProtector? protector = null)
     {
-        _vault = new OAuthVault(Path.Combine(directory, "oauth", "gmail-account.bin"));
+        _vault = new OAuthVault(Path.Combine(directory, "oauth", "gmail-account.bin"), protector);
         _oauth = oauth ?? new GoogleOAuthClient();
         _http = http ?? DefaultHttp;
         try

@@ -1,3 +1,4 @@
+using KommitEye.Platform;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -25,13 +26,23 @@ public sealed class MailSettings
     public string From { get; set; } = "";
     public string Recipients { get; set; } = "";
     public MailSettings Clone() => (MailSettings)MemberwiseClone();
-    public void SetPassword(string password) => EncryptedPassword = password.Length == 0 ? "" :
-        Convert.ToBase64String(ProtectedData.Protect(Encoding.UTF8.GetBytes(password), null, DataProtectionScope.CurrentUser));
-    public string GetPassword() => EncryptedPassword.Length == 0 ? "" :
-        Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(EncryptedPassword), null, DataProtectionScope.CurrentUser));
+    public void SetPassword(string password, ISecretProtector? protector = null)
+    {
+        if (password.Length == 0) { EncryptedPassword = ""; return; }
+        var plain = Encoding.UTF8.GetBytes(password);
+        try { EncryptedPassword = Convert.ToBase64String((protector ?? SecretProtectors.CurrentUser).Protect(plain)); }
+        finally { CryptographicOperations.ZeroMemory(plain); }
+    }
+    public string GetPassword(ISecretProtector? protector = null)
+    {
+        if (EncryptedPassword.Length == 0) return "";
+        var plain = (protector ?? SecretProtectors.CurrentUser).Unprotect(Convert.FromBase64String(EncryptedPassword));
+        try { return Encoding.UTF8.GetString(plain); }
+        finally { CryptographicOperations.ZeroMemory(plain); }
+    }
     public List<MailboxAddress> Addresses() => Recipients.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
         .Select(MailboxAddress.Parse).ToList();
-    public void Validate()
+    public void Validate(ISecretProtector? protector = null)
     {
         if (AttachmentFormat is not ("html" or "md")) throw new InvalidOperationException("Attachment format must be html or md.");
         if (Provider is "gmail" or "outlook")
@@ -50,7 +61,7 @@ public sealed class MailSettings
             throw new InvalidOperationException("Invalid mail address or username.");
         _ = MailboxAddress.Parse(From);
         if (Addresses().Count == 0 && !SendToAuthor) throw new InvalidOperationException(Localization.Text("Enter a recipient.", "Укажите получателя."));
-        _ = GetPassword();
+        _ = GetPassword(protector);
     }
 }
 
@@ -72,6 +83,7 @@ public sealed class MailJob
 
 public sealed class MailNotifications : IAsyncDisposable
 {
+    private readonly ISecretProtector _protector;
     private readonly object _gate = new();
     private readonly Dictionary<string, IEmailProvider> _providers;
     public EmailAccount? GetAccount(string provider) => _providers.GetValueOrDefault(provider)?.Account;
@@ -104,14 +116,15 @@ public sealed class MailNotifications : IAsyncDisposable
     public MailSettings Settings { get { lock (_gate) return _settings.Clone(); } }
 
     public MailNotifications(string directory, Action<string> log,
-        Func<MailSettings, MailJob, CancellationToken, Task>? send = null, bool startWorker = true, Func<DateTimeOffset>? now = null, IEnumerable<IEmailProvider>? providers = null)
+        Func<MailSettings, MailJob, CancellationToken, Task>? send = null, bool startWorker = true, Func<DateTimeOffset>? now = null, IEnumerable<IEmailProvider>? providers = null, ISecretProtector? protector = null)
     {
-        _providers = (providers ?? [new GmailEmailProvider(directory), new OutlookEmailProvider(directory)]).ToDictionary(p => p.Id, StringComparer.Ordinal);
+        _protector = protector ?? SecretProtectors.CurrentUser;
+        _providers = (providers ?? [new GmailEmailProvider(directory, protector: _protector), new OutlookEmailProvider(directory, protector: _protector)]).ToDictionary(p => p.Id, StringComparer.Ordinal);
         _settingsPath = Path.Combine(directory, "mail-settings.json");
         _queuePath = Path.Combine(directory, "mail-queue.json");
         // A UI/logging failure must never terminate the delivery worker.
         _log = message => { try { log(message); } catch { } };
-        _send = send ?? ((settings, job, token) => job.Provider == "smtp" ? SendSmtpAsync(settings, job, token, _log) : _providers.TryGetValue(job.Provider, out var provider)
+        _send = send ?? ((settings, job, token) => job.Provider == "smtp" ? SendSmtpAsync(settings, job, token, _log, _protector) : _providers.TryGetValue(job.Provider, out var provider)
             ? provider.SendAsync(job, token) : throw new MailAuthorizationException());
         _now = now ?? (() => DateTimeOffset.UtcNow);
         try
@@ -149,7 +162,7 @@ public sealed class MailNotifications : IAsyncDisposable
             settings.Host = "";
             settings.AuthorizationRequired = account.NeedsAuthorization;
         }
-        if (settings.Enabled) settings.Validate();
+        if (settings.Enabled) settings.Validate(_protector);
         lock (_gate)
         {
             if (LoadError is not null) throw new InvalidOperationException(LoadError);
@@ -215,7 +228,7 @@ public sealed class MailNotifications : IAsyncDisposable
             { _log("Mail: no findings; clean-review notifications disabled; skipped: " + review.Sha); return; }
             try
             {
-                _settings.Validate();
+                _settings.Validate(_protector);
                 var recipients = _settings.Addresses();
                 if (!review.Failed && _settings.SendToAuthor && !string.IsNullOrWhiteSpace(review.AuthorEmail))
                 {
@@ -269,7 +282,7 @@ public sealed class MailNotifications : IAsyncDisposable
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _stop.Token);
         token = linked.Token;
-        settings.Validate();
+        settings.Validate(_protector);
         if (settings.Addresses().Count == 0) throw new InvalidOperationException("Enter an explicit recipient for the test email.");
         if (saveSettings) SaveSettings(settings);
         await _sending.WaitAsync(token);
@@ -361,9 +374,9 @@ public sealed class MailNotifications : IAsyncDisposable
         finally { _sending.Release(); }
     }
 
-    public static async Task SendSmtpAsync(MailSettings settings, MailJob job, CancellationToken token, Action<string>? log = null)
+    public static async Task SendSmtpAsync(MailSettings settings, MailJob job, CancellationToken token, Action<string>? log = null, ISecretProtector? protector = null)
     {
-        settings.Validate();
+        settings.Validate(protector);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
         timeout.CancelAfter(TimeSpan.FromSeconds(30));
         using var client = new SmtpClient { Timeout = 30000 };
@@ -373,7 +386,7 @@ public sealed class MailNotifications : IAsyncDisposable
         if (!string.IsNullOrWhiteSpace(settings.Username))
         {
             log?.Invoke("Mail: authenticating; id=" + Clean(job.MessageId));
-            await client.AuthenticateAsync(settings.Username, settings.GetPassword(), timeout.Token);
+            await client.AuthenticateAsync(settings.Username, settings.GetPassword(protector), timeout.Token);
         }
         log?.Invoke("Mail: submitting message; " + Describe(job));
         using var message = CreateMessage(job);

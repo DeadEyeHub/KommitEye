@@ -41,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        product: [WebServer, Desktop]
+        product: [Service, Desktop]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
@@ -56,11 +56,11 @@ jobs:
       - name: Publish package
         shell: pwsh
         run: ./build/publish.ps1 -Product '${{ matrix.product }}'
-      - name: Verify packaged Web Server
-        if: matrix.product == 'WebServer'
+      - name: Verify packaged Service
+        if: matrix.product == 'Service'
         shell: pwsh
         run: |
-          $archive = Get-ChildItem artifacts/KommitEye-WebServer-*-win-x64.zip | Select-Object -First 1
+          $archive = Get-ChildItem artifacts/KommitEye-Service-*-win-x64.zip | Select-Object -First 1
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath artifacts/package-check
           dotnet run --project checks/Server/Server.csproj -c Release -- "$((Get-Location).Path)/artifacts/package-check/KommitEye.Server.dll"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
@@ -76,14 +76,10 @@ jobs:
           retention-days: 14
           compression-level: 0
   release:
-    name: Publish ${{ matrix.product }} release
+    name: Publish complete release
     needs: build
     if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        product: [WebServer, Desktop]
     permissions:
       contents: write
     steps:
@@ -92,29 +88,21 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v7
         with:
-          name: KommitEye-${{ matrix.product }}
+          pattern: KommitEye-*
+          merge-multiple: true
           path: release-files
-      - name: Publish product version
+      - name: Publish Desktop and Service together
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_PRODUCT: ${{ matrix.product }}
         run: |
           $ErrorActionPreference = 'Stop'
           [xml]$props = Get-Content Directory.Build.props
-          $product = $env:RELEASE_PRODUCT
-          if ($product -eq 'WebServer') {
-            $version = [string]$props.Project.PropertyGroup.WebServerVersion
-            $tag = "web-server-v$version"
-            $title = "KommitEye Web Server $version"
-            $files = @("KommitEye-WebServer-$version-win-x64.zip", "KommitEye-WebServer-$version-win-x64.msi")
-          } else {
-            $version = [string]$props.Project.PropertyGroup.Version
-            $tag = "v$version"
-            $title = "KommitEye Desktop $version"
-            $files = @("KommitEye-Desktop-$version-win-x64.exe")
-          }
+          $version = [string]$props.Project.PropertyGroup.Version
+          $tag = "v$version"
+          $title = "KommitEye $version"
+          $files = @("KommitEye-Desktop-$version-win-x64.exe", "KommitEye-Service-$version-win-x64.msi", "KommitEye-Service-$version-win-x64.zip")
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           foreach ($file in $files) {
             if (!(Test-Path -LiteralPath "release-files/$file")) { throw "Missing $file" }

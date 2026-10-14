@@ -1,4 +1,4 @@
-KommitEye Web Server — LAN distribution
+KommitEye Service — LAN distribution
 
 1. Extract the archive. Install Git for Windows if it is not in PATH.
 2. Run Start-KommitEye.ps1 in PowerShell.
@@ -8,7 +8,7 @@ KommitEye Web Server — LAN distribution
    Alternatively supply KOMMITEYE_ADMIN_PASSWORD before the FIRST launch.
 5. Configure a repository path ON THE SERVER and a model endpoint reachable by it.
 
-Web Server includes both the server and web interface in one distribution.
+Service includes both the server and web interface in one distribution.
 The frontend does not contain a hardcoded LAN address.
 
 Data belongs to the running Windows account. Keep the data folder private to the

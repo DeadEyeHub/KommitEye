@@ -2,8 +2,8 @@
   <PropertyGroup>
     <OutputType>Package</OutputType>
     <InstallerPlatform>x64</InstallerPlatform>
-    <OutputName>KommitEye-WebServer-$(WebServerVersion)-win-x64</OutputName>
-    <DefineConstants>$(DefineConstants);ServerVersion=$(WebServerVersion);PayloadDir=$(PayloadDir)</DefineConstants>
+    <OutputName>KommitEye-Service-$(Version)-win-x64</OutputName>
+    <DefineConstants>$(DefineConstants);ServerVersion=$(Version);PayloadDir=$(PayloadDir)</DefineConstants>
     <Cultures>en-US</Cultures>
   </PropertyGroup>
   <ItemGroup>

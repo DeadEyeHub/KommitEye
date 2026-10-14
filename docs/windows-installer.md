@@ -1,6 +1,6 @@
-# Windows Web Server installer
+# Windows Service installer
 
-`artifacts/KommitEye-WebServer-1.0.1-win-x64.msi` installs the server and its
+`artifacts/KommitEye-Service-3.5.2-win-x64.msi` installs the server and its
 compiled React UI for all users. The .NET 10 runtime is included. Git for Windows
 must already be installed. Setup requires an administrator and .NET Framework
 4.7.2 or newer, which is included in supported Windows 10/11 installations.
@@ -37,7 +37,7 @@ Desktop OAuth may require an interactive initial connection; see [server setup](
 
 ## Updates, repair and uninstall
 
-Increase `WebServerVersion` in `Directory.Build.props` for a new MSI release.
+Increase `Version` in `Directory.Build.props` for a new MSI release.
 Use the new MSI to upgrade. The previous service is stopped and replaced inside
 the Windows Installer transaction; installation failure rolls the upgrade back.
 Setup reloads the previous folder, port, network options, Git path and account.
@@ -58,7 +58,7 @@ data directory; data import is a separate, explicit operation.
 ## Build and verification
 
 ```powershell
-./build/publish.ps1 -Product WebServer
+./build/publish.ps1 -Product Service
 ```
 
 This produces both the portable ZIP and the MSI plus a SHA256 checksum file.
@@ -68,9 +68,9 @@ installed WiX tool is needed. A Windows build host and the .NET SDK are required
 To rebuild just the MSI from an already published server directory:
 
 ```powershell
-./build/publish-installer.ps1 -PayloadDirectory '<absolute path to published WebServer>'
+./build/publish-installer.ps1 -PayloadDirectory '<absolute path to published Service>'
 dotnet run --project checks/Installer -c Release
-./build/verify-installer.ps1 -Path artifacts/KommitEye-WebServer-1.0.1-win-x64.msi
+./build/verify-installer.ps1 -Path artifacts/KommitEye-Service-3.5.2-win-x64.msi
 ```
 
 The checks validate inputs, inspect the real MSI tables and invoke only the
@@ -93,15 +93,19 @@ The local build is unsigned unless a signing step is configured separately.
 
 `Build and Release` builds the MSI alongside the portable server on pushes to
 `master` and `codex/**`, pull requests targeting `master`, and manual runs.
-The `KommitEye-WebServer` artifact includes the MSI, ZIP and SHA-256 checksums.
-On `master`, a new `WebServerVersion` in `Directory.Build.props` automatically
-publishes `web-server-v<version>` with the MSI, ZIP and checksums after checks pass.
-Desktop releases use the separate `Version` and `v<version>` tag; changing one
-product's version does not require changing the other. Existing releases are kept.
+The `KommitEye-Service` artifact includes the MSI, ZIP and SHA-256 checksums.
+On `master`, a new `Version` in `Directory.Build.props` automatically publishes
+one `v<version>` release with Desktop EXE, Service MSI, Service ZIP and combined
+checksums, after both builds and checks pass. Both editions use the same version.
+Existing releases are kept; bump the shared version if its tag is already published.
 
-For a standalone server build, open **Actions → Build Server Installer → Run workflow**.
+Service replaces the former Web Server distribution. The MSI upgrade code and
+Windows service identity remain unchanged so existing Web Server 1.x installations
+can upgrade to Service 3.5.2 while retaining their data and settings.
+
+For a standalone server build, open **Actions → Build Service Installer → Run workflow**.
 This manual workflow builds the web UI, self-contained server and WiX MSI, runs
-installer and packaged-server checks, and uploads `KommitEye-WebServer-Installer`.
+installer and packaged-server checks, and uploads `KommitEye-Service-Installer`.
 Download it from the run's **Artifacts** section. Artifacts are retained for 14 days.
 The standalone workflow does not publish a GitHub release. Both workflows build
 unsigned installers and do not perform a full service installation on the runner.

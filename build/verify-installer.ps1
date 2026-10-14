@@ -19,7 +19,7 @@ function Assert([bool]$Condition, [string]$Message) { if (!$Condition) { throw $
 try {
     $properties = @{}
     foreach ($row in (Read-Rows 'SELECT `Property`, `Value` FROM `Property`' 2)) { $properties[$row[0]] = $row[1] }
-    Assert ($properties['ProductName'] -eq 'KommitEye Web Server') 'MSI product identity'
+    Assert ($properties['ProductName'] -eq 'KommitEye Service') 'MSI product identity'
     Assert ($properties['MSIRESTARTMANAGERCONTROL'] -eq 'DisableShutdown') 'Restart Manager detects locked files without automatically shutting down applications'
     Assert ($properties['MsiLogging'] -eq 'voicewarmup') 'installation and removal generate diagnostic logs'
     Assert ($properties['MsiHiddenProperties'].Split(';') -contains 'SERVICEPASSWORD') 'service password is hidden in MSI logging'

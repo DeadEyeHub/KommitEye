@@ -1,9 +1,9 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
      xmlns:firewall="http://wixtoolset.org/schemas/v4/wxs/firewall">
-  <Package Name="KommitEye Web Server" Manufacturer="KommitEye" Version="$(ServerVersion)"
+  <Package Name="KommitEye Service" Manufacturer="KommitEye" Version="$(ServerVersion)"
            UpgradeCode="E890EB6F-890F-48B4-A234-5F6278711F5A" Scope="perMachine" InstallerVersion="500" Language="1033">
-    <MajorUpgrade DowngradeErrorMessage="A newer KommitEye Web Server is already installed." Schedule="afterInstallInitialize" />
+    <MajorUpgrade DowngradeErrorMessage="A newer KommitEye Service is already installed." Schedule="afterInstallInitialize" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Icon Id="AppIcon" SourceFile="../../KommitEye/Assets/app.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
@@ -82,8 +82,8 @@
       </Component>
       <Component Id="LanFirewall" Guid="BA50F5C6-32CE-41F4-ACCC-A8639C9B1319" Condition="FIREWALL = &quot;1&quot; AND ACCESSMODE = &quot;lan&quot;" Bitness="always64">
         <RegistryValue Root="HKLM" Key="SOFTWARE\KommitEye\Server" Name="FirewallInstalled" Value="1" Type="integer" KeyPath="yes" />
-        <firewall:FirewallException Id="PrivateLan" Name="KommitEye Web Server (private LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="private" Scope="localSubnet" />
-        <firewall:FirewallException Id="DomainLan" Name="KommitEye Web Server (domain LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="domain" Scope="localSubnet" />
+        <firewall:FirewallException Id="PrivateLan" Name="KommitEye Service (private LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="private" Scope="localSubnet" />
+        <firewall:FirewallException Id="DomainLan" Name="KommitEye Service (domain LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="domain" Scope="localSubnet" />
       </Component>
     </DirectoryRef>
     <DirectoryRef Id="DATADIR">
@@ -96,7 +96,7 @@
         </CreateFolder>
       </Component>
     </DirectoryRef>
-    <Feature Id="Server" Title="KommitEye Web Server" Level="1">
+    <Feature Id="Server" Title="KommitEye Service" Level="1">
       <ComponentRef Id="ServerService" /><ComponentRef Id="StartServer" /><ComponentRef Id="SavedSettings" />
       <ComponentRef Id="ServiceAccountRights" /><ComponentRef Id="LanFirewall" /><ComponentRef Id="PersistentDataFolder" />
       <ComponentRef Id="ProgramFolderAccess" />

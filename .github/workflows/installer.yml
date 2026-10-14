@@ -1,4 +1,4 @@
-name: Build Server Installer
+name: Build Service Installer
 
 on:
   workflow_dispatch:
@@ -33,22 +33,22 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installer validation checks failed' }
       - name: Build web UI, server and WiX installer
         shell: pwsh
-        run: ./build/publish.ps1 -Product WebServer
+        run: ./build/publish.ps1 -Product Service
       - name: Verify packaged server
         shell: pwsh
         run: |
-          $archive = Get-ChildItem artifacts/KommitEye-WebServer-*-win-x64.zip | Select-Object -First 1
+          $archive = Get-ChildItem artifacts/KommitEye-Service-*-win-x64.zip | Select-Object -First 1
           Expand-Archive -LiteralPath $archive.FullName -DestinationPath artifacts/package-check
           dotnet run --project checks/Server/Server.csproj -c Release -- "$((Get-Location).Path)/artifacts/package-check/KommitEye.Server.dll"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
       - name: Upload installer and portable server
         uses: actions/upload-artifact@v6
         with:
-          name: KommitEye-WebServer-Installer
+          name: KommitEye-Service-Installer
           path: |
-            artifacts/KommitEye-WebServer-*-win-x64.msi
-            artifacts/KommitEye-WebServer-*-win-x64.zip
-            artifacts/SHA256SUMS-WebServer.txt
+            artifacts/KommitEye-Service-*-win-x64.msi
+            artifacts/KommitEye-Service-*-win-x64.zip
+            artifacts/SHA256SUMS-Service.txt
           if-no-files-found: error
           retention-days: 14
           compression-level: 0

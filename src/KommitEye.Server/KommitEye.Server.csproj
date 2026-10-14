@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework><Version>$(WebServerVersion)</Version></PropertyGroup>
+  <PropertyGroup><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../KommitEye.Engine/KommitEye.Engine.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.0" />

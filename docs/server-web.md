@@ -1,8 +1,8 @@
 # Server and web refactor
 
-KommitEye Web Server is currently version 1.0.1. `Directory.Build.props` stores
-`WebServerVersion` separately from the Desktop `Version` (3.5.2).
-The existing WPF application remains a compatibility host. Web Server is now the LAN
+KommitEye Service and Desktop are currently version 3.5.2. Both use the single
+`Version` in `Directory.Build.props` and ship together in release `v<version>`.
+The existing WPF application remains a compatibility host. Service is now the LAN
 server plus the browser UI, not the WPF executable.
 
 ## Projects
@@ -37,13 +37,13 @@ pnpm exec vite
 ```
 
 The Vite development proxy forwards API/events to localhost:5080. This development
-address is not included in production JavaScript. The Web Server package serves both
+address is not included in production JavaScript. The Service package serves both
 the built UI and API itself. Server and Web are internal source projects; only
-Web Server and Desktop are packaged for distribution.
+Service and Desktop are packaged for distribution.
 
 ```powershell
-./build/publish.ps1                     # Web Server and Desktop
-./build/publish.ps1 -Product WebServer       # full server + Web
+./build/publish.ps1                     # Service and Desktop
+./build/publish.ps1 -Product Service       # full server + Web
 ./build/publish.ps1 -Product Desktop    # compatibility WPF executable
 ```
 
@@ -51,7 +51,7 @@ Output archives/executable and SHA256 lists are in `artifacts/`. Each invocation
 uses a new staging directory so stale application files cannot enter the package.
 Packages contain the .NET runtime. Git remains an external prerequisite.
 
-Extract Web Server, run `Start-KommitEye.ps1`, then open `http://<server-address>:5080`.
+Extract Service, run `Start-KommitEye.ps1`, then open `http://<server-address>:5080`.
 The startup script keeps data in the extracted package's `data` folder; supply
 `-DataDirectory` to retain data independently of package updates. Direct server
 launch defaults to `%LOCALAPPDATA%/KommitEye.Server`; override with
@@ -131,7 +131,7 @@ authentication, command protection, settings conflicts, secret redaction, empty-
 review, report access, commit paging, request deduplication and restart persistence.
 It does not call real model, SMTP, Gmail or Outlook services.
 Checks also cover sign-out without stopping work, explicit Stop and interrupted-job
-recovery after process termination. The Web Server build job reruns the API checks against
+recovery after process termination. The Service build job reruns the API checks against
 the unpacked distribution, not only the development output.
 
 ```powershell
@@ -144,12 +144,12 @@ Existing Gmail/Outlook, paging and WPF checks remain available. Browser QA cover
 desktop and narrow layouts, login, connection status and the SMTP dialog.
 
 GitHub Actions verifies changes on master, codex branches and pull requests. A
-two-product matrix creates Web Server and Desktop artifacts. Only master
+two-product matrix creates Service and Desktop artifacts. Only master
 publishes an official version; all packages must succeed. A draft release receives
 all artifacts/checksums before publication. Existing releases are not overwritten.
 Local commits do not themselves run GitHub Actions until pushed. The refactored
 projects now live at the repository root, and `.github/workflows/build.yml`
-verifies and packages both Desktop and Web Server.
+verifies and packages both Desktop and Service.
 
 ### Web repository connection and logs (3.4.1)
 

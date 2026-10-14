@@ -6,7 +6,7 @@ if (!(Test-Path -LiteralPath (Join-Path $payload 'wwwroot/index.html'))) { throw
 dotnet build (Join-Path $PSScriptRoot 'installer/KommitEye.Installer.wixproj') -c Release -m:1 -p:UseSharedCompilation=false "-p:PayloadDir=$payload"
 if ($LASTEXITCODE -ne 0) { throw 'WiX installer build failed.' }
 [xml]$props = Get-Content (Join-Path $repo 'Directory.Build.props')
-$name = "KommitEye-WebServer-$($props.Project.PropertyGroup.WebServerVersion)-win-x64.msi"
+$name = "KommitEye-Service-$($props.Project.PropertyGroup.Version)-win-x64.msi"
 $built = Join-Path $PSScriptRoot "installer/bin/Release/$name"
 if (!(Test-Path -LiteralPath $built)) { throw "Installer was not produced: $built" }
 $destination = Join-Path $repo "artifacts/$name"

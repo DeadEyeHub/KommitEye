@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using KommitEye.Models;
 using KommitEye.Services;
 using Controls = System.Windows.Controls;
+using SystemColors = System.Windows.SystemColors;
 using Localization = KommitEye.Services.Localization;
 
 namespace KommitEye;
@@ -61,22 +62,21 @@ public partial class MainWindow
         var content = (FrameworkElement)tab.Content;
         tab.Content = null;
         var window = new Window { Owner = this, Title = $"KommitEye — {tab.Header}",
-            Width = 960, Height = 740, MinWidth = 880, MinHeight = 540,
+            Width = 880, Height = 680, MinWidth = 780, MinHeight = 500,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, ShowInTaskbar = false,
-            Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush"), Icon = Icon };
+            Background = SystemColors.WindowBrush, Icon = Icon };
         _settingsWindow = window;
-        var layout = new Grid { Background = (System.Windows.Media.Brush)FindResource("SurfaceBrush") };
+        var layout = new Grid { Background = SystemColors.WindowBrush };
         layout.RowDefinitions.Add(new RowDefinition());
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.Children.Add(content);
-        var footer = new Border { Padding = new Thickness(20, 16, 20, 16), BorderThickness = new Thickness(0,1,0,0),
-            BorderBrush = (System.Windows.Media.Brush)FindResource("LineBrush") };
+        var footer = new Border { Padding = new Thickness(12), BorderThickness = new Thickness(0,1,0,0),
+            BorderBrush = SystemColors.ActiveBorderBrush };
         Grid.SetRow(footer, 1);
         var buttons = new Controls.StackPanel { Orientation = Controls.Orientation.Horizontal, HorizontalAlignment = System.Windows.HorizontalAlignment.Right };
         Controls.Button Make(string text) => new() { Content = text, MinWidth = 100, Padding = new Thickness(14,7,14,7), Margin = new Thickness(8,0,0,0) };
         var apply = Make(Localization.Text("Apply changes", "Применить изменения"));
         var ok = Make("OK");
-        ok.Style = (Style)FindResource("PrimaryButton");
         var cancel = Make(Localization.Text("Cancel", "Отмена"));
         ok.IsDefault = true; cancel.IsCancel = true;
         if (section != "journal") buttons.Children.Add(apply);

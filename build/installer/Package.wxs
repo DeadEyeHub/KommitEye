@@ -1,0 +1,128 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:firewall="http://wixtoolset.org/schemas/v4/wxs/firewall">
+  <Package Name="KommitEye Web Server" Manufacturer="KommitEye" Version="$(ServerVersion)"
+           UpgradeCode="E890EB6F-890F-48B4-A234-5F6278711F5A" Scope="perMachine" InstallerVersion="500" Language="1033">
+    <MajorUpgrade DowngradeErrorMessage="A newer KommitEye Web Server is already installed." Schedule="afterInstallInitialize" />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Icon Id="AppIcon" SourceFile="../../KommitEye/Assets/app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <!-- Keep Restart Manager file-use detection. Fully disabling it falls back
+         to the legacy process scan, which can stall InstallValidate for minutes.
+         ServiceControl still owns stopping/removing our service. -->
+    <Property Id="MSIRESTARTMANAGERCONTROL" Value="DisableShutdown" />
+    <Property Id="MsiLogging" Value="voicewarmup" />
+    <PropertyRef Id="WIX_IS_NETFRAMEWORK_472_OR_LATER_INSTALLED" />
+    <Launch Condition="Installed OR (VersionNT64 AND WIX_IS_NETFRAMEWORK_472_OR_LATER_INSTALLED)" Message="This installer requires 64-bit Windows and .NET Framework 4.7.2 or newer (included in supported Windows 10/11 installations). The server's .NET 10 runtime is included." />
+    <Property Id="INSTALLFOLDER" Secure="yes" />
+    <Property Id="DATADIR" Secure="yes" />
+    <Property Id="DATAPATH" Secure="yes" />
+    <Property Id="PORT" Secure="yes" />
+    <Property Id="ACCESSMODE" Secure="yes" />
+    <Property Id="NETWORKCHOICE" Value="lan" />
+    <Property Id="FIREWALL" Secure="yes" />
+    <Property Id="AUTOSTART" Secure="yes" />
+    <Property Id="STARTNOW" Secure="yes" />
+    <Property Id="STARTCHOICE" Value="1" />
+    <Property Id="AUTOCHOICE" Value="1" />
+    <Property Id="FIREWALLCHOICE" Value="1" />
+    <Property Id="SERVICEACCOUNT" Secure="yes" />
+    <Property Id="SERVICEUSER" Secure="yes" />
+    <Property Id="SERVICEDOMAIN" Secure="yes" />
+    <Property Id="SERVICESID" Secure="yes" />
+    <Property Id="SERVICEPASSWORD" Secure="yes" Hidden="yes" />
+    <Property Id="GITEXE" Secure="yes" />
+    <Property Id="LISTENHOST" Secure="yes" />
+    <Property Id="SETUP_INITIALIZED" Secure="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open the web interface to create the administrator password" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder"><Directory Id="INSTALLFOLDER" Name="KommitEye Server" /></StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder"><Directory Id="DATADIR" Name="KommitEye.Server" /></StandardDirectory>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="ProgramFolderAccess" Guid="17B7A832-7203-421F-AF55-313A4CC88216" Bitness="always64">
+        <CreateFolder>
+          <util:PermissionEx User="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" Read="yes" ReadAttributes="yes" ReadExtendedAttributes="yes" ReadPermission="yes" GenericExecute="yes" Synchronize="yes" />
+        </CreateFolder>
+      </Component>
+      <Component Id="NativeSqlite" Guid="ECC234A7-609C-43E2-9FA7-0BEFCE236EE4" Bitness="always64">
+        <!-- SQLite's version resource omits language; explicitly author it as neutral. -->
+        <File Id="NativeSqliteDll" Source="$(PayloadDir)\e_sqlite3.dll" DefaultLanguage="0" KeyPath="yes" />
+      </Component>
+      <Component Id="ServerService" Guid="D1D05A03-D1F1-43AC-8FF1-E77B225D547F" Bitness="always64">
+        <File Id="ServerExe" Source="$(PayloadDir)\KommitEye.Server.exe" KeyPath="yes" />
+        <ServiceInstall Id="InstallServerService" Name="KommitEye" DisplayName="KommitEye Review Server"
+                        Description="Reviews Git commits and serves the KommitEye web interface."
+                        Type="ownProcess" Start="demand" ErrorControl="normal" Account="[SERVICEACCOUNT]" Password="[SERVICEPASSWORD]"
+                        Arguments="--data-dir &quot;[DATAPATH]&quot; --urls &quot;http://[LISTENHOST]:[PORT]&quot; --git-path &quot;[GITEXE]&quot;" Vital="yes" />
+        <ServiceControl Id="StopRemoveServer" Name="KommitEye" Stop="both" Remove="uninstall" Wait="yes" />
+      </Component>
+      <Component Id="StartServer" Guid="90A55D1F-3B9A-4B51-BE24-F29429D78D9A" Condition="STARTNOW = &quot;1&quot;" Bitness="always64">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\KommitEye\Server" Name="StartNow" Value="1" Type="integer" KeyPath="yes" />
+        <ServiceControl Id="StartServerNow" Name="KommitEye" Start="install" Wait="yes" />
+      </Component>
+      <Component Id="ServiceAccountRights" Guid="996CE6D5-6717-44AF-93CC-5224F9B35156" Bitness="always64" Permanent="yes">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\KommitEye\Server" Name="AccountRights" Value="1" Type="integer" KeyPath="yes" />
+        <util:User Id="ExistingServiceUser" Name="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" CreateUser="no"
+                   LogonAsService="yes" RemoveOnUninstall="no" FailIfExists="no" UpdateIfExists="no" />
+      </Component>
+      <Component Id="SavedSettings" Guid="FA49F4C2-CAAA-44C6-BD06-9AFFC395D72A" Bitness="always64" Permanent="yes">
+        <RegistryKey Root="HKLM" Key="SOFTWARE\KommitEye\Server">
+          <RegistryValue Name="INSTALLFOLDER" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+          <RegistryValue Name="DATADIR" Value="[DATAPATH]" Type="string" />
+          <RegistryValue Name="PORT" Value="[PORT]" Type="string" />
+          <RegistryValue Name="ACCESSMODE" Value="[ACCESSMODE]" Type="string" />
+          <RegistryValue Name="FIREWALL" Value="[FIREWALL]" Type="string" />
+          <RegistryValue Name="AUTOSTART" Value="[AUTOSTART]" Type="string" />
+          <RegistryValue Name="SERVICEACCOUNT" Value="[SERVICEACCOUNT]" Type="string" />
+          <RegistryValue Name="GITEXE" Value="[GITEXE]" Type="string" />
+        </RegistryKey>
+      </Component>
+      <Component Id="LanFirewall" Guid="BA50F5C6-32CE-41F4-ACCC-A8639C9B1319" Condition="FIREWALL = &quot;1&quot; AND ACCESSMODE = &quot;lan&quot;" Bitness="always64">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\KommitEye\Server" Name="FirewallInstalled" Value="1" Type="integer" KeyPath="yes" />
+        <firewall:FirewallException Id="PrivateLan" Name="KommitEye Web Server (private LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="private" Scope="localSubnet" />
+        <firewall:FirewallException Id="DomainLan" Name="KommitEye Web Server (domain LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="domain" Scope="localSubnet" />
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="DATADIR">
+      <Component Id="PersistentDataFolder" Guid="F5D4109C-D109-4E6C-A297-3D15E681AC56" Permanent="yes" Bitness="always64">
+        <CreateFolder>
+          <!-- MSI SDDLText does not expand properties. Set a restricted static ACL,
+               then let WiX's formatted account fields grant the service access. -->
+          <PermissionEx Id="DataFolderPermissions" Sddl="D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
+          <util:PermissionEx User="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" GenericAll="yes" />
+        </CreateFolder>
+      </Component>
+    </DirectoryRef>
+    <Feature Id="Server" Title="KommitEye Web Server" Level="1">
+      <ComponentRef Id="ServerService" /><ComponentRef Id="StartServer" /><ComponentRef Id="SavedSettings" />
+      <ComponentRef Id="ServiceAccountRights" /><ComponentRef Id="LanFirewall" /><ComponentRef Id="PersistentDataFolder" />
+      <ComponentRef Id="ProgramFolderAccess" />
+      <ComponentRef Id="NativeSqlite" />
+      <Files Include="$(PayloadDir)\**" Directory="INSTALLFOLDER">
+        <Exclude Files="$(PayloadDir)\KommitEye.Server.exe" />
+        <Exclude Files="$(PayloadDir)\e_sqlite3.dll" />
+        <Exclude Files="$(PayloadDir)\*.ps1" />
+        <Exclude Files="$(PayloadDir)\README.txt" />
+      </Files>
+    </Feature>
+
+    <Binary Id="SetupActions" SourceFile="$(var.CustomActions.TargetDir)KommitEye.SetupActions.CA.dll" />
+    <CustomAction Id="InitializeSettings" BinaryRef="SetupActions" DllEntry="InitializeSettings" Execute="immediate" Return="check" />
+    <CustomAction Id="ValidateDialog" BinaryRef="SetupActions" DllEntry="ValidateDialog" Execute="immediate" Return="check" HideTarget="yes" />
+    <CustomAction Id="ValidateExecute" BinaryRef="SetupActions" DllEntry="ValidateExecute" Execute="immediate" Return="check" HideTarget="yes" />
+    <CustomAction Id="RollbackStartMode" BinaryRef="SetupActions" DllEntry="RollbackStartMode" Execute="rollback" Impersonate="no" Return="ignore" />
+    <CustomAction Id="ConfigureStartMode" BinaryRef="SetupActions" DllEntry="ConfigureStartMode" Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="OpenBrowser" BinaryRef="SetupActions" DllEntry="OpenBrowser" Execute="immediate" Return="ignore" />
+    <InstallUISequence><Custom Action="InitializeSettings" After="AppSearch" Condition="NOT (REMOVE = &quot;ALL&quot;)" /></InstallUISequence>
+    <InstallExecuteSequence>
+      <Custom Action="InitializeSettings" After="AppSearch" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="ValidateExecute" Before="InstallInitialize" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="RollbackStartMode" After="InstallServices" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="ConfigureStartMode" After="RollbackStartMode" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+    </InstallExecuteSequence>
+    <UIRef Id="KommitEyeUI" />
+  </Package>
+</Wix>

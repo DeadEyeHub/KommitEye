@@ -31,6 +31,8 @@ jobs:
           }
           dotnet run --project checks/ModelAvailability/ModelAvailability.csproj -c Release -- --deadlines
           if ($LASTEXITCODE -ne 0) { throw 'Deadline checks failed' }
+          dotnet run --project checks/Installer/Installer.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Installer validation checks failed' }
   build:
     name: Package ${{ matrix.product }}
     needs: verify
@@ -68,6 +70,7 @@ jobs:
           path: |
             artifacts/*.zip
             artifacts/*.exe
+            artifacts/*.msi
             artifacts/SHA256SUMS-*.txt
           if-no-files-found: error
           retention-days: 14
@@ -100,7 +103,7 @@ jobs:
           $desktopVersion = [string]$props.Project.PropertyGroup.Version
           if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
           $tag = "web-server-v$version"
-          $files = @("KommitEye-WebServer-$version-win-x64.zip", "KommitEye-Desktop-$desktopVersion-win-x64.exe")
+          $files = @("KommitEye-WebServer-$version-win-x64.zip", "KommitEye-WebServer-$version-win-x64.msi", "KommitEye-Desktop-$desktopVersion-win-x64.exe")
           foreach ($file in $files) {
             if (!(Test-Path -LiteralPath "release-files/$file")) { throw "Missing $file" }
           }

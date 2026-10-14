@@ -8,6 +8,16 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.SignalR;
 
+var gitArgument = Array.IndexOf(args, "--git-path");
+if (gitArgument >= 0)
+{
+    if (gitArgument + 1 >= args.Length) throw new ArgumentException("--git-path requires an executable path.");
+    var gitPath = Path.GetFullPath(args[gitArgument + 1]);
+    if (!File.Exists(gitPath) || !Path.GetFileName(gitPath).Equals("git.exe", StringComparison.OrdinalIgnoreCase))
+        throw new ArgumentException("--git-path must point to an existing git.exe.");
+    // A service does not inherit the interactive user's PATH. Keep this change local to this process.
+    Environment.SetEnvironmentVariable("PATH", Path.GetDirectoryName(gitPath) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"));
+}
 var dataArgument = Array.IndexOf(args, "--data-dir");
 if (dataArgument >= 0)
 {

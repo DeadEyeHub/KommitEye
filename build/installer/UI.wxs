@@ -1,0 +1,102 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Fragment>
+    <UI Id="KommitEyeUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Segoe UI" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Segoe UI" Size="10" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+      <DialogRef Id="BrowseDlg" /><DialogRef Id="DiskCostDlg" /><DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" /><DialogRef Id="FilesInUse" /><DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" /><DialogRef Id="ProgressDlg" /><DialogRef Id="ResumeDlg" /><DialogRef Id="UserExit" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="CheckTargetPath" Value="INSTALLFOLDER" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="INSTALLFOLDER" Order="2" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="ServerOptionsDlg" Order="3" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="INSTALLFOLDER" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="CheckTargetPath" Value="[_BrowseProperty]" Order="1" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SetTargetPath" Value="[_BrowseProperty]" Order="2" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="EndDialog" Value="Return" Order="3" />
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="ServerOptionsDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="OpenBrowser" Order="1"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND STARTNOW = 1 AND NOT Installed" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <Dialog Id="ServerOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Data and network" />
+        <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="Data is kept when the application is updated or uninstalled." />
+        <Control Id="DataLabel" Type="Text" X="15" Y="68" Width="340" Height="14" Text="Data folder (settings, reports, credentials and logs):" />
+        <Control Id="DataPath" Type="PathEdit" X="15" Y="86" Width="270" Height="18" Property="DATADIR" />
+        <Control Id="Browse" Type="PushButton" X="292" Y="86" Width="63" Height="18" Text="Browse...">
+          <Publish Property="_BrowseProperty" Value="DATADIR" Order="1" />
+          <Publish Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+        </Control>
+        <Control Id="PortLabel" Type="Text" X="15" Y="115" Width="55" Height="15" Text="TCP port:" />
+        <Control Id="Port" Type="Edit" X="75" Y="112" Width="65" Height="18" Property="PORT" Integer="yes" />
+        <Control Id="Access" Type="RadioButtonGroup" X="15" Y="140" Width="340" Height="40" Property="NETWORKCHOICE">
+          <RadioButtonGroup Property="NETWORKCHOICE">
+            <RadioButton Value="lan" X="0" Y="0" Width="335" Height="17" Text="Local network (LAN)" />
+            <RadioButton Value="local" X="0" Y="21" Width="335" Height="17" Text="This computer only (also for a local reverse proxy)" />
+          </RadioButtonGroup>
+        </Control>
+        <Control Id="Firewall" Type="CheckBox" X="15" Y="187" Width="340" Height="17" Property="FIREWALLCHOICE" CheckBoxValue="1" Text="Allow LAN connections through Windows Firewall" />
+        <Control Id="FirewallHint" Type="Text" X="28" Y="208" Width="327" Height="24" Text="LAN only: private/domain profiles and local subnet. Public networks stay closed." />
+        <Control Id="Line" Type="Line" X="0" Y="237" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back">
+          <Publish Event="NewDialog" Value="InstallDirDlg" Condition="NOT Installed" />
+          <Publish Event="NewDialog" Value="MaintenanceTypeDlg" Condition="Installed" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
+          <Publish Event="CheckTargetPath" Value="DATADIR" Order="1" />
+          <Publish Event="SetTargetPath" Value="DATADIR" Order="2" />
+          <Publish Event="NewDialog" Value="ServiceAccountDlg" Order="3" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel"><Publish Event="SpawnDialog" Value="CancelDlg" /></Control>
+      </Dialog>
+
+      <Dialog Id="ServiceAccountDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Windows service" />
+        <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="Use an existing account with access to your repositories and Git credentials." />
+        <Control Id="AccountLabel" Type="Text" X="15" Y="68" Width="125" Height="15" Text="COMPUTER\user:" />
+        <Control Id="Account" Type="Edit" X="145" Y="65" Width="210" Height="18" Property="SERVICEACCOUNT" />
+        <Control Id="PasswordLabel" Type="Text" X="15" Y="94" Width="125" Height="15" Text="Windows password:" />
+        <Control Id="Password" Type="Edit" X="145" Y="91" Width="210" Height="18" Property="SERVICEPASSWORD" Password="yes" />
+        <Control Id="PasswordHint" Type="Text" X="15" Y="115" Width="340" Height="28" Text="Use the account password, not a Windows Hello PIN. The web administrator password is created later in the browser." />
+        <Control Id="GitLabel" Type="Text" X="15" Y="149" Width="125" Height="15" Text="Git executable:" />
+        <Control Id="GitPath" Type="Edit" X="145" Y="146" Width="210" Height="18" Property="GITEXE" />
+        <Control Id="Automatic" Type="CheckBox" X="15" Y="178" Width="340" Height="17" Property="AUTOCHOICE" CheckBoxValue="1" Text="Start the server when Windows starts" />
+        <Control Id="Start" Type="CheckBox" X="15" Y="201" Width="340" Height="17" Property="STARTCHOICE" CheckBoxValue="1" Text="Start the server after installation" />
+        <Control Id="Line" Type="Line" X="0" Y="237" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back"><Publish Event="NewDialog" Value="ServerOptionsDlg" /></Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
+          <Publish Event="DoAction" Value="ValidateDialog" Order="1" />
+          <Publish Event="NewDialog" Value="ServerReadyDlg" Order="2" Condition="SETUPVALID = &quot;1&quot;" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel"><Publish Event="SpawnDialog" Value="CancelDlg" /></Control>
+      </Dialog>
+
+      <Dialog Id="ServerReadyDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Ready to install" />
+        <Control Id="Summary" Type="Text" X="15" Y="42" Width="340" Height="110" Text="Program: [INSTALLFOLDER]&#13;&#10;&#13;&#10;Data: [DATAPATH]&#13;&#10;&#13;&#10;Service account: [SERVICEACCOUNT]&#13;&#10;&#13;&#10;Local address: http://localhost:[PORT]" />
+        <Control Id="Network" Type="Text" X="15" Y="158" Width="340" Height="25" Text="LAN address (when enabled): http://[ComputerName]:[PORT]" />
+        <Control Id="FirstRun" Type="Text" X="15" Y="191" Width="340" Height="36" Text="First open localhost on this computer to create the administrator password. Configure repositories, models and mail in the browser." />
+        <Control Id="Line" Type="Line" X="0" Y="237" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back"><Publish Event="NewDialog" Value="ServiceAccountDlg" /></Control>
+        <Control Id="Install" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" ElevationShield="yes" Text="Install">
+          <Publish Event="ReinstallMode" Value="ecmus" Order="1" Condition="Installed AND WixUI_InstallMode = &quot;Repair&quot; AND OutOfDiskSpace &lt;&gt; 1" />
+          <Publish Event="Reinstall" Value="All" Order="2" Condition="Installed AND WixUI_InstallMode = &quot;Repair&quot; AND OutOfDiskSpace &lt;&gt; 1" />
+          <Publish Event="EndDialog" Value="Return" Order="3" Condition="OutOfDiskSpace &lt;&gt; 1" />
+          <Publish Event="SpawnDialog" Value="OutOfDiskDlg" Order="4" Condition="OutOfDiskSpace = 1" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel"><Publish Event="SpawnDialog" Value="CancelDlg" /></Control>
+      </Dialog>
+    </UI>
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
+</Wix>

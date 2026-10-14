@@ -27,12 +27,16 @@ const string buildConfiguration = "Debug";
 const string buildConfiguration = "Release";
 #endif
 var serverDll = args.Length > 0 ? Path.GetFullPath(args[0]) : Path.GetFullPath($"src/KommitEye.Server/bin/{buildConfiguration}/net10.0-windows/KommitEye.Server.dll");
+var gitExecutable = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+    .Select(path => Path.Combine(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')), "git.exe"))
+    .First(File.Exists);
 Process? server = null;
 var outputLog = new List<string>();
 void Start()
 {
     var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
     start.ArgumentList.Add(serverDll); start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
+    start.ArgumentList.Add("--git-path"); start.ArgumentList.Add(gitExecutable);
     start.Environment["KOMMITEYE_DATA_DIR"] = Path.Combine(root, "data"); start.Environment.Remove("KOMMITEYE_ADMIN_PASSWORD");
     server = Process.Start(start)!;
     server.OutputDataReceived += (_, e) => { if (e.Data is not null) lock(outputLog) outputLog.Add(e.Data); };

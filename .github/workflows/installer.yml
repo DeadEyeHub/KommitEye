@@ -1,0 +1,54 @@
+name: Build Server Installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-installer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  installer:
+    name: Build and verify Windows x64 MSI
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - name: Check installer validation
+        shell: pwsh
+        run: |
+          dotnet run --project checks/Installer/Installer.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Installer validation checks failed' }
+      - name: Build web UI, server and WiX installer
+        shell: pwsh
+        run: ./build/publish.ps1 -Product WebServer
+      - name: Verify packaged server
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem artifacts/KommitEye-WebServer-*-win-x64.zip | Select-Object -First 1
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath artifacts/package-check
+          dotnet run --project checks/Server/Server.csproj -c Release -- "$((Get-Location).Path)/artifacts/package-check/KommitEye.Server.dll"
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
+      - name: Upload installer and portable server
+        uses: actions/upload-artifact@v4
+        with:
+          name: KommitEye-WebServer-Installer
+          path: |
+            artifacts/KommitEye-WebServer-*-win-x64.msi
+            artifacts/KommitEye-WebServer-*-win-x64.zip
+            artifacts/SHA256SUMS-WebServer.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

@@ -50,6 +50,11 @@ foreach ($item in $products) {
     $zip = Join-Path $artifacts $name
     Compress-Archive -Path (Join-Path $destination '*') -DestinationPath $zip -Force
     $files += $zip
+    if ($item -eq 'WebServer') {
+        & (Join-Path $PSScriptRoot 'publish-installer.ps1') -PayloadDirectory $destination
+        if ($LASTEXITCODE -ne 0) { throw 'Installer publish failed.' }
+        $files += Join-Path $artifacts "KommitEye-WebServer-$version-win-x64.msi"
+    }
 }
 $lines = foreach ($file in $files) { '{0}  {1}' -f (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant(), (Split-Path $file -Leaf) }
 $lines | Set-Content -LiteralPath (Join-Path $artifacts "SHA256SUMS-$Product.txt") -Encoding utf8

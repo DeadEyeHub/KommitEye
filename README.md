@@ -7,8 +7,8 @@ contains two applications sharing the same review engine:
 
 | Application | Interface | Windows x64 distribution |
 | --- | --- | --- |
-| Desktop 3.5.2 | WPF desktop app with a system tray icon | Self-contained EXE |
-| Service 3.5.2 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+| Desktop 3.5.3 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Service 3.5.3 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
 
 Both support multiple repositories, review reports and mail notifications.
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
@@ -68,9 +68,9 @@ Run from the repository root:
 
 Outputs in `artifacts/`:
 
-- `KommitEye-Desktop-3.5.2-win-x64.exe`
-- `KommitEye-Service-3.5.2-win-x64.zip`
-- `KommitEye-Service-3.5.2-win-x64.msi`
+- `KommitEye-Desktop-3.5.3-win-x64.exe`
+- `KommitEye-Service-3.5.3-win-x64.zip`
+- `KommitEye-Service-3.5.3-win-x64.msi`
 - `SHA256SUMS-<product>.txt`
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds

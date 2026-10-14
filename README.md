@@ -12,8 +12,11 @@ contains two applications sharing the same review engine:
 
 Both support multiple repositories, review reports and mail notifications.
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
-packaged together. Linux and Docker are not supported yet; the shared code still
-uses Windows DPAPI for credentials.
+packaged together. Shared libraries and the server now target portable .NET 10;
+Windows keeps its existing DPAPI credential format. Linux server execution requires
+an explicitly configured key certificate. Published installers remain Windows-only;
+Docker packaging and the Avalonia desktop are follow-up work. See
+[platform architecture](docs/platform-architecture.md).
 
 ## Requirements and setup
 
@@ -99,7 +102,8 @@ Workflow artifacts are retained for 14 days. Build outputs are not committed to 
 | Path | Contents |
 | --- | --- |
 | `KommitEye/` | WPF desktop UI, assets and default configuration templates |
-| `src/KommitEye.Core/` | Shared models |
+| `src/KommitEye.Core/` | Shared models and platform contracts |
+| `src/KommitEye.Platform/` | Windows credential protection and platform Git tools |
 | `src/KommitEye.Infrastructure/` | Git, model API, mail and persistence |
 | `src/KommitEye.Engine/` | Review execution and project coordination |
 | `src/KommitEye.Server/` | API, authentication, background work and web hosting |

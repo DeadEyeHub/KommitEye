@@ -1,0 +1,34 @@
+name: Platform checks
+on:
+  push:
+    branches: [master, 'codex/**']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Platform, Git, reports and server fixtures
+        shell: pwsh
+        run: |
+          foreach ($check in @('Platform', 'CommitPaging', 'ReportRepair', 'Server')) {
+            dotnet run --project "checks/$check/$check.csproj" -c Release
+            if ($LASTEXITCODE -ne 0) { throw "$check failed" }
+          }
+          dotnet run --project checks/ModelAvailability/ModelAvailability.csproj -c Release -- --deadlines
+          if ($LASTEXITCODE -ne 0) { throw 'Deadline checks failed' }
+      - name: Certificate backend on Windows
+        if: runner.os == 'Windows'
+        run: dotnet run --project checks/Server/Server.csproj -c Release -- --certificate-protection

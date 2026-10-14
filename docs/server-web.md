@@ -17,12 +17,14 @@ server plus the browser UI, not the WPF executable.
 | KommitEye | Existing WPF compatibility host using the same extracted engine |
 
 No shared library references WPF. Engine depends on Infrastructure and Core;
-Infrastructure depends on Core. The server owns its workers independently of
+Infrastructure depends on Core and Platform. The server owns its workers independently of
 requests or browser connections. Project commands are serialized; overlapping
 worktrees/repository branches cannot run in separate projects simultaneously.
 
-The Windows target is intentional for the first release: DPAPI and existing Git
-authentication modes are preserved. Linux is not advertised by these packages.
+The server and shared libraries target `net10.0`. Windows retains DPAPI and its
+existing Git authentication modes. Non-Windows hosts require a persistent key
+certificate; see [platform architecture](platform-architecture.md). The published
+MSI/ZIP packages remain Windows distributions.
 
 ## Run and build
 

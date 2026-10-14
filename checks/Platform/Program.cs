@@ -38,6 +38,17 @@ try
     customSettings.SetPassword("injected-password", protector);
     var restored = JsonSerializer.Deserialize<MailSettings>(JsonSerializer.Serialize(customSettings))!;
     Check(restored.GetPassword(protector) == "injected-password", "SMTP accepts host-selected protector after serialization");
+    restored.Host = "smtp.example.invalid";
+    restored.From = "sender@example.invalid";
+    restored.Recipients = "recipient@example.invalid";
+    restored.Enabled = true;
+    await using (var mail = new MailNotifications(directory, _ => { }, startWorker: false, providers: [], protector: protector))
+    {
+        mail.SaveSettings(restored);
+        Check(mail.Settings.GetPassword(protector) == "injected-password", "mail settings validation uses the injected protector");
+    }
+    await using (var mail = new MailNotifications(directory, _ => { }, startWorker: false, providers: [], protector: protector))
+        Check(mail.Settings.GetPassword(protector) == "injected-password", "mail service reload retains encrypted credentials");
     restored.SetPassword("", protector);
     Check(restored.EncryptedPassword == "" && restored.GetPassword(protector) == "", "empty password stays empty");
     var customPath = Path.Combine(directory, "custom.bin");
@@ -46,6 +57,12 @@ try
     var corrupt = File.ReadAllBytes(customPath); corrupt[^1] ^= 1; File.WriteAllBytes(customPath, corrupt);
     try { new OAuthVault(customPath, protector).Load<Credential>(); throw new Exception("Tampered vault accepted"); }
     catch (CryptographicException) { Console.WriteLine("PASS: corrupt ciphertext is rejected"); }
+    if (!OperatingSystem.IsWindows())
+    {
+        var unconfiguredPath = Path.Combine(directory, "unconfigured.bin");
+        try { new OAuthVault(unconfiguredPath).Save(new Credential("must-not-be-written")); throw new Exception("Missing protector accepted"); }
+        catch (PlatformNotSupportedException) { Check(!File.Exists(unconfiguredPath), "unconfigured non-Windows host never saves plaintext credentials"); }
+    }
 }
 finally { Directory.Delete(directory, true); }
 

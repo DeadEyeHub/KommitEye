@@ -9,5 +9,6 @@
   </Folder>
   <Folder Name="/checks/">
     <Project Path="checks/Server/Server.csproj" />
+    <Project Path="checks/Platform/Platform.csproj" />
   </Folder>
 </Solution>

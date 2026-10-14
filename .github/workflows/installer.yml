@@ -20,10 +20,10 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: '11.25.0'
       - name: Check installer validation
@@ -42,7 +42,7 @@ jobs:
           dotnet run --project checks/Server/Server.csproj -c Release -- "$((Get-Location).Path)/artifacts/package-check/KommitEye.Server.dll"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
       - name: Upload installer and portable server
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: KommitEye-WebServer-Installer
           path: |

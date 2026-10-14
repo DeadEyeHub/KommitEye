@@ -1,3 +1,4 @@
+using KommitEye.Platform;
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,7 +7,7 @@ using KommitEye.Services;
 
 namespace KommitEye.Server;
 
-public sealed class SettingsApi(ConfigurationStore configuration, ModelClient model, MailNotifications mail, ProjectCoordinator coordinator)
+public sealed class SettingsApi(ConfigurationStore configuration, ModelClient model, MailNotifications mail, ProjectCoordinator coordinator, ISecretProtector protector)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
     private static string Revision(object value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(value))));
@@ -94,7 +95,7 @@ public sealed class SettingsApi(ConfigurationStore configuration, ModelClient mo
             if (update.Revision != Revision(old)) throw new InvalidOperationException("Mail settings changed. Reload before saving.");
             var settings = update.Settings; settings.Provider = provider; settings.AccountId = old.AccountId;
             settings.AuthorizationRequired = old.AuthorizationRequired; settings.EncryptedPassword = old.EncryptedPassword;
-            if (update.ClearPassword) settings.SetPassword(""); else if (!string.IsNullOrEmpty(update.Password)) settings.SetPassword(update.Password);
+            if (update.ClearPassword) settings.SetPassword("", protector); else if (!string.IsNullOrEmpty(update.Password)) settings.SetPassword(update.Password, protector);
             if (provider != "smtp") settings.From = mail.GetAccount(provider)?.Address ?? "";
             if (test) await mail.TestAsync(settings, default, saveSettings: false);
             else mail.SaveSettings(settings, update.Activate);

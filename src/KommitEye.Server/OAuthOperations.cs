@@ -1,3 +1,4 @@
+using KommitEye.Platform;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
@@ -8,7 +9,7 @@ using KommitEye.Services;
 
 namespace KommitEye.Server;
 
-public sealed class OAuthOperations : IAsyncDisposable
+public sealed class OAuthOperations(ISecretProtector protector) : IAsyncDisposable
 {
     public sealed record Operation(string Id, string Status, string Message, string? Url = null, string? Code = null);
     private readonly ConcurrentDictionary<string, Operation> _operations = new();
@@ -20,12 +21,12 @@ public sealed class OAuthOperations : IAsyncDisposable
     private MailNotifications _mail = null!;
     public PersistentLog MailLog { get; } = new(Path.Combine(AppPaths.DataDirectory, "mail.log"));
     public MailNotifications CreateMail() => _mail = new MailNotifications(AppPaths.DataDirectory, message => { MailLog.Append(message); Console.WriteLine(message); },
-        providers: [new GmailEmailProvider(AppPaths.DataDirectory, new ServerGoogleClient(this)),
+        providers: [new GmailEmailProvider(AppPaths.DataDirectory, new ServerGoogleClient(this), protector: protector),
             new OutlookEmailProvider(AppPaths.DataDirectory, new MicrosoftOAuthClient(result =>
             {
                 Update("waiting", "Enter this code on Microsoft's sign-in page.", result.VerificationUrl, result.UserCode);
                 return Task.CompletedTask;
-            }))]);
+            }), protector: protector)], protector: protector);
     private void Update(string status, string message, string? url = null, string? code = null)
     {
         var id = _current.Value!; _operations[id] = new(id, status, message, url, code);

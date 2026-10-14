@@ -1,3 +1,5 @@
+using KommitEye.Platform;
+using KommitEye.Server.Hosting;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using KommitEye.Models;
@@ -5,7 +7,6 @@ using KommitEye.Services;
 using KommitEye.Server;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.SignalR;
 
 var gitArgument = Array.IndexOf(args, "--git-path");
@@ -13,8 +14,8 @@ if (gitArgument >= 0)
 {
     if (gitArgument + 1 >= args.Length) throw new ArgumentException("--git-path requires an executable path.");
     var gitPath = Path.GetFullPath(args[gitArgument + 1]);
-    if (!File.Exists(gitPath) || !Path.GetFileName(gitPath).Equals("git.exe", StringComparison.OrdinalIgnoreCase))
-        throw new ArgumentException("--git-path must point to an existing git.exe.");
+    if (!File.Exists(gitPath) || !Path.GetFileName(gitPath).Equals(GitExecutables.Current.GitFileName, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        throw new ArgumentException($"--git-path must point to an existing {GitExecutables.Current.GitFileName}.");
     // A service does not inherit the interactive user's PATH. Keep this change local to this process.
     Environment.SetEnvironmentVariable("PATH", Path.GetDirectoryName(gitPath) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"));
 }
@@ -31,8 +32,7 @@ AppPaths.EnsureCreated();
 using var dataLock = new FileStream(Path.Combine(AppPaths.DataDirectory, "server.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
 if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls("http://0.0.0.0:5080");
-builder.Services.AddWindowsService(options => options.ServiceName = "KommitEye");
-builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(AppPaths.DataDirectory, "session-keys"))).ProtectKeysWithDpapi();
+using var platform = ServerPlatform.Configure(builder, AppPaths.DataDirectory);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.Cookie.Name = "KommitEye.Session"; options.Cookie.HttpOnly = true; options.Cookie.SameSite = SameSiteMode.Strict;

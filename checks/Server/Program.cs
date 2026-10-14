@@ -5,9 +5,23 @@ using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KommitEye.Models;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using KommitEye.Services;
+using KommitEye.Server.Hosting;
+using Microsoft.AspNetCore.DataProtection;
 
 var root = Path.Combine(Path.GetTempPath(), "kommiteye-server-check-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
+var useCertificate = !OperatingSystem.IsWindows() || args.Contains("--certificate-protection");
+var certificatePath = Path.Combine(root, "fixture.pfx");
+if (useCertificate)
+{
+    using var rsa = RSA.Create(2048);
+    var request = new CertificateRequest("CN=KommitEye fixture", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+    using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+    File.WriteAllBytes(certificatePath, certificate.Export(X509ContentType.Pfx));
+}
 var repo = Path.Combine(root, "repo"); Directory.CreateDirectory(repo);
 async Task<string> Git(params string[] arguments)
 {
@@ -26,9 +40,10 @@ const string buildConfiguration = "Debug";
 #else
 const string buildConfiguration = "Release";
 #endif
-var serverDll = args.Length > 0 ? Path.GetFullPath(args[0]) : Path.GetFullPath($"src/KommitEye.Server/bin/{buildConfiguration}/net10.0-windows/KommitEye.Server.dll");
+var dllArgument = args.FirstOrDefault(arg => arg != "--certificate-protection");
+var serverDll = dllArgument is not null ? Path.GetFullPath(dllArgument) : Path.GetFullPath($"src/KommitEye.Server/bin/{buildConfiguration}/net10.0/KommitEye.Server.dll");
 var gitExecutable = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
-    .Select(path => Path.Combine(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')), "git.exe"))
+    .Select(path => Path.Combine(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')), OperatingSystem.IsWindows() ? "git.exe" : "git"))
     .First(File.Exists);
 Process? server = null;
 var outputLog = new List<string>();
@@ -38,6 +53,9 @@ void Start()
     start.ArgumentList.Add(serverDll); start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
     start.ArgumentList.Add("--git-path"); start.ArgumentList.Add(gitExecutable);
     start.Environment["KOMMITEYE_DATA_DIR"] = Path.Combine(root, "data"); start.Environment.Remove("KOMMITEYE_ADMIN_PASSWORD");
+    start.Environment.Remove("KOMMITEYE_KEY_CERTIFICATE_PASSWORD_FILE");
+    start.Environment.Remove("KOMMITEYE_KEY_CERTIFICATE");
+    if (useCertificate) start.Environment["KOMMITEYE_KEY_CERTIFICATE"] = certificatePath;
     server = Process.Start(start)!;
     server.OutputDataReceived += (_, e) => { if (e.Data is not null) lock(outputLog) outputLog.Add(e.Data); };
     server.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock(outputLog) outputLog.Add(e.Data); };
@@ -147,6 +165,24 @@ try
     var after=await Post($"projects/{project.ProjectId}/reviews",new {requestKey=key,sha});
     Check((string)after!["id"]! == (string)job["id"]!,"request deduplication survives restart");
     Check((await Get("mail/smtp"))["passwordConfigured"]!.GetValue<bool>(),"SMTP secret survives restart");
+    var persistedMail = JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(Path.Combine(root, "data", "mail-settings.json")))!;
+    if (useCertificate)
+    {
+        using var certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, null, X509KeyStorageFlags.EphemeralKeySet);
+        var provider = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "data", "session-keys")),
+            options => options.SetApplicationName("KommitEye.Server").ProtectKeysWithCertificate(certificate));
+        var protector = new DataProtectionSecretProtector(provider);
+        Check(persistedMail.GetPassword(protector) == "fixture-mail-secret", "certificate-protected SMTP secret decrypts with persisted keys in a new provider");
+        var vaultPath = Path.Combine(root, "data", "oauth-fixture.bin");
+        new OAuthVault(vaultPath, protector).Save(new Dictionary<string, string> { ["token"] = "fixture-oauth-token" });
+        var reloadedProvider = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "data", "session-keys")),
+            options => options.SetApplicationName("KommitEye.Server").ProtectKeysWithCertificate(certificate));
+        Check(new OAuthVault(vaultPath, new DataProtectionSecretProtector(reloadedProvider)).Load<Dictionary<string, string>>()!["token"] == "fixture-oauth-token",
+            "certificate-protected OAuth vault survives provider recreation");
+        Check(Directory.GetFiles(Path.Combine(root, "data", "session-keys"), "*.xml")
+            .All(path => File.ReadAllText(path).Contains("encryptedSecret")), "persisted key ring is encrypted at rest");
+    }
+    else Check(persistedMail.GetPassword() == "fixture-mail-secret", "persisted SMTP password retains Windows DPAPI compatibility");
     Check((await http.GetStringAsync("mail/log")).Contains(sha),"mail log survives server restart");
     var deleteRevision=(long)(await Get("projects"))["revision"]!;
     Check((await http.PostAsJsonAsync($"projects/{project.ProjectId}/delete",new {revision=deleteRevision-1})).StatusCode==HttpStatusCode.Conflict,"stale deletion rejected");

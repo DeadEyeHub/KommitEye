@@ -91,6 +91,7 @@ app.MapPost("/api/v1/login", async (LoginRequest request, HttpContext context, S
     return Results.Ok(new { user = "admin" });
 }).RequireRateLimiting("login");
 var api = app.MapGroup("/api/v1").RequireAuthorization();
+api.MapGet("/mail/log", (OAuthOperations oauth) => Results.Text(oauth.MailLog.Snapshot(true) ?? ""));
 api.MapPost("/oauth/{provider}/connect", (string provider, OAuthRequest request, OAuthOperations oauth) => oauth.Begin(provider, request.Configuration));
 api.MapGet("/oauth/{id}", (string id, OAuthOperations oauth) => oauth.Get(id));
 app.MapGet("/api/v1/oauth/google/callback", (string state, string? code, string? error, OAuthOperations oauth) =>

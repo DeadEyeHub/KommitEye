@@ -18,7 +18,8 @@ public sealed class OAuthOperations : IAsyncDisposable
     private readonly object _gate = new();
     private Task? _task;
     private MailNotifications _mail = null!;
-    public MailNotifications CreateMail() => _mail = new MailNotifications(AppPaths.DataDirectory, Console.WriteLine,
+    public PersistentLog MailLog { get; } = new(Path.Combine(AppPaths.DataDirectory, "mail.log"));
+    public MailNotifications CreateMail() => _mail = new MailNotifications(AppPaths.DataDirectory, message => { MailLog.Append(message); Console.WriteLine(message); },
         providers: [new GmailEmailProvider(AppPaths.DataDirectory, new ServerGoogleClient(this)),
             new OutlookEmailProvider(AppPaths.DataDirectory, new MicrosoftOAuthClient(result =>
             {

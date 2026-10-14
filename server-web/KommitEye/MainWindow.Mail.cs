@@ -8,6 +8,7 @@ namespace KommitEye;
 public partial class MainWindow
 {
     private Controls.TextBlock? _mailCounts, _mailAccountStatus;
+    private Controls.TextBox? _mailLogText;
     private readonly List<Controls.TextBlock> _mailCountLabels = [];
     private readonly Dictionary<string, Action> _refreshMailButtons = new();
     private CancellationTokenSource? _mailAuthorizationCancellation;
@@ -78,6 +79,17 @@ public partial class MainWindow
             if (ReferenceEquals(e.Source, tabs) && tabs.SelectedItem is Controls.TabItem tab) _mailProviderTab = (string)tab.Tag;
         };
         MailPanel.Children.Add(tabs);
+        MailPanel.Children.Add(new Controls.TextBlock { Text = Localization.Text("Mail log", "Журнал почты"), FontWeight = FontWeights.SemiBold, Margin = new Thickness(12, 20, 12, 8) });
+        _mailLogText = new Controls.TextBox
+        {
+            IsReadOnly = true, AcceptsReturn = true, Height = 240, Margin = new Thickness(12),
+            FontFamily = new System.Windows.Media.FontFamily("Consolas"),
+            VerticalScrollBarVisibility = Controls.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = Controls.ScrollBarVisibility.Auto
+        };
+        System.Windows.Automation.AutomationProperties.SetName(_mailLogText, Localization.Text("Mail log", "Журнал почты"));
+        _mailLogText.Text = _mailLog.Snapshot(true) ?? "";
+        MailPanel.Children.Add(_mailLogText);
     }
 
     private void BuildMailProviderPanel(Controls.StackPanel MailPanel, string provider)

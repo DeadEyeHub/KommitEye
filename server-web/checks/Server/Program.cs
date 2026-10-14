@@ -65,6 +65,7 @@ try
     Start(); await Wait();
     Check((await Get("setup"))["required"]!.GetValue<bool>() && !File.Exists(Path.Combine(root,"data","initial-password.txt")) && !File.Exists(Path.Combine(root,"data","admin.json")),"first launch waits for user password without generating one");
     Check((await http.GetAsync("projects")).StatusCode == HttpStatusCode.Unauthorized,"anonymous project access denied");
+    Check((await http.GetAsync("mail/log")).StatusCode == HttpStatusCode.Unauthorized,"mail log requires authentication");
     Check((await http.PostAsJsonAsync("login",new {password="1"})).StatusCode == HttpStatusCode.Forbidden,"cross-site form commands blocked");
     http.DefaultRequestHeaders.Add("X-KommitEye-Client","web");
     Check((await http.PostAsJsonAsync("repositories/browse",new {path=repo})).StatusCode == HttpStatusCode.Unauthorized,"server file browsing requires authentication");
@@ -102,6 +103,8 @@ try
     Check((string)job!["id"]! == (string)duplicate!["id"]!,"repeated request returns the same job");
     for(var i=0;i<100;i++){job=await Get("jobs/"+(string)job!["id"]!);if((string)job["status"]! !="running")break;await Task.Delay(100);}
     Check((string)job!["status"]! == "completed","manual review completed without a model request for empty diff");
+    var mailLog = await http.GetStringAsync("mail/log");
+    Check(mailLog.Contains("Mail:") && mailLog.Contains(sha),"mail log includes notification result for reviewed commit");
     Check((await Get("reports")).AsArray().Count==1,"persisted report available through API");
     var reportName=(string)(await Get("reports"))[0]!["name"]!;
     using(var htmlResponse=await http.GetAsync("reports/"+Uri.EscapeDataString(reportName)+"?format=html"))
@@ -140,6 +143,7 @@ try
     var after=await Post($"projects/{project.ProjectId}/reviews",new {requestKey=key,sha});
     Check((string)after!["id"]! == (string)job["id"]!,"request deduplication survives restart");
     Check((await Get("mail/smtp"))["passwordConfigured"]!.GetValue<bool>(),"SMTP secret survives restart");
+    Check((await http.GetStringAsync("mail/log")).Contains(sha),"mail log survives server restart");
     var deleteRevision=(long)(await Get("projects"))["revision"]!;
     Check((await http.PostAsJsonAsync($"projects/{project.ProjectId}/delete",new {revision=deleteRevision-1})).StatusCode==HttpStatusCode.Conflict,"stale deletion rejected");
     await Post($"projects/{project.ProjectId}/delete",new {revision=deleteRevision});

@@ -53,6 +53,7 @@ public partial class MainWindow : Window
     private int _commitListVersion;
     private int _repositoryVersion;
     private readonly PersistentLog _applicationLog = new(AppPaths.JournalLog);
+    private readonly PersistentLog _mailLog = new(Path.Combine(AppPaths.DataDirectory, "mail.log"));
     private PersistentLog _journal => _activeRuntime.Journal;
     private PersistentLog _details => _activeRuntime.DetailsLog;
     private readonly System.Windows.Threading.DispatcherTimer _logTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
@@ -150,7 +151,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _configuration.InitializeProjects();
-        _mail = new MailNotifications(AppPaths.DataDirectory, message => _applicationLog.Append(message));
+        _mail = new MailNotifications(AppPaths.DataDirectory, message => { _mailLog.Append(message); _applicationLog.Append(message); });
         ShowParameters(new ModelParameters());
 
         InitializeProjectRuntimes();
@@ -1276,6 +1277,7 @@ public partial class MainWindow : Window
 
     private void RefreshLogs(bool force = false)
     {
+        if (_mailLogText is not null && _mailLog.Snapshot(force) is { } mailLog) LogTextView.Update(_mailLogText, mailLog);
         if (_journal.Snapshot(force) is { } journal)
         {
             LogTextView.Update(LogTextBox, journal);

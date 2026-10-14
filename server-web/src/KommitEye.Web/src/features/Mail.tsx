@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { MailLog } from "./MailLog";
 import {
   t,
   language,
@@ -168,6 +169,7 @@ export function Mail() {
           <p role="status">{message}</p>
         </section>
       )}
+      <MailLog />
       {smtp && (
         <Modal onClose={() => setSmtp(null)}>
           <h2 id="smtp-title">{t("SMTP-сервер", "SMTP server")}</h2>

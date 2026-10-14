@@ -1,26 +1,52 @@
 # KommitEye
 
-The repository contains the **LAN server + React web UI** and the Desktop app.
-See [server/web setup, migration and builds](docs/server-web.md). Build all testing
-packages with `./build/publish.ps1`: Web Server includes the server and web page.
-Desktop is the compatibility WPF build using the same shared review engine.
-Server and Web remain source projects but are not distributed separately.
-
-Web Server is distributed as a portable ZIP and a Windows MSI installer.
-See [Windows installer setup and builds](docs/windows-installer.md).
-
 <img src="KommitEye/Assets/app-icon.png" alt="KommitEye logo" width="160" />
 
-Windows desktop app for reviewing Git commits with a local or cloud
-OpenAI-compatible model. Supports multiple projects, Markdown reports,
-Gmail/Outlook notifications, and English/Russian interfaces.
+Review Git commits with a local or cloud OpenAI-compatible model. The repository
+contains two applications sharing the same review engine:
+
+| Application | Interface | Windows x64 distribution |
+| --- | --- | --- |
+| Desktop 3.5.1 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Web Server 1.0.0 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+
+Both support multiple repositories, review reports and mail notifications.
+Versions are defined in `Directory.Build.props`. The server and React UI are
+packaged together. Linux and Docker are not supported yet; the shared code still
+uses Windows DPAPI for credentials.
 
 ## Requirements and setup
 
 - Windows 10/11 and Git in `PATH`.
 - A model endpoint supporting tool calls (for example vLLM, Ollama, LM Studio,
   or a compatible cloud API).
-- .NET 10 SDK when building from source.
+- Published packages include the .NET 10 runtime.
+- Building from source requires the .NET 10 SDK. Building the web UI also requires
+  Node.js 24 and pnpm 11.25.0, matching GitHub Actions.
+
+### Web Server
+
+Run `KommitEye-WebServer-<version>-win-x64.msi` as an administrator. Select the
+application/data folders, port, network access, an existing Windows service
+account and its password, and the Git executable. Setup requires .NET Framework
+4.7.2 or newer for installer actions, in addition to the bundled server runtime.
+
+Alternatively, extract the portable ZIP and run `Start-KommitEye.ps1`.
+On the server computer, open `http://localhost:5080` (or your selected port) and
+create the web administrator password. The Windows service password and web
+administrator password are separate. Repository paths and Git credentials refer
+to the server computer, not the browser computer.
+
+The MSI installs the `KommitEye` service. Uninstall through Windows Installed apps
+or the MSI's **Remove** option. Application files, the service and installer-created
+firewall rules are removed; data and saved installation settings are retained.
+
+See [server configuration and migration](docs/server-web.md) and
+[MSI setup, upgrades and removal](docs/windows-installer.md).
+
+### Desktop
+
+Run the published `KommitEye-Desktop-<version>-win-x64.exe`, or start from source:
 
 ```powershell
 dotnet run --project KommitEye/KommitEye.csproj
@@ -30,15 +56,65 @@ Select a repository and branch, configure and test a model profile, then click
 **Start**. Projects can run concurrently; Start/Stop affect the selected project.
 Closing the window keeps the app in the system tray. Use **Exit** to quit.
 
-Build a self-contained Windows x64 executable:
+## Build packages
+
+Run from the repository root:
 
 ```powershell
-.\KommitEye\publish-win-x64.ps1
+./build/publish.ps1 -Product Desktop
+./build/publish.ps1 -Product WebServer
+./build/publish.ps1                     # both products
 ```
 
-Output: `KommitEye/dist/KommitEye-<version>-win-x64.exe`. The .NET runtime is included.
+Outputs in `artifacts/`:
+
+- `KommitEye-Desktop-3.5.1-win-x64.exe`
+- `KommitEye-WebServer-1.0.0-win-x64.zip`
+- `KommitEye-WebServer-1.0.0-win-x64.msi`
+- `SHA256SUMS-<product>.txt`
+
+WiX is restored through NuGet; a global WiX installation is not needed. MSI builds
+run package and read-only preflight checks, without installing the service.
+Local installers are unsigned. The desktop-only helper
+`./KommitEye/publish-win-x64.ps1` also places its EXE in `KommitEye/dist/`.
+
+### GitHub Actions
+
+- **Build and Release** verifies the code and builds both Desktop and Web Server
+  on pushes to `master`/`codex/**`, pull requests to `master`, and manual runs.
+  Download `KommitEye-Desktop` and `KommitEye-WebServer` from the run's **Artifacts**.
+  Successful push/manual runs on `master` publish a release when its server-version
+  tag does not already exist; existing releases are left unchanged.
+- **Build Server Installer** is a manual server-only build: **Actions → Build Server
+  Installer → Run workflow**. Download `KommitEye-WebServer-Installer` for the MSI,
+  portable ZIP and checksums. This workflow does not publish a release.
+
+Workflow artifacts are retained for 14 days. Build outputs are not committed to Git.
+
+## Repository layout
+
+| Path | Contents |
+| --- | --- |
+| `KommitEye/` | WPF desktop UI, assets and default configuration templates |
+| `src/KommitEye.Core/` | Shared models |
+| `src/KommitEye.Infrastructure/` | Git, model API, mail and persistence |
+| `src/KommitEye.Engine/` | Review execution and project coordination |
+| `src/KommitEye.Server/` | API, authentication, background work and web hosting |
+| `src/KommitEye.Web/` | React/TypeScript browser UI |
+| `build/` | Publishing, migration, service scripts and WiX installer sources |
+| `checks/` | Automated fixture and integration checks |
+| `docs/` | Deployment and installer documentation |
+| `.github/workflows/` | CI builds and release automation |
+
+`artifacts/`, `bin/`, `obj/`, `dist/`, `node_modules/`, local data and `authMail/`
+are ignored. Keep local secrets out of source files; `.gitignore` does not remove
+files already committed to Git. Commit example configuration and the pnpm lockfile,
+not real credentials or generated packages.
 
 ## Reviewing commits
+
+The window/button instructions below describe Desktop. For the browser interface
+and its mail authentication flows, see [Web Server documentation](docs/server-web.md).
 
 - Automatic monitoring tracks progress separately for each repository and branch.
 - **Find commit** searches loaded hashes and descriptions; **Load 100 more**
@@ -119,8 +195,12 @@ the browser. Queued messages stay tied to their original provider and account.
 
 ## Data and compatibility
 
-Settings, review positions, reports, queues, and logs live in
+Desktop settings, review positions, reports, queues, and logs live in
 `%LOCALAPPDATA%\KommitEye`. Set `KOMMITEYE_DATA_DIR` for an isolated data directory.
+Web Server uses `%PROGRAMDATA%\KommitEye.Server` by default when installed by MSI,
+the extracted package's `data/` folder with the portable startup script, or
+`%LOCALAPPDATA%\KommitEye.Server` when launched directly. Do not share a data
+directory between Desktop and Server.
 Model profiles may contain API keys; detailed logs can contain repository content.
 Inspect logs and crash reports before sharing them.
 
@@ -142,4 +222,6 @@ dotnet run --project checks/ApplyChanges/ApplyChanges.csproj
 dotnet run --project checks/CommitPaging/CommitPaging.csproj
 dotnet run --project checks/ReportRepair/ReportRepair.csproj
 dotnet run --project checks/ModelAvailability/ModelAvailability.csproj
+dotnet run --project checks/Server/Server.csproj
+dotnet run --project checks/Installer/Installer.csproj
 ```

@@ -27,3 +27,30 @@ artifacts/
 /GitReviewer/
 *.log
 data/
+
+# Local configuration, credentials and server state (including custom data folders).
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pfx
+*.p12
+*.key
+admin.json
+projects.json
+mail-settings.json
+mail-queue.json
+server.db
+server.db-wal
+server.db-shm
+server.db-journal
+server.lock
+session-keys/
+
+# Installer/compiler output and local IDE state.
+*.msi
+*.wixpdb
+*.pdb
+.vs/
+*.user
+*.suo

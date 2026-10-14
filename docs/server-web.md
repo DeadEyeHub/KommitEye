@@ -33,7 +33,7 @@ dotnet run --project src/KommitEye.Server -- --urls http://0.0.0.0:5080
 # Another terminal, during development:
 cd src/KommitEye.Web
 pnpm install --frozen-lockfile
-pnpm dev
+pnpm exec vite
 ```
 
 The Vite development proxy forwards API/events to localhost:5080. This development

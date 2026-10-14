@@ -147,9 +147,9 @@ GitHub Actions verifies changes on master, codex branches and pull requests. A
 two-product matrix creates Web Server and Desktop artifacts. Only master
 publishes an official version; all packages must succeed. A draft release receives
 all artifacts/checksums before publication. Existing releases are not overwritten.
-Local commits do not themselves run GitHub Actions until pushed. This standalone
-copy is now under `server-web/`: its nested `.github/workflows` is preserved as a
-reference and does not run automatically. The legacy root workflow is unchanged.
+Local commits do not themselves run GitHub Actions until pushed. The refactored
+projects now live at the repository root, and `.github/workflows/build.yml`
+verifies and packages both Desktop and Web Server.
 
 ### Web repository connection and logs (3.4.1)
 

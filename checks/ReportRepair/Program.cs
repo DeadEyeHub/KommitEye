@@ -68,12 +68,14 @@ using (var http = new HttpClient(failedHandler))
     var runner = new ReviewRunner(new GitService(), new ModelClient(http), new ConfigurationStore(), new StateStore(), new ReportWriter());
     var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var completed = false;
-    runner.Reviewed += _ => completed = true;
+    var failures = 0;
+    runner.Reviewed += review => { if (review.Failed) failures++; else completed = true; };
     runner.Log += line => { if (line.Contains("failure saved in report")) saved.TrySetResult(); };
     runner.Start(new AppSettings { RepositoryPath = repo, BranchRef = "refs/heads/main", PullEnabled = false, PollIntervalSeconds = 60 }, profile);
     try { await saved.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
     finally { await runner.StopAsync(); }
     Check(failedHandler.Repairs == 1 && failedHandler.Reviews == 2 && !completed, "failed repair was retried or completed");
+    Check(failures == 1, "terminal failure must notify exactly once");
     var report = await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single());
     Check(report.Contains("Report format repair failed") && !report.Contains("no bugs found"), "failure became no bugs");
     Console.WriteLine("PASS: failed repair remains a reported failure without analysis retries.");

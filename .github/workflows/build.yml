@@ -1,137 +1,124 @@
 name: Build and Release
-
 on:
   push:
-    branches: [master]
+    branches: [master, 'codex/**']
   pull_request:
     branches: [master]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: build-release-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
-  build:
-    name: Build Windows EXE
+  verify:
+    name: Verify shared engine and server
     runs-on: windows-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v5
-
-      - name: Install .NET 10
-        uses: actions/setup-dotnet@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
-
-      - name: Publish application
+      - name: Build compatibility desktop
+        run: dotnet build KommitEye/KommitEye.csproj -c Release
+      - name: Run fixture checks
         shell: pwsh
-        run: ./KommitEye/publish-win-x64.ps1
-
-      - name: Save build artifact
-        uses: actions/upload-artifact@v4
+        run: |
+          foreach ($check in @('Gmail','Outlook','CommitPaging','ReportRepair','ApplyChanges','Server')) {
+            dotnet run --project "checks/$check/$check.csproj" -c Release
+            if ($LASTEXITCODE -ne 0) { throw "$check failed" }
+          }
+          dotnet run --project checks/ModelAvailability/ModelAvailability.csproj -c Release -- --deadlines
+          if ($LASTEXITCODE -ne 0) { throw 'Deadline checks failed' }
+  build:
+    name: Package ${{ matrix.product }}
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        product: [WebServer, Desktop]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
-          name: KommitEye-win-x64
-          path: KommitEye/dist/KommitEye-*-win-x64.exe
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.25.0'
+      - name: Publish package
+        shell: pwsh
+        run: ./build/publish.ps1 -Product '${{ matrix.product }}'
+      - name: Verify packaged Web Server
+        if: matrix.product == 'WebServer'
+        shell: pwsh
+        run: |
+          $archive = Get-ChildItem artifacts/KommitEye-WebServer-*-win-x64.zip | Select-Object -First 1
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath artifacts/package-check
+          dotnet run --project checks/Server/Server.csproj -c Release -- "$((Get-Location).Path)/artifacts/package-check/KommitEye.Server.dll"
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KommitEye-${{ matrix.product }}
+          path: |
+            artifacts/*.zip
+            artifacts/*.exe
+            artifacts/SHA256SUMS-*.txt
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-
   release:
-    name: Publish GitHub Release
+    name: Publish complete release
     needs: build
-
-    if: >-
-      github.ref == 'refs/heads/master' &&
-      (github.event_name == 'push' ||
-       github.event_name == 'workflow_dispatch')
-
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: windows-latest
-    timeout-minutes: 10
-
     permissions:
       contents: write
-
     steps:
-      - name: Checkout source and tags
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Download built EXE
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: KommitEye-win-x64
+          pattern: KommitEye-*
+          merge-multiple: true
           path: release-files
-
-      - name: Create release if version is new
+      - name: Publish all products together
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          $ErrorActionPreference = "Stop"
-
-          [xml]$project = Get-Content "KommitEye/KommitEye.csproj"
-          $version = [string](
-            $project.Project.PropertyGroup |
-              ForEach-Object { $_.Version } |
-              Where-Object { $_ } |
-              Select-Object -First 1
-          )
-          $version = $version.Trim()
-
-          if ($version -notmatch '^\d+\.\d+\.\d+$') {
-            throw "Expected version like 3.2.0, got: '$version'"
+          $ErrorActionPreference = 'Stop'
+          [xml]$props = Get-Content Directory.Build.props
+          $version = [string]$props.Project.PropertyGroup.WebServerVersion
+          $desktopVersion = [string]$props.Project.PropertyGroup.Version
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          $tag = "web-server-v$version"
+          $files = @("KommitEye-WebServer-$version-win-x64.zip", "KommitEye-Desktop-$desktopVersion-win-x64.exe")
+          foreach ($file in $files) {
+            if (!(Test-Path -LiteralPath "release-files/$file")) { throw "Missing $file" }
           }
-
-          $tag = "v$version"
-          $exe = "release-files/KommitEye-$version-win-x64.exe"
-
-          if (-not (Test-Path -LiteralPath $exe)) {
-            throw "Built executable not found: $exe"
-          }
-
-          $existingTags = @(
-            gh api --paginate `
-              "repos/$env:GH_REPO/releases?per_page=100" `
-              --jq '.[].tag_name'
-          )
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not read existing GitHub releases."
-          }
-
-          if ($existingTags -contains $tag) {
-            Write-Host "Release $tag already exists. Leaving it unchanged."
-            exit 0
-          }
-
+          $lines = foreach ($file in $files) { '{0}  {1}' -f (Get-FileHash "release-files/$file" -Algorithm SHA256).Hash.ToLowerInvariant(), $file }
+          $lines | Set-Content release-files/SHA256SUMS.txt
+          $releases = gh api --paginate "repos/$env:GH_REPO/releases?per_page=100" --jq '.[].tag_name'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect releases' }
+          if ($releases -contains $tag) { Write-Host "Release $tag exists; leaving unchanged."; exit 0 }
           git show-ref --verify --quiet "refs/tags/$tag"
-          $tagStatus = $LASTEXITCODE
-
-          if ($tagStatus -eq 0) {
-            $tagCommit = git rev-list -n 1 $tag
-            if ($LASTEXITCODE -ne 0) {
-              throw "Could not resolve tag $tag."
-            }
-            if ($tagCommit.Trim() -ne $env:GITHUB_SHA) {
-              throw "Tag $tag points to another commit. Use a new version."
-            }
-          }
-          elseif ($tagStatus -ne 1) {
-            throw "Could not check tag $tag."
-          }
-
-          gh release create $tag $exe `
-            --target $env:GITHUB_SHA `
-            --title "KommitEye $version" `
-            --generate-notes
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "Release publication failed."
-          }
+          if ($LASTEXITCODE -eq 0) {
+            $commit = git rev-list -n 1 $tag
+            if ($commit.Trim() -ne $env:GITHUB_SHA) { throw 'Tag belongs to another commit; bump version.' }
+          } elseif ($LASTEXITCODE -ne 1) { throw 'Cannot inspect release tag' }
+          $assets = @($files | ForEach-Object { "release-files/$_" }) + @('release-files/SHA256SUMS.txt')
+          gh release create $tag @assets --draft --target $env:GITHUB_SHA --title "KommitEye Web Server $version" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'Draft release upload failed' }
+          $uploaded = gh release view $tag --json assets --jq '.assets[].name'
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot verify release assets' }
+          foreach ($file in ($files + @('SHA256SUMS.txt'))) { if ($uploaded -notcontains $file) { throw "Missing uploaded asset $file" } }
+          gh release edit $tag --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

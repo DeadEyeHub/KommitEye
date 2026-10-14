@@ -1,5 +1,11 @@
 # KommitEye
 
+The repository contains the **LAN server + React web UI** and the Desktop app.
+See [server/web setup, migration and builds](docs/server-web.md). Build all testing
+packages with `./build/publish.ps1`: Web Server includes the server and web page.
+Desktop is the compatibility WPF build using the same shared review engine.
+Server and Web remain source projects but are not distributed separately.
+
 <img src="KommitEye/Assets/app-icon.png" alt="KommitEye logo" width="160" />
 
 Windows desktop app for reviewing Git commits with a local or cloud

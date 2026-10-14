@@ -19,3 +19,11 @@ Calculatоr/
 authMail/
 **/oauth/
 client_secret_*.json
+node_modules/
+src/KommitEye.Server/wwwroot/
+artifacts/
+/output/
+/crashes/
+/GitReviewer/
+*.log
+data/

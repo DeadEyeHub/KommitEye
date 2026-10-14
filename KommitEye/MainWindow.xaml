@@ -1,13 +1,29 @@
 <Window x:Class="KommitEye.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="KommitEye" Height="720" Width="960" Icon="Assets/app.ico"
-        MinHeight="620" MinWidth="820"
-        WindowStartupLocation="CenterScreen">
-    <Grid Margin="16">
+        Title="KommitEye" Height="800" Width="1160" Icon="Assets/app.ico"
+        MinHeight="620" MinWidth="960"
+        Style="{StaticResource {x:Type Window}}" WindowStartupLocation="CenterScreen">
+    <Grid Margin="0">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="176"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
 
-        <TabControl x:Name="MainTabs" Grid.Row="1">
+        <Border Grid.RowSpan="2" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0" Padding="16,24">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="8,0,0,0">
+                    <Image Source="Assets/app.ico" Width="24" Height="24" Margin="0,0,8,0" />
+                    <TextBlock Text="KommitEye" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+                <UniformGrid x:Name="SettingsButtons" Columns="1" Margin="0,24,0,0" IsEnabled="{Binding IsEnabled, ElementName=MainTabs}">
+                    <Button Style="{StaticResource NavigationButton}" x:Name="ProjectSettingsButton" Content="Project" Tag="project" Click="OpenSettings_Click" />
+                    <Button Style="{StaticResource NavigationButton}" x:Name="ModelsSettingsButton" Content="Models" Tag="models" Click="OpenSettings_Click" />
+                    <Button Style="{StaticResource NavigationButton}" x:Name="MailSettingsButton" Content="Mail" Tag="mail" Click="OpenSettings_Click" />
+                    <Button Style="{StaticResource NavigationButton}" x:Name="PromptSettingsButton" Tag="prompt" Click="OpenSettings_Click"><TextBlock Text="System prompt" TextWrapping="Wrap" TextAlignment="Left" /></Button>
+                    <Button Style="{StaticResource NavigationButton}" x:Name="JournalSettingsButton" Content="Journal" Tag="journal" Click="OpenSettings_Click" />
+                </UniformGrid>
+            </StackPanel>
+        </Border>
+        <TabControl x:Name="MainTabs" Grid.Row="1" Grid.Column="1">
             <TabControl.Template>
                 <ControlTemplate TargetType="TabControl">
                     <ContentPresenter Content="{TemplateBinding SelectedContent}" ContentTemplate="{TemplateBinding SelectedContentTemplate}" />
@@ -15,21 +31,21 @@
             </TabControl.Template>
             <TabItem x:Name="DashboardTab" Header="Dashboard">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="20">
+                    <StackPanel Margin="28,24">
                         <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,16,0">
-                        <TextBlock FontSize="20" TextWrapping="Wrap"><Run x:Name="StatusLabelRun" Text="Status: "/><Run x:Name="StatusRun" Text="Stopped" FontWeight="SemiBold" /></TextBlock>
-                        <TextBlock x:Name="DashboardRepositoryText" Margin="0,8,0,16" TextWrapping="Wrap" Foreground="#555" />
+                        <TextBlock FontSize="26" TextWrapping="Wrap"><Run x:Name="StatusLabelRun" Text="Status: "/><Run x:Name="StatusRun" Text="Stopped" FontWeight="SemiBold" /></TextBlock>
+                        <TextBlock x:Name="DashboardRepositoryText" Margin="0,8,0,16" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
                             </StackPanel>
                             <UniformGrid Grid.Column="1" Columns="2" VerticalAlignment="Top">
-                                <Button x:Name="StartButton" Padding="18,7" Margin="4" Content="Start" Click="Start_Click" />
+                                <Button x:Name="StartButton" Style="{StaticResource PrimaryButton}" Padding="18,7" Margin="4" Content="Start" Click="Start_Click" />
                                 <Button x:Name="StopButton" Padding="18,7" Margin="4" Content="Stop" IsEnabled="False" Click="Stop_Click" />
                                 <Button x:Name="HideToTrayButton" Padding="18,7" Margin="4" Content="Hide to tray" Click="HideToTray_Click" />
                                 <Button x:Name="ExitButton" Padding="18,7" Margin="4" Content="Exit" Click="Exit_Click" />
                             </UniformGrid>
                         </Grid>
-                        <Border Padding="16" Background="#F3F6FA" CornerRadius="6">
+                        <Border Padding="22" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="12">
                             <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel>
@@ -45,35 +61,20 @@
                             </Grid>
                         </Border>
                         <UniformGrid Columns="3" Margin="-4,12,-4,12">
-                            <Border Margin="4" Padding="12" Background="#F3F6FA" CornerRadius="6"><TextBlock x:Name="CommitTokensText" TextWrapping="Wrap" /></Border>
-                            <Border Margin="4" Padding="12" Background="#F3F6FA" CornerRadius="6"><TextBlock x:Name="TodayTokensText" TextWrapping="Wrap" /></Border>
-                            <Border Margin="4" Padding="12" Background="#F3F6FA" CornerRadius="6"><TextBlock x:Name="TotalTokensText" TextWrapping="Wrap" /></Border>
-                            <Border Margin="4" Padding="12" Background="#F3F6FA" CornerRadius="6"><TextBlock x:Name="RemainingCommitsText" TextWrapping="Wrap" /></Border>
-                            <Border Margin="4" Padding="12" Background="#F3F6FA" CornerRadius="6"><TextBlock x:Name="ElapsedText" TextWrapping="Wrap" /></Border>
-                            <Border Margin="4" Padding="12" Background="#F3F6FA" CornerRadius="6"><TextBlock x:Name="NextRunText" TextWrapping="Wrap" /></Border>
+                            <Border Margin="4" Padding="14,16" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"><TextBlock x:Name="CommitTokensText" TextWrapping="Wrap" /></Border>
+                            <Border Margin="4" Padding="14,16" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"><TextBlock x:Name="TodayTokensText" TextWrapping="Wrap" /></Border>
+                            <Border Margin="4" Padding="14,16" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"><TextBlock x:Name="TotalTokensText" TextWrapping="Wrap" /></Border>
+                            <Border Margin="4" Padding="14,16" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"><TextBlock x:Name="RemainingCommitsText" TextWrapping="Wrap" /></Border>
+                            <Border Margin="4" Padding="14,16" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"><TextBlock x:Name="ElapsedText" TextWrapping="Wrap" /></Border>
+                            <Border Margin="4" Padding="14,16" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"><TextBlock x:Name="NextRunText" TextWrapping="Wrap" /></Border>
                         </UniformGrid>
-                        <TextBlock x:Name="UsageNoteText" Foreground="#666" TextWrapping="Wrap" Margin="0,0,0,16" />
+                        <TextBlock x:Name="UsageNoteText" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,16" />
                         <TextBlock x:Name="RecentJournalLabel" Text="Recent journal entries" FontSize="16" FontWeight="SemiBold" />
                         <ItemsControl x:Name="RecentJournalItems" Margin="0,8,0,0">
                             <ItemsControl.ItemTemplate><DataTemplate>
-                                <TextBlock Text="{Binding}" Margin="0,4" TextWrapping="Wrap" MaxHeight="72" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding}" Margin="0,8" TextWrapping="Wrap" MaxHeight="72" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" />
                             </DataTemplate></ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <UniformGrid x:Name="SettingsButtons" Columns="5" Margin="-4,20,-4,0">
-                            <UniformGrid.Resources>
-                                <Style TargetType="Button">
-                                    <Setter Property="Margin" Value="4,0" />
-                                    <Setter Property="Padding" Value="12,12" />
-                                    <Setter Property="MinHeight" Value="44" />
-                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                </Style>
-                            </UniformGrid.Resources>
-                            <Button x:Name="ProjectSettingsButton" Content="Project" Tag="project" Click="OpenSettings_Click" />
-                            <Button x:Name="ModelsSettingsButton" Content="Models" Tag="models" Click="OpenSettings_Click" />
-                            <Button x:Name="MailSettingsButton" Content="Mail" Tag="mail" Click="OpenSettings_Click" />
-                            <Button x:Name="PromptSettingsButton" Tag="prompt" Click="OpenSettings_Click"><TextBlock Text="System prompt" TextWrapping="Wrap" TextAlignment="Center" /></Button>
-                            <Button x:Name="JournalSettingsButton" Content="Journal" Tag="journal" Click="OpenSettings_Click" />
-                        </UniformGrid>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -110,9 +111,9 @@
                         <TextBox x:Name="IntervalTextBox" Width="120" HorizontalAlignment="Left" VerticalContentAlignment="Center" />
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <CheckBox x:Name="QuietHoursCheckBox" Content="Do not run model (local time):" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <TextBox x:Name="QuietStartTextBox" Text="09:00" Width="55" />
+                            <TextBox x:Name="QuietStartTextBox" Text="09:00" Width="66" />
                             <TextBlock Text=" — " VerticalAlignment="Center" />
-                            <TextBox x:Name="QuietEndTextBox" Text="18:00" Width="55" />
+                            <TextBox x:Name="QuietEndTextBox" Text="18:00" Width="66" />
                         </StackPanel>
                     </StackPanel>
 
@@ -121,7 +122,7 @@
                         <CheckBox x:Name="PullEnabledCheckBox" Content="Fetch before each check" />
                         <CheckBox x:Name="FetchSubmodulesCheckBox" Margin="0,5,0,0" Content="Fetch initialized submodules on demand" />
                         <CheckBox x:Name="UpdateSubmodulesCheckBox" Margin="0,5,0,0" Content="Update submodules after branch advancement" />
-                        <TextBlock x:Name="PullExplanationTextBlock" Margin="0,5,0,0" Foreground="#666" TextWrapping="Wrap"
+                        <TextBlock x:Name="PullExplanationTextBlock" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                                    Text="Fetch updates remote-tracking refs, never the checkout. Local branches are read as-is." />
                     </StackPanel>
 
@@ -139,16 +140,17 @@
                     <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,12">
                         <ComboBox x:Name="AuthenticationComboBox" Width="220" HorizontalAlignment="Left"
                                   SelectionChanged="AuthenticationComboBox_SelectionChanged" />
-                        <TextBlock x:Name="AuthenticationHelpTextBlock" Margin="0,5,0,0" Foreground="#666"
+                        <TextBlock x:Name="AuthenticationHelpTextBlock" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}"
                                    TextWrapping="Wrap" />
                     </StackPanel>
 
                     <TextBlock x:Name="SshKeyLabel" Grid.Row="6" Grid.Column="0" Margin="0,7,12,12" Text="SSH private key" />
-                    <StackPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,0,0,12">
-                        <TextBox x:Name="SshKeyPathTextBox" Width="430" Margin="0,0,8,0" VerticalContentAlignment="Center"
+                    <Grid Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <TextBox x:Name="SshKeyPathTextBox" Margin="0,0,8,0" VerticalContentAlignment="Center"
                                  LostKeyboardFocus="SshKeyPathTextBox_LostKeyboardFocus" />
-                        <Button x:Name="BrowseSshKeyButton" Padding="16,6" Content="Browse..." Click="BrowseSshKey_Click" />
-                    </StackPanel>
+                        <Button x:Name="BrowseSshKeyButton" Grid.Column="1" Padding="16,6" Content="Browse..." Click="BrowseSshKey_Click" />
+                    </Grid>
 
                     <TextBlock x:Name="PlinkPathLabel" Grid.Row="7" Grid.Column="0" Margin="0,7,12,12" TextWrapping="Wrap" Text="Plink executable" />
                     <TextBox x:Name="PlinkPathTextBox" Grid.Row="7" Grid.Column="1" Margin="0,0,8,12"
@@ -210,7 +212,7 @@
                     <TextBlock x:Name="EndpointLabel" Grid.Row="2" Grid.Column="0" Margin="0,7,12,12" Text="Endpoint" />
                     <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,12">
                         <TextBox x:Name="EndpointTextBox" TextChanged="EndpointTextBox_TextChanged" />
-                        <TextBlock x:Name="EndpointHelpTextBlock" Margin="0,5,0,0" Foreground="#666" TextWrapping="Wrap" />
+                        <TextBlock x:Name="EndpointHelpTextBlock" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                         <TextBlock x:Name="ModelHttpWarningTextBlock" Margin="0,5,0,0" Foreground="#A35A00"
                                    TextWrapping="Wrap" />
                     </StackPanel>
@@ -223,7 +225,7 @@
                             <ComboBox x:Name="ModelNameComboBox" IsEditable="True" IsTextSearchEnabled="False"
                                       TextBoxBase.TextChanged="ModelName_Changed" />
                         </DockPanel>
-                        <TextBlock x:Name="ModelLengthTextBlock" Margin="0,5,0,0" Foreground="#666" TextWrapping="Wrap" />
+                        <TextBlock x:Name="ModelLengthTextBlock" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <TextBlock x:Name="ApiKeyLabel" Grid.Row="4" Grid.Column="0" Margin="0,7,12,12" Text="API key" />
@@ -303,7 +305,7 @@
                 </Grid>
             </TabItem>
         </TabControl>
-        <Border Grid.Row="0" BorderBrush="#D0D0D0" BorderThickness="0,0,0,1" Padding="0,0,0,8" Margin="0,0,0,8">
+        <Border Grid.Row="0" Grid.Column="1" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="28,16">
             <DockPanel>
                 <TextBlock x:Name="ProjectsLabel" Text="Projects:" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <Button x:Name="AddProjectButton" DockPanel.Dock="Right" Content="+" Width="36" Margin="8,0,0,0" Click="AddProject_Click" />

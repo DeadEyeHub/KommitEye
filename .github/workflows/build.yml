@@ -63,9 +63,8 @@ jobs:
         if: matrix.product == 'Service'
         shell: pwsh
         run: |
-          $archive = Get-ChildItem artifacts/KommitEye-Service-*-win-x64.zip | Select-Object -First 1
-          Expand-Archive -LiteralPath $archive.FullName -DestinationPath artifacts/package-check
-          dotnet run --project checks/Server/Server.csproj -c Release -- "$((Get-Location).Path)/artifacts/package-check/KommitEye.Server.dll"
+          [xml]$props = Get-Content Directory.Build.props
+          ./build/verify-service-package.ps1 -Path "artifacts/KommitEye-Service-$($props.Project.PropertyGroup.Version)-win-x64.zip"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
       - uses: actions/upload-artifact@v6
         with:

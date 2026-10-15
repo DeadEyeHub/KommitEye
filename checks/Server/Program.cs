@@ -40,8 +40,9 @@ const string buildConfiguration = "Debug";
 #else
 const string buildConfiguration = "Release";
 #endif
-var dllArgument = args.FirstOrDefault(arg => arg != "--certificate-protection");
-var serverDll = dllArgument is not null ? Path.GetFullPath(dllArgument) : Path.GetFullPath($"src/KommitEye.Server/bin/{buildConfiguration}/net10.0/KommitEye.Server.dll");
+var serverArgument = args.FirstOrDefault(arg => arg != "--certificate-protection");
+var serverPath = serverArgument is not null ? Path.GetFullPath(serverArgument) : Path.GetFullPath($"src/KommitEye.Server/bin/{buildConfiguration}/net10.0/KommitEye.Server.dll");
+var useAppHost = !Path.GetExtension(serverPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
 var gitExecutable = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
     .Select(path => Path.Combine(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')), OperatingSystem.IsWindows() ? "git.exe" : "git"))
     .First(File.Exists);
@@ -49,8 +50,9 @@ Process? server = null;
 var outputLog = new List<string>();
 void Start()
 {
-    var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
-    start.ArgumentList.Add(serverDll); start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
+    var start = new ProcessStartInfo(useAppHost ? serverPath : "dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+    if (!useAppHost) start.ArgumentList.Add(serverPath);
+    start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
     start.ArgumentList.Add("--git-path"); start.ArgumentList.Add(gitExecutable);
     start.Environment["KOMMITEYE_DATA_DIR"] = Path.Combine(root, "data"); start.Environment.Remove("KOMMITEYE_ADMIN_PASSWORD");
     start.Environment.Remove("KOMMITEYE_KEY_CERTIFICATE_PASSWORD_FILE");
@@ -85,6 +87,20 @@ async Task<JsonNode?> Post(string path, object value)
 try
 {
     Start(); await Wait();
+    if (useAppHost)
+    {
+        var indexPath = Path.Combine(Path.GetDirectoryName(serverPath)!, "wwwroot", "index.html");
+        var index = await http.GetStringAsync("/");
+        Check(index == await File.ReadAllTextAsync(indexPath), "packaged executable serves its bundled React entry point");
+        var assets = System.Text.RegularExpressions.Regex.Matches(index, "(?:src|href)=\"(/assets/[^\"]+)\"");
+        Check(assets.Count > 0, "packaged React entry point references built assets");
+        foreach (System.Text.RegularExpressions.Match asset in assets)
+        {
+            using var response = await http.GetAsync(asset.Groups[1].Value);
+            Check(response.IsSuccessStatusCode && (await response.Content.ReadAsByteArrayAsync()).Length > 0,
+                "packaged asset is available: " + asset.Groups[1].Value);
+        }
+    }
     Check((await Get("setup"))["required"]!.GetValue<bool>() && !File.Exists(Path.Combine(root,"data","initial-password.txt")) && !File.Exists(Path.Combine(root,"data","admin.json")),"first launch waits for user password without generating one");
     Check((await http.GetAsync("projects")).StatusCode == HttpStatusCode.Unauthorized,"anonymous project access denied");
     Check((await http.GetAsync("mail/log")).StatusCode == HttpStatusCode.Unauthorized,"mail log requires authentication");

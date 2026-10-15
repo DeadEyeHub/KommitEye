@@ -78,6 +78,9 @@ Outputs in `artifacts/`:
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds
 run package and read-only preflight checks, without installing the service.
+To verify a Service ZIP locally, run `./build/verify-service-package.ps1 -Path <zip>`.
+This starts the packaged EXE with isolated fixture data and checks its API and
+bundled React assets. Both packaging workflows run this check before uploading.
 Local installers are unsigned. The desktop-only helper
 `./KommitEye/publish-win-x64.ps1` also places its EXE in `KommitEye/dist/`.
 
@@ -89,6 +92,7 @@ Local installers are unsigned. The desktop-only helper
   Successful push/manual runs on `master` publish one `KommitEye <version>` release
   with tag `v<version>`, containing Desktop EXE, Service MSI, Service ZIP and a
   combined SHA-256 list. Publication waits for both packages and all checks.
+  Windows, Linux and macOS platform checks are required before packaging and release.
   Bump `Version` and push to `master` for the next complete release.
   Existing releases are left unchanged; use a new version if its tag is already published.
 - **Build Service Installer** is a manual server-only build: **Actions → Build Service

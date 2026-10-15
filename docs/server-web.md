@@ -1,6 +1,6 @@
 # Server and web refactor
 
-KommitEye Service and Desktop are currently version 3.5.3. Both use the single
+KommitEye Service and Desktop are currently version 3.5.4. Both use the single
 `Version` in `Directory.Build.props` and ship together in release `v<version>`.
 The existing WPF application remains a compatibility host. Service is now the LAN
 server plus the browser UI, not the WPF executable.

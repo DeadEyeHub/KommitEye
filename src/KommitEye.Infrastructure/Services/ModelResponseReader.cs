@@ -52,6 +52,9 @@ public static class ModelResponseReader
         var reasoning = new StringBuilder();
         var reasoningContent = new StringBuilder();
         var calls = new SortedDictionary<int, JsonObject>();
+        var presentFields = new HashSet<string>();
+        string? responseId = null;
+        JsonNode? responseUsage = null;
         string? finish = null;
         var done = false;
         var total = 0;
@@ -64,6 +67,10 @@ public static class ModelResponseReader
             if (done) throw new InvalidDataException("Data after SSE completion.");
             if (value == "[DONE]") { done = true; return; }
             using var document = JsonDocument.Parse(value);
+            if (document.RootElement.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String)
+                responseId = id.GetString();
+            if (document.RootElement.TryGetProperty("usage", out var usageValue) && usageValue.ValueKind == JsonValueKind.Object)
+                responseUsage = JsonNode.Parse(usageValue.GetRawText());
             capturedUsage.Read(document.RootElement);
             if (document.RootElement.TryGetProperty("error", out _)) throw new InvalidDataException("Model stream returned an error; inspect Log.");
             foreach (var choice in document.RootElement.GetProperty("choices").EnumerateArray())
@@ -90,6 +97,8 @@ public static class ModelResponseReader
                     (delta.TryGetProperty("tool_calls", out var activeCalls) && activeCalls.ValueKind == JsonValueKind.Array && activeCalls.GetArrayLength() > 0))
                     responseActivity?.Invoke();
                 foreach (var field in new[] { "content", "reasoning", "reasoning_content" })
+                {
+                    if (delta.TryGetProperty(field, out _)) presentFields.Add(field);
                     if (delta.TryGetProperty(field, out var part) && part.ValueKind != JsonValueKind.Null)
                     {
                         var fragment = part.GetString()!;
@@ -99,6 +108,7 @@ public static class ModelResponseReader
                         else if (field == "reasoning") reasoning.Append(fragment);
                         else reasoningContent.Append(fragment);
                     }
+                }
                 if (delta.TryGetProperty("tool_calls", out var toolCalls))
                     foreach (var call in toolCalls.EnumerateArray())
                     {
@@ -197,16 +207,40 @@ public static class ModelResponseReader
             ["content"] = text.ToString(),
             ["tool_calls"] = new JsonArray(calls.Values.Select(x => (JsonNode)x).ToArray())
         };
-        if (reasoning.Length > 0) message["reasoning"] = reasoning.ToString();
-        if (reasoningContent.Length > 0) message["reasoning_content"] = reasoningContent.ToString();
+        if (!presentFields.Contains("content")) message.Remove("content");
+        if (presentFields.Contains("reasoning")) message["reasoning"] = reasoning.ToString();
+        if (presentFields.Contains("reasoning_content")) message["reasoning_content"] = reasoningContent.ToString();
         return JsonDocument.Parse(new JsonObject
         {
+            ["id"] = responseId,
+            ["usage"] = responseUsage,
             ["choices"] = new JsonArray(new JsonObject
             {
                 ["finish_reason"] = finish,
                 ["message"] = message
             })
         }.ToJsonString());
+    }
+
+    public static string DescribeResponse(JsonElement root)
+    {
+        var choice = root.GetProperty("choices")[0];
+        var message = choice.GetProperty("message");
+        var fields = new[] { "content", "reasoning", "reasoning_content" }.ToDictionary(
+            field => field, field => new
+            {
+                present = message.TryGetProperty(field, out _),
+                length = message.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String
+                    ? value.GetString()!.Length : 0
+            });
+        return JsonSerializer.Serialize(new
+        {
+            finish_reason = choice.GetProperty("finish_reason"),
+            request_id = root.TryGetProperty("id", out var id) ? id : (JsonElement?)null,
+            usage = root.TryGetProperty("usage", out var usage) ? usage : (JsonElement?)null,
+            fields,
+            tool_calls = message.TryGetProperty("tool_calls", out var calls) && calls.ValueKind == JsonValueKind.Array ? calls.GetArrayLength() : 0
+        });
     }
 
     private static bool IsEmptyTrailerDelta(JsonElement delta)

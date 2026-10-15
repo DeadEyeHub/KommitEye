@@ -149,6 +149,7 @@ public sealed class ModelClient
             new { role = "user", content = JsonSerializer.Serialize(new { reviewed_sha = tools.Sha, branch_context = branch }) }
         };
         var calls = 0;
+        var emptyRecoveries = 0;
         var output = 0;
         var unresolvedErrors = new HashSet<string>();
         log?.Invoke("Git agent: started");
@@ -184,6 +185,7 @@ public sealed class ModelClient
                 var apiKey = ResolveApiKey(profile);
                 if (apiKey.Length > 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
                 log?.Invoke("API request body: " + await request.Content.ReadAsStringAsync(cancellationToken));
+                log?.Invoke($"Review request round {round + 1}/{parameters.MaxRounds}; empty recovery attempts={emptyRecoveries}.");
                 progress?.Invoke(ReviewStage.Request);
                 beforeRequest?.Invoke();
                 var responseTask = _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -199,6 +201,10 @@ public sealed class ModelClient
                 var choice = document.RootElement.GetProperty("choices")[0];
                 var finish = choice.GetProperty("finish_reason").GetString();
                 var message = choice.GetProperty("message");
+                log?.Invoke($"Review round {round + 1}/{parameters.MaxRounds}; empty recovery attempts={emptyRecoveries}; " +
+                    ModelResponseReader.DescribeResponse(document.RootElement));
+                if (response.Headers.TryGetValues("x-request-id", out var requestIds))
+                    log?.Invoke("API request ID: " + JsonSerializer.Serialize(requestIds));
                 if (message.TryGetProperty("tool_calls", out var toolCalls) && toolCalls.ValueKind != JsonValueKind.Null && toolCalls.GetArrayLength() > 0)
                 {
                     if (finish != "tool_calls") throw new InvalidDataException("Incomplete tool-call response; review not saved.");
@@ -284,7 +290,26 @@ public sealed class ModelClient
                     continue;
                 }
                 if (finish != "stop") throw new InvalidDataException("Model final response is incomplete; review not saved.");
-                var originalContent = message.GetProperty("content").GetString() ?? "";
+                var originalContent = message.TryGetProperty("content", out var finalContent) ? finalContent.GetString() ?? "" : "";
+                if (string.IsNullOrWhiteSpace(originalContent))
+                {
+                    if (emptyRecoveries >= 1 || round + 1 >= parameters.MaxRounds)
+                    {
+                        log?.Invoke($"Empty report recovery failed: attempts={emptyRecoveries}; requests={round + 1}/{parameters.MaxRounds}.");
+                        throw new EmptyReviewResponseException(Localization.Text(
+                            "The model finished its response without a final report.",
+                            "Модель завершила ответ без финального отчёта."));
+                    }
+                    emptyRecoveries++;
+                    log?.Invoke("Empty report recovery 1/1 scheduled in the original review context.");
+                    // Retain evidence and tool history, but never replay the failed reasoning.
+                    messages.Add(new { role = "user", content =
+                        "Your previous response finished without any final report. Use the review context and tool results above to return the final report now. " +
+                        "Do not continue repetitive reasoning. Return NO_BUGS only if the evidence establishes no bugs, otherwise return complete BUG blocks. " +
+                        "If required evidence is still missing, obtain it using the tools; never claim completion without it." });
+                    continue;
+                }
+                if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: received nonempty content; validating evidence and report.");
                 var content = originalContent.Trim();
                 if (!tools.ReadyForFinal || unresolvedErrors.Count > 0)
                 {
@@ -315,6 +340,8 @@ public sealed class ModelClient
                     activity?.Invoke(ReviewStage.FormatCorrection, "1/1");
                     try
                     {
+                        if (round + 1 >= parameters.MaxRounds)
+                            throw new ReviewFormatException("Model request budget exhausted before format repair.");
                         var repaired = await RepairReportAsync(profile, originalContent, formatErrors,
                             cancellationToken, log, usage, RecordResponse, beforeRequest);
                         var repairedErrors = GetReportFormatErrors(repaired);
@@ -332,6 +359,7 @@ public sealed class ModelClient
                     }
                 }
                 log?.Invoke("Git agent: completed");
+                if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: succeeded.");
                 return content;
             }
             throw new InvalidDataException($"Git agent round budget exhausted: {parameters.MaxRounds} of {parameters.MaxRounds} model requests used; review incomplete.");
@@ -362,7 +390,12 @@ public sealed class ModelClient
             log?.Invoke("Git agent: failed (malformed response)");
             throw new InvalidDataException("Malformed native tool response; review not saved.", exception);
         }
-        catch { log?.Invoke("Git agent: failed"); throw; }
+        catch
+        {
+            if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: review failed; no final report accepted.");
+            log?.Invoke("Git agent: failed");
+            throw;
+        }
     }
 
     private static string DescribeToolCall(int number, string name, string arguments)
@@ -387,6 +420,8 @@ public sealed class ModelClient
     private async Task<string> RepairReportAsync(ModelProfile profile, string original, List<string> errors,
         CancellationToken token, Action<string>? log, Action<TokenUsage?>? usage, Action responseActivity, Action? beforeRequest)
     {
+        if (string.IsNullOrWhiteSpace(original))
+            throw new ArgumentException("Format repair requires a nonempty report.", nameof(original));
         const string instruction = """
             You are a format-only repair operation, not a code reviewer.
             The user message is a JSON data envelope containing the original response and validation errors.
@@ -704,3 +739,5 @@ public sealed class ModelResponseTimeoutException(string message, Exception inne
 public sealed class ReviewComplexityException(string message, Exception inner) : TimeoutException(message, inner);
 
 public sealed class ReviewFormatException(string message, Exception? inner = null) : Exception(message, inner);
+
+public sealed class EmptyReviewResponseException(string message) : Exception(message);

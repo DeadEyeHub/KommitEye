@@ -81,6 +81,8 @@ using (var http = new HttpClient(failedHandler))
     Console.WriteLine("PASS: failed repair remains a reported failure without analysis retries.");
 }
 
+await EmptyResponseChecks.RunAsync(repo, sha, finding);
+
 async Task<string> Git(params string[] args)
 {
     var start = new ProcessStartInfo("git") { WorkingDirectory = repo, RedirectStandardOutput = true, RedirectStandardError = true };

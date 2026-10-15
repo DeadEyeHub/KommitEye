@@ -3,7 +3,8 @@
 The WPF desktop remains in `KommitEye/`, targeting `net10.0-windows`. It is an
 independent application, not a client that requires the web server. A future
 Avalonia application can consume the same engine without referencing WPF.
-No Avalonia project or production Docker image is introduced by this refactor.
+The desktop remains WPF; no Avalonia project is introduced. Docker packaging of
+the portable server is described in `deploy/docker/README.md`.
 
 ## Dependencies
 
@@ -113,3 +114,10 @@ macOS/Linux. Cross-platform release gating is enforced by GitHub Actions.
 
 Passing
 server fixtures does not certify a future Avalonia UI or installer on those OSes.
+
+## Docker deployment
+
+`deploy/docker/` packages the existing portable server and React UI without changing
+Desktop or shared review code. See [Docker operations](../deploy/docker/README.md)
+for initialization, certificate-backed secrets, mounts, Git authentication and backup.
+Docker integration checks are part of the required platform workflow.

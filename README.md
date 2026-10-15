@@ -15,8 +15,15 @@ Both editions share `Version` in `Directory.Build.props`. The server and React U
 packaged together. Shared libraries and the server now target portable .NET 10;
 Windows keeps its existing DPAPI credential format. Linux server execution requires
 an explicitly configured key certificate. Published installers remain Windows-only;
-Docker packaging and the Avalonia desktop are follow-up work. See
+A Linux Docker image with Compose is available; the Avalonia desktop remains follow-up work. See
 [platform architecture](docs/platform-architecture.md).
+
+### Docker Server
+
+Build and run the server with its web interface using
+[Docker Compose](deploy/docker/README.md). Configuration, data and protection keys
+remain outside the image. The container runs as a non-root user; initial setup
+creates its administrator password and persistent protection certificate.
 
 ## Requirements and setup
 

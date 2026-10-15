@@ -34,3 +34,14 @@ jobs:
       - name: ZIP service installation contract without machine changes
         if: runner.os == 'Windows'
         run: ./build/test-service-script.ps1
+  docker:
+    name: Required Docker package checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Linux server image
+        run: docker build -f deploy/docker/Dockerfile -t kommiteye-server:local .
+      - name: Verify Compose bootstrap, Git and persistence
+        shell: pwsh
+        run: ./build/test-docker.ps1

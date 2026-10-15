@@ -15,7 +15,7 @@ if ($info.version -ne [string]$props.Project.PropertyGroup.Version -or $info.pro
 Push-Location $repo
 try {
     # Run the packaged apphost, including its bundled runtime, instead of dotnet <dll>.
-    dotnet run --project checks/Server/Server.csproj -c Release -- (Join-Path $destination 'KommitEye.Server.exe')
+    dotnet run --project checks/Server/Server.csproj -c Release -- (Join-Path $destination 'KommitEye.Server.exe') --service-config
     if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed.' }
 } finally { Pop-Location }
 Write-Output "Verified Service ZIP: $archive"

@@ -30,14 +30,14 @@ Docker packaging and the Avalonia desktop are follow-up work. See
 ### Service
 
 Run `KommitEye-Service-<version>-win-x64.msi` as an administrator. Select the
-application/data folders, port, network access, an existing Windows service
-account and its password, and the Git executable. Setup requires .NET Framework
+application/data folders, port, network access and the Git executable. New services
+use `NT SERVICE\KommitEye` without a user password. The persistent configuration is
+`%ProgramData%\KommitEye\Server\server.json`, with data in its `data` subdirectory. Setup requires .NET Framework
 4.7.2 or newer for installer actions, in addition to the bundled server runtime.
 
 Alternatively, extract the portable ZIP and run `Start-KommitEye.ps1`.
 On the server computer, open `http://localhost:5080` (or your selected port) and
-create the web administrator password. The Windows service password and web
-administrator password are separate. Repository paths and Git credentials refer
+create the web administrator password. Legacy service accounts are preserved on upgrade. Repository paths and Git credentials refer
 to the server computer, not the browser computer.
 
 The MSI installs the `KommitEye` service. Uninstall through Windows Installed apps

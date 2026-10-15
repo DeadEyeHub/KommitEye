@@ -33,7 +33,8 @@ public sealed class ServerHostOptions
                 UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
             }) ?? throw new InvalidDataException("Server configuration cannot be null.");
         var data = Option("--data-dir") ?? config.DataDirectory ?? Environment.GetEnvironmentVariable("KOMMITEYE_DATA_DIR");
-        if (string.IsNullOrWhiteSpace(data)) data = DefaultDataDirectory;
+        if (data is null) data = DefaultDataDirectory;
+        else if (string.IsNullOrWhiteSpace(data)) throw new ArgumentException("DataDirectory cannot be empty.");
         var urls = Option("--urls") ?? config.Urls ?? Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://127.0.0.1:5080";
         if (string.IsNullOrWhiteSpace(urls)) throw new ArgumentException("Urls cannot be empty.");
         var git = Option("--git-path") ?? config.GitExecutable;

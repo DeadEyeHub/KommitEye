@@ -29,3 +29,8 @@ jobs:
       - name: Certificate backend on Windows
         if: runner.os == 'Windows'
         run: dotnet run --project checks/Server/Server.csproj -c Release -- --certificate-protection
+      - name: Service JSON configuration and credential persistence
+        run: dotnet run --project checks/Server/Server.csproj -c Release -- --service-config
+      - name: ZIP service installation contract without machine changes
+        if: runner.os == 'Windows'
+        run: ./build/test-service-script.ps1

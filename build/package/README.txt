@@ -27,6 +27,15 @@ HTTP redirect addresses; localhost HTTP is an exception. Existing accounts refre
 tokens and send without a browser. SMTP works without OAuth.
 
 Service installation is optional: run Install-Service.ps1 as administrator and
-supply the Windows service account. Use that same account for encrypted mail data.
+use the Windows-managed NT SERVICE\KommitEye identity without a user password.
+The script creates %ProgramData%\KommitEye\Server\server.json only if absent,
+with DataDirectory defaulting to %ProgramData%\KommitEye\Server\data.
+Edit that file as administrator and restart the service to apply changes.
+The service can read the config and write data. Credentials use machine DPAPI;
+keep the data ACL restricted. Existing interactive CurrentUser secrets require
+separate migration; do not copy them into the new service unchanged.
+Grant the service identity access to its repositories, then start the service.
+Start-KommitEye.ps1 -ConfigPath <absolute-path> also supports config files;
+without this option the portable launcher retains its local data.
 Uninstall-Service.ps1 preserves data. See the repository docs/server-web.md for tests,
 migration and build instructions.

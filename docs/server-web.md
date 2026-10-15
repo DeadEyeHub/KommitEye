@@ -56,8 +56,11 @@ Packages contain the .NET runtime. Git remains an external prerequisite.
 Extract Service, run `Start-KommitEye.ps1`, then open `http://<server-address>:5080`.
 The startup script keeps data in the extracted package's `data` folder; supply
 `-DataDirectory` to retain data independently of package updates. Direct server
-launch defaults to `%LOCALAPPDATA%/KommitEye.Server`; override with
-`KOMMITEYE_DATA_DIR` or `--data-dir <absolute-path>`.
+launch defaults to `%ProgramData%/KommitEye/Server/data` on Windows or
+`/var/lib/kommiteye/server` on POSIX. Service installations explicitly use
+`--config <absolute-path-to-server.json>`. CLI path/URL options override JSON,
+which overrides environment variables, followed by built-in defaults.
+See [Windows configuration and migration](windows-installer.md#service-configuration).
 
 On first launch, open `http://localhost:5080` on the server computer and choose
 your administrator password in the setup form. No password is generated. Any
@@ -122,9 +125,11 @@ Google supports two setups:
    once with a bounded lifetime. A bare LAN HTTP IP is not a valid Google Web OAuth
    deployment. Do not replace provider redirect validation with a permissive proxy.
 
-`Install-Service.ps1` requires an explicit Windows account. Grant that account
-repository/data access and set its OAuth environment before starting the service.
-The installer does not start services or modify firewall rules automatically.
+`Install-Service.ps1` uses `NT SERVICE\KommitEye` without a password and creates
+`%ProgramData%\KommitEye\Server\server.json` if absent. It secures the data/config
+folders and uses machine-scoped DPAPI. Grant repository access to that identity
+and set its OAuth environment before starting the service. The ZIP script does
+not start the service or add firewall rules; the MSI offers both options.
 
 ## Verification and GitHub
 

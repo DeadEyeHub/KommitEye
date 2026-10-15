@@ -19,6 +19,8 @@ static class HostConfigurationChecks
         Reject(() => ServerHostOptions.Load(["--config", path]), "unknown configuration property rejected");
         File.WriteAllText(path, "{\"DataDirectory\":\"relative\"}");
         Reject(() => ServerHostOptions.Load(["--config", path]), "relative data directory rejected");
+        File.WriteAllText(path, "{\"DataDirectory\":\"\"}");
+        Reject(() => ServerHostOptions.Load(["--config", path]), "empty data directory does not silently use defaults");
         if (OperatingSystem.IsWindows())
             Check(ServerHostOptions.DefaultDataDirectory == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye", "Server", "data"), "Windows server defaults to ProgramData, not a user profile");
     }

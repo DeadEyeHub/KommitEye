@@ -34,7 +34,10 @@ Windows targets. Non-UI fixture checks reference the engine rather than WPF.
 
 Windows without an explicit key certificate keeps the original DPAPI
 `CurrentUser` format and null entropy for SMTP/OAuth, and DPAPI protection of
-cookie keys in `session-keys/`. Existing Windows data needs no migration.
+cookie keys in `session-keys/` by default. New Windows service installations
+explicitly select `LocalMachine` through server.json and restrict data access to
+SYSTEM, administrators and the service identity. Desktop and legacy services
+keep `CurrentUser`; changing protection modes requires credential migration.
 
 On non-Windows servers configure:
 

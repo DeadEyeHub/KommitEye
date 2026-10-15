@@ -8,14 +8,14 @@ must already be installed. Setup requires an administrator and .NET Framework
 ## Wizard
 
 1. Choose the application directory (default: `C:\Program Files\KommitEye Server`).
-2. Choose a separate local data directory (default: `C:\ProgramData\KommitEye.Server`),
+2. Choose a separate local data directory (default: `C:\ProgramData\KommitEye\Server\data`),
    TCP port (default: 5080) and local-computer or LAN access.
 3. For LAN access, optionally add Windows Firewall rules. They allow only the
    selected executable/port, on private and domain profiles, from the local subnet.
-4. Enter an existing Windows account as `COMPUTER\user` or `DOMAIN\user` and its
-   password, not a Windows Hello PIN. Select the Git executable if auto-detection
-   did not find it. The account needs access to repositories and its own Git
-   authentication. Setup grants "Log on as a service"; domain policy can override it.
+4. New installations use the Windows-managed identity `NT SERVICE\KommitEye` without
+   a username/password prompt. Select the Git executable if auto-detection did not
+   find it. Grant repository access to this identity and configure Git authentication
+   for the service. Existing installations retain their original service account.
 5. Choose automatic startup and whether to start immediately. Review the local
    and LAN addresses, then install.
 6. Open `http://localhost:<port>` on the server computer to create the **web**
@@ -24,10 +24,39 @@ must already be installed. Setup requires an administrator and .NET Framework
 
 The service is named `KommitEye` and displayed as **KommitEye Review Server**.
 The data folder's ACL grants full access only to SYSTEM, administrators and the
-chosen account. The password is passed to Windows Service Control Manager, is a
-hidden/secure MSI property and is not written to application configuration or
-installer registry settings. Avoid supplying real passwords in shell history or
-public deployment logs.
+service identity. New service credentials use DPAPI `LocalMachine`; restricting
+access to ciphertext in the data folder is essential. Desktop and legacy services
+retain `CurrentUser` encryption. Legacy-account maintenance still requires its
+password; MSI hides it from logging and does not store it in configuration.
+
+## Service configuration
+
+The installer creates `%ProgramData%\KommitEye\Server\server.json` once:
+
+```json
+{
+  "DataDirectory": "C:\\ProgramData\\KommitEye\\Server\\data",
+  "Urls": "http://127.0.0.1:5080",
+  "GitExecutable": "C:\\Program Files\\Git\\cmd\\git.exe",
+  "CredentialProtection": "LocalMachine"
+}
+```
+
+SCM starts the executable with `--config "<absolute path to server.json>"`.
+Administrators can edit the configuration; the service has read-only access to
+its directory and write access to the separate data directory. Missing/invalid
+configuration or inaccessible data causes startup failure, not a profile fallback.
+Changes take effect after service restart. MSI maintenance accepts one HTTP URL
+with host `127.0.0.1` or `0.0.0.0`; it reads existing values and never overwrites the
+file. For LAN access select it during first setup or change `Urls` and maintain the
+firewall rules accordingly.
+
+To move data, stop the service, back up and copy the entire data directory, grant
+`NT SERVICE\KommitEye` full access to the new dedicated directory (administrators
+and SYSTEM retain full access), update `DataDirectory`, then restart. Keep the
+configuration outside the writable data directory. Do not change protection mode
+on an existing store without migrating credentials. Machine-protected secrets
+remain tied to their original Windows machine.
 
 The MSI does not configure HTTPS. LAN HTTP is intended for a trusted network;
 use a local reverse proxy for HTTPS, choosing local-computer access in setup.
@@ -41,9 +70,12 @@ Increase `Version` in `Directory.Build.props` for a new MSI release.
 Use the new MSI to upgrade. The previous service is stopped and replaced inside
 the Windows Installer transaction; installation failure rolls the upgrade back.
 Setup reloads the previous folder, port, network options, Git path and account.
-Re-enter the account password for upgrade or repair; it is not stored by setup.
-Folder/account migration is deliberately separate because stored secrets use
-Windows DPAPI and depend on the original account.
+New virtual-account installations require no password during maintenance. Legacy
+installations retain their data path, original account and `CurrentUser` protection;
+re-enter that account password during maintenance. No automatic secret conversion
+or move into the new default directory is performed. Existing server.json survives
+repair, upgrade and uninstall; a failed installation can also leave this persistent
+configuration for a retry.
 
 Uninstall stops and removes the service, installed program files and firewall
 rules. It preserves reports, settings, credentials and the data directory, plus
@@ -83,8 +115,8 @@ These operations are not performed on the development computer by the build.
 
 For unattended deployments, public MSI properties are `INSTALLFOLDER`, `DATADIR`,
 `PORT`, `ACCESSMODE` (`lan` or `local`), `FIREWALL`, `AUTOSTART`, `STARTNOW` (`1` or
-`0`), `SERVICEACCOUNT`, `SERVICEPASSWORD` and `GITEXE`. Supply credentials through
-your deployment system's protected inputs. Removing the MSI needs no password.
+`0`), `CONFIGDIR` and `GITEXE`. `SERVICEACCOUNT` and `SERVICEPASSWORD` remain
+available for legacy account maintenance; use protected deployment inputs for them. Removing the MSI needs no password.
 Unattended installation runs the same validation as the wizard.
 
 The local build is unsigned unless a signing step is configured separately.

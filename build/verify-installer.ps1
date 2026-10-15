@@ -28,7 +28,7 @@ try {
     $service = @(Read-Rows 'SELECT `Name`, `StartName`, `Password`, `Arguments` FROM `ServiceInstall`' 4)
     Assert ($service.Count -eq 1 -and $service[0][0] -eq 'KommitEye') 'one Windows service with the expected name'
     Assert ($service[0][1] -eq '[SERVICEACCOUNT]' -and $service[0][2] -eq '[SERVICEPASSWORD]') 'service uses the selected Windows account'
-    Assert ($service[0][3].Contains('[DATAPATH]') -and $service[0][3].Contains('[GITEXE]')) 'service receives explicit data and Git paths'
+    Assert ($service[0][3] -eq '--config "[CONFIGFILE]"') 'service receives an explicit configuration file'
     $files = @(Read-Rows 'SELECT `FileName` FROM `File`') | ForEach-Object { $_[0].Split('|')[-1] }
     Assert ($files -contains 'KommitEye.Server.exe' -and $files -contains 'coreclr.dll') 'server and self-contained .NET runtime included'
     Assert ($files -contains 'index.html' -and @($files | Where-Object { $_ -like '*.js' }).Count -gt 0) 'compiled React UI included'
@@ -43,12 +43,12 @@ try {
     Assert (($components['PersistentDataFolder'] -band 16) -ne 0) 'data directory survives uninstall'
     Assert (($components['SavedSettings'] -band 16) -ne 0) 'settings for later reinstall survive uninstall'
     $aclRows = @(Read-Rows 'SELECT `LockObject`, `SDDLText` FROM `MsiLockPermissionsEx`' 2)
-    Assert ($aclRows.Count -eq 1 -and $aclRows[0][0] -eq 'DATADIR') 'data folder receives a restricted ACL'
-    $sddl = $aclRows[0][1]
+    Assert ($aclRows.Count -eq 3) 'data, configuration and program folders receive restricted ACLs'
+    $sddl = ($aclRows | Where-Object { $_[0] -eq 'DATADIR' })[1]
     Assert (!$sddl.Contains('[')) 'native MSI SDDL contains no unsupported property references'
     $descriptor = [Security.AccessControl.RawSecurityDescriptor]::new($sddl)
     $allowedSids = @($descriptor.DiscretionaryAcl | ForEach-Object { $_.SecurityIdentifier.Value })
-    Assert ($allowedSids.Count -eq 2 -and $allowedSids -contains 'S-1-5-18' -and $allowedSids -contains 'S-1-5-32-544' -and ($descriptor.ControlFlags -band [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected)) 'valid base ACL grants only SYSTEM and administrators and blocks inherited access'
+    Assert ($allowedSids.Count -eq 3 -and $allowedSids -contains 'S-1-5-80-3680015686-339733092-3489414343-1427611537-2043285906' -and $allowedSids -contains 'S-1-5-18' -and $allowedSids -contains 'S-1-5-32-544' -and ($descriptor.ControlFlags -band [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected)) 'valid base ACL grants only SYSTEM, administrators and the virtual service and blocks inherited access'
     $permissions = @(Read-Rows 'SELECT `SecureObject`, `Domain`, `User`, `Permission` FROM `Wix4SecureObject`' 4)
     Assert (@($permissions | Where-Object { $_[0] -eq 'DATADIR' -and $_[1] -eq '[SERVICEDOMAIN]' -and $_[2] -eq '[SERVICEUSER]' -and ([long]$_[3] -band 0x10000000) }).Count -eq 1) 'WiX grants the selected service account full access through formatted fields'
     Assert (@(Read-Rows 'SELECT `Name` FROM `Wix5FirewallException`').Count -eq 2) 'private and domain firewall rules included'
@@ -62,6 +62,8 @@ try {
     Assert ($sequence['StopServices'] -gt $sequence['InstallInitialize'] -and $sequence['StopServices'] -lt $sequence['RemoveFiles'] -and $sequence['DeleteServices'] -lt $sequence['RemoveFiles']) 'service stops and is removed inside the transaction before its files are deleted'
     Assert ($sequence['RemoveExistingProducts'] -gt $sequence['InstallInitialize'] -and $sequence['RemoveExistingProducts'] -lt $sequence['InstallFiles']) 'upgrade removal is inside the rollback transaction'
     Assert ($sequence['ConfigureStartMode'] -gt $sequence['InstallServices'] -and $sequence['ConfigureStartMode'] -lt $sequence['StartServices']) 'startup mode is configured before the service starts'
+    Assert ($sequence['WriteServiceConfig'] -gt $sequence['InstallServices'] -and $sequence['WriteServiceConfig'] -lt $sequence['StartServices']) 'configuration exists before the service starts'
+    Assert (($components['PersistentConfigurationFolder'] -band 16) -ne 0) 'configuration survives uninstall'
     $secureAction = @($sequence.Keys | Where-Object { $_ -match 'SchedSecureObjects_' })
     Assert ($secureAction.Count -eq 1 -and $sequence[$secureAction[0]] -gt $sequence['CreateFolders'] -and $sequence[$secureAction[0]] -lt $sequence['StartServices']) 'service folder access is scheduled after folder creation and before service startup'
     Write-Host "Installer table checks passed: $($files.Count) packaged files. No installation was performed."

@@ -30,7 +30,7 @@
 
       <Dialog Id="ServerOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
         <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Data and network" />
-        <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="Data is kept when the application is updated or uninstalled." />
+        <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="Settings are stored in server.json under ProgramData. Existing configuration and data are preserved." />
         <Control Id="DataLabel" Type="Text" X="15" Y="68" Width="340" Height="14" Text="Data folder (settings, reports, credentials and logs):" />
         <Control Id="DataPath" Type="PathEdit" X="15" Y="86" Width="270" Height="18" Property="DATADIR" />
         <Control Id="Browse" Type="PushButton" X="292" Y="86" Width="63" Height="18" Text="Browse...">
@@ -62,12 +62,12 @@
 
       <Dialog Id="ServiceAccountDlg" Width="370" Height="270" Title="[ProductName] Setup">
         <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Windows service" />
-        <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="Use an existing account with access to your repositories and Git credentials." />
-        <Control Id="AccountLabel" Type="Text" X="15" Y="68" Width="125" Height="15" Text="COMPUTER\user:" />
-        <Control Id="Account" Type="Edit" X="145" Y="65" Width="210" Height="18" Property="SERVICEACCOUNT" />
-        <Control Id="PasswordLabel" Type="Text" X="15" Y="94" Width="125" Height="15" Text="Windows password:" />
-        <Control Id="Password" Type="Edit" X="145" Y="91" Width="210" Height="18" Property="SERVICEPASSWORD" Password="yes" />
-        <Control Id="PasswordHint" Type="Text" X="15" Y="115" Width="340" Height="28" Text="Use the account password, not a Windows Hello PIN. The web administrator password is created later in the browser." />
+        <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="New installations use a managed service identity. No Windows user password is required." />
+        <Control Id="AccountLabel" Type="Text" X="15" Y="68" Width="125" Height="15" Text="Service identity:" />
+        <Control Id="Account" Type="Text" X="145" Y="65" Width="210" Height="18" Text="[SERVICEACCOUNT]" />
+        <Control Id="PasswordLabel" HideCondition="SERVICEACCOUNT = &quot;NT SERVICE\KommitEye&quot;" Type="Text" X="15" Y="94" Width="125" Height="15" Text="Windows password:" />
+        <Control Id="Password" HideCondition="SERVICEACCOUNT = &quot;NT SERVICE\KommitEye&quot;" Type="Edit" X="145" Y="91" Width="210" Height="18" Property="SERVICEPASSWORD" Password="yes" />
+        <Control Id="PasswordHint" HideCondition="SERVICEACCOUNT = &quot;NT SERVICE\KommitEye&quot;" Type="Text" X="15" Y="115" Width="340" Height="28" Text="Legacy upgrade: enter the existing service account password to preserve access to encrypted credentials." />
         <Control Id="GitLabel" Type="Text" X="15" Y="149" Width="125" Height="15" Text="Git executable:" />
         <Control Id="GitPath" Type="Edit" X="145" Y="146" Width="210" Height="18" Property="GITEXE" />
         <Control Id="Automatic" Type="CheckBox" X="15" Y="178" Width="340" Height="17" Property="AUTOCHOICE" CheckBoxValue="1" Text="Start the server when Windows starts" />

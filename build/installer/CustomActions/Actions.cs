@@ -28,11 +28,24 @@ public static class Actions
             {
                 void Default(string property, string fallback) { if (session[property] == "") session[property] = saved?.GetValue(property) as string ?? fallback; }
                 Default("INSTALLFOLDER", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "KommitEye Server"));
-                Default("DATADIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye.Server"));
-                Default("PORT", "5080"); Default("ACCESSMODE", "lan"); Default("FIREWALL", "1");
-                Default("AUTOSTART", "1"); Default("SERVICEACCOUNT", Environment.MachineName + "\\");
+                Default("CONFIGDIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye", "Server"));
+                Default("DATADIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye", "Server", "data"));
+                Default("PORT", "5080"); Default("ACCESSMODE", "local"); Default("FIREWALL", "0");
+                Default("AUTOSTART", "1"); Default("SERVICEACCOUNT", SetupValidation.VirtualServiceAccount);
                 Default("STARTNOW", "1");
                 Default("GITEXE", FindGit());
+                var configPath = Path.Combine(session["CONFIGDIR"], "server.json");
+                if (File.Exists(configPath))
+                {
+                    var config = ServiceConfiguration.Read(configPath);
+                    session["DATADIR"] = config.DataDirectory;
+                    session["GITEXE"] = config.GitExecutable;
+                    if (!Uri.TryCreate(config.Urls, UriKind.Absolute, out var address) || address.Scheme != "http" ||
+                        (address.Host != "127.0.0.1" && address.Host != "0.0.0.0"))
+                        throw new ArgumentException("MSI maintenance supports a single http://127.0.0.1 or http://0.0.0.0 address in server.json.");
+                    session["PORT"] = address.Port.ToString();
+                    session["ACCESSMODE"] = address.Host == "127.0.0.1" ? "local" : "lan";
+                }
             }
             session["AUTOCHOICE"] = session["AUTOSTART"] == "1" ? "1" : "";
             session["STARTCHOICE"] = session["STARTNOW"] == "1" ? "1" : "";
@@ -81,6 +94,10 @@ public static class Actions
     {
         var install = SetupValidation.DirectoryPath(session["INSTALLFOLDER"]);
         var data = SetupValidation.DirectoryPath(session["DATADIR"]);
+        var configDirectory = SetupValidation.DirectoryPath(session["CONFIGDIR"]);
+        var configPath = Path.Combine(configDirectory, "server.json");
+        if (configDirectory.Equals(data, StringComparison.OrdinalIgnoreCase) || configDirectory.StartsWith(data + "\\", StringComparison.OrdinalIgnoreCase)) throw new ArgumentException("The configuration folder cannot be inside the writable data folder.");
+        if (SetupValidation.Overlaps(install, configDirectory)) throw new ArgumentException("The configuration folder must be separate from the program folder.");
         if (SetupValidation.Overlaps(install, data)) throw new ArgumentException("The program and data folders must be separate and cannot contain each other.");
         if (SetupValidation.Overlaps(data, Environment.GetFolderPath(Environment.SpecialFolder.Windows)))
             throw new ArgumentException("The data folder cannot be inside the Windows folder.");
@@ -90,17 +107,19 @@ public static class Actions
             if (session[property] != "0" && session[property] != "1" && session[property] != "") throw new ArgumentException("Invalid installation option: " + property);
         var account = SetupValidation.Account(session["SERVICEACCOUNT"]);
         var fullAccount = account[0] + "\\" + account[1];
-        var sid = (SecurityIdentifier)new NTAccount(fullAccount).Translate(typeof(SecurityIdentifier));
-        if (session["SERVICEPASSWORD"].Length == 0) throw new ArgumentException("Enter the Windows account password. A Windows Hello PIN cannot be used for a service.");
+        var virtualAccount = fullAccount.Equals(SetupValidation.VirtualServiceAccount, StringComparison.OrdinalIgnoreCase);
+        var sid = virtualAccount ? new SecurityIdentifier(SetupValidation.VirtualServiceSid) : (SecurityIdentifier)new NTAccount(fullAccount).Translate(typeof(SecurityIdentifier));
+        if (virtualAccount) session["SERVICEPASSWORD"] = "";
+        if (!virtualAccount && session["SERVICEPASSWORD"].Length == 0) throw new ArgumentException("Enter the Windows account password. A Windows Hello PIN cannot be used for a service.");
         using (var saved = Saved())
         {
             var previousData = saved?.GetValue("DATADIR") as string;
             var previousAccount = saved?.GetValue("SERVICEACCOUNT") as string;
-            if (previousData != null && !string.Equals(previousData.TrimEnd('\\'), data, StringComparison.OrdinalIgnoreCase))
+            if (!File.Exists(configPath) && previousData != null && !string.Equals(previousData.TrimEnd('\\'), data, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Keep the existing data folder during upgrade or repair. Data migration must be performed separately.");
             if (previousAccount != null && !string.Equals(previousAccount, fullAccount, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Keep the existing service account during upgrade or repair so encrypted credentials remain readable.");
-            if (saved == null && Directory.Exists(data) && Directory.EnumerateFileSystemEntries(data).Any())
+            if (saved == null && !File.Exists(configPath) && Directory.Exists(data) && Directory.EnumerateFileSystemEntries(data).Any())
                 throw new ArgumentException("Choose an empty data folder for the first installation. Import existing data separately.");
             var service = ServiceController.GetServices().FirstOrDefault(s => s.ServiceName.Equals("KommitEye", StringComparison.OrdinalIgnoreCase));
             using (service)
@@ -125,6 +144,20 @@ public static class Actions
             if (!git.WaitForExit(5000)) { git.Kill(); throw new ArgumentException("Git did not respond within five seconds."); }
             if (git.ExitCode != 0) throw new ArgumentException("Git could not run. Repair the Git for Windows installation.");
         }
+        if (File.Exists(configPath))
+        {
+            var config = ServiceConfiguration.Read(configPath);
+            var expectedUrl = "http://" + (session["ACCESSMODE"] == "local" ? "127.0.0.1" : "0.0.0.0") + ":" + port;
+            if (!string.Equals(config.DataDirectory.TrimEnd('\\'), data, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(config.GitExecutable, gitExe, StringComparison.OrdinalIgnoreCase) || config.Urls != expectedUrl ||
+                config.CredentialProtection != (virtualAccount ? "LocalMachine" : "CurrentUser"))
+                throw new ArgumentException("Existing server.json is preserved. Change DataDirectory, Urls and GitExecutable in that file before running maintenance.");
+        }
+        session["CONFIGDIR"] = configDirectory + "\\";
+        session["CONFIGFILE"] = configPath;
+        session["WriteServiceConfig"] = new CustomActionData { { "path", configPath }, { "data", data },
+            { "urls", "http://" + (session["ACCESSMODE"] == "local" ? "127.0.0.1" : "0.0.0.0") + ":" + port },
+            { "git", gitExe }, { "protection", virtualAccount ? "LocalMachine" : "CurrentUser" } }.ToString();
         session["DATADIR"] = data + "\\";
         session["DATAPATH"] = data;
         session["SERVICEACCOUNT"] = fullAccount; session["SERVICEUSER"] = account[1]; session["SERVICEDOMAIN"] = account[0]; session["SERVICESID"] = sid.Value;
@@ -155,6 +188,19 @@ public static class Actions
         }
         catch { return rollback ? ActionResult.Success : Error(session, "Unable to configure automatic service startup."); }
         finally { if (service != IntPtr.Zero) CloseServiceHandle(service); if (manager != IntPtr.Zero) CloseServiceHandle(manager); }
+    }
+
+    [CustomAction]
+    public static ActionResult WriteServiceConfig(Session session)
+    {
+        try
+        {
+            var values = session.CustomActionData;
+            new ServiceConfiguration { DataDirectory = values["data"], Urls = values["urls"],
+                GitExecutable = values["git"], CredentialProtection = values["protection"] }.CreateIfMissing(values["path"]);
+            return ActionResult.Success;
+        }
+        catch { return Error(session, "Unable to create server.json in the configuration directory."); }
     }
 
     [CustomAction]

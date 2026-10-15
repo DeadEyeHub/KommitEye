@@ -18,6 +18,8 @@
     <Property Id="INSTALLFOLDER" Secure="yes" />
     <Property Id="DATADIR" Secure="yes" />
     <Property Id="DATAPATH" Secure="yes" />
+    <Property Id="CONFIGDIR" Secure="yes" />
+    <Property Id="CONFIGFILE" Secure="yes" />
     <Property Id="PORT" Secure="yes" />
     <Property Id="ACCESSMODE" Secure="yes" />
     <Property Id="NETWORKCHOICE" Value="lan" />
@@ -40,9 +42,9 @@
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
     <StandardDirectory Id="ProgramFiles64Folder"><Directory Id="INSTALLFOLDER" Name="KommitEye Server" /></StandardDirectory>
-    <StandardDirectory Id="CommonAppDataFolder"><Directory Id="DATADIR" Name="KommitEye.Server" /></StandardDirectory>
+    <StandardDirectory Id="CommonAppDataFolder"><Directory Id="ProductDataRoot" Name="KommitEye"><Directory Id="CONFIGDIR" Name="Server"><Directory Id="DATADIR" Name="data" /></Directory></Directory></StandardDirectory>
     <DirectoryRef Id="INSTALLFOLDER">
-      <Component Id="ProgramFolderAccess" Guid="17B7A832-7203-421F-AF55-313A4CC88216" Bitness="always64">
+      <Component Id="ProgramFolderAccess" Guid="17B7A832-7203-421F-AF55-313A4CC88216" Bitness="always64" Condition="SERVICEACCOUNT &lt;&gt; &quot;NT SERVICE\KommitEye&quot;">
         <CreateFolder>
           <util:PermissionEx User="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" Read="yes" ReadAttributes="yes" ReadExtendedAttributes="yes" ReadPermission="yes" GenericExecute="yes" Synchronize="yes" />
         </CreateFolder>
@@ -56,14 +58,14 @@
         <ServiceInstall Id="InstallServerService" Name="KommitEye" DisplayName="KommitEye Review Server"
                         Description="Reviews Git commits and serves the KommitEye web interface."
                         Type="ownProcess" Start="demand" ErrorControl="normal" Account="[SERVICEACCOUNT]" Password="[SERVICEPASSWORD]"
-                        Arguments="--data-dir &quot;[DATAPATH]&quot; --urls &quot;http://[LISTENHOST]:[PORT]&quot; --git-path &quot;[GITEXE]&quot;" Vital="yes" />
+                        Arguments="--config &quot;[CONFIGFILE]&quot;" Vital="yes" />
         <ServiceControl Id="StopRemoveServer" Name="KommitEye" Stop="both" Remove="uninstall" Wait="yes" />
       </Component>
       <Component Id="StartServer" Guid="90A55D1F-3B9A-4B51-BE24-F29429D78D9A" Condition="STARTNOW = &quot;1&quot;" Bitness="always64">
         <RegistryValue Root="HKLM" Key="SOFTWARE\KommitEye\Server" Name="StartNow" Value="1" Type="integer" KeyPath="yes" />
         <ServiceControl Id="StartServerNow" Name="KommitEye" Start="install" Wait="yes" />
       </Component>
-      <Component Id="ServiceAccountRights" Guid="996CE6D5-6717-44AF-93CC-5224F9B35156" Bitness="always64" Permanent="yes">
+      <Component Id="ServiceAccountRights" Guid="996CE6D5-6717-44AF-93CC-5224F9B35156" Bitness="always64" Permanent="yes" Condition="SERVICEACCOUNT &lt;&gt; &quot;NT SERVICE\KommitEye&quot;">
         <RegistryValue Root="HKLM" Key="SOFTWARE\KommitEye\Server" Name="AccountRights" Value="1" Type="integer" KeyPath="yes" />
         <util:User Id="ExistingServiceUser" Name="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" CreateUser="no"
                    LogonAsService="yes" RemoveOnUninstall="no" FailIfExists="no" UpdateIfExists="no" />
@@ -72,6 +74,7 @@
         <RegistryKey Root="HKLM" Key="SOFTWARE\KommitEye\Server">
           <RegistryValue Name="INSTALLFOLDER" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
           <RegistryValue Name="DATADIR" Value="[DATAPATH]" Type="string" />
+          <RegistryValue Name="CONFIGDIR" Value="[CONFIGDIR]" Type="string" />
           <RegistryValue Name="PORT" Value="[PORT]" Type="string" />
           <RegistryValue Name="ACCESSMODE" Value="[ACCESSMODE]" Type="string" />
           <RegistryValue Name="FIREWALL" Value="[FIREWALL]" Type="string" />
@@ -89,11 +92,27 @@
     <DirectoryRef Id="DATADIR">
       <Component Id="PersistentDataFolder" Guid="F5D4109C-D109-4E6C-A297-3D15E681AC56" Permanent="yes" Bitness="always64">
         <CreateFolder>
-          <!-- MSI SDDLText does not expand properties. Set a restricted static ACL,
-               then let WiX's formatted account fields grant the service access. -->
-          <PermissionEx Id="DataFolderPermissions" Sddl="D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)" />
-          <util:PermissionEx User="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" GenericAll="yes" />
+          <!-- The virtual service SID is deterministic even before SCM creates the service. -->
+          <PermissionEx Id="DataFolderPermissions" Sddl="D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;S-1-5-80-3680015686-339733092-3489414343-1427611537-2043285906)" />
         </CreateFolder>
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="DATADIR">
+      <Component Id="LegacyDataAccess" Guid="B5DBEAA7-2269-4DA6-B92E-41B815CC8DE7" Bitness="always64" Permanent="yes" Condition="SERVICEACCOUNT &lt;&gt; &quot;NT SERVICE\KommitEye&quot;">
+        <CreateFolder><util:PermissionEx User="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" GenericAll="yes" /></CreateFolder>
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="CONFIGDIR">
+      <Component Id="PersistentConfigurationFolder" Guid="F45E0FB4-543B-4FB9-A925-568BFE9C3F93" Bitness="always64" Permanent="yes">
+        <CreateFolder><PermissionEx Id="ConfigurationFolderPermissions" Sddl="D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;GRGX;;;S-1-5-80-3680015686-339733092-3489414343-1427611537-2043285906)" /></CreateFolder>
+      </Component>
+      <Component Id="LegacyConfigAccess" Guid="422B0860-EB54-4E16-BA1D-055D38828726" Bitness="always64" Permanent="yes" Condition="SERVICEACCOUNT &lt;&gt; &quot;NT SERVICE\KommitEye&quot;">
+        <CreateFolder><util:PermissionEx User="[SERVICEUSER]" Domain="[SERVICEDOMAIN]" GenericRead="yes" GenericExecute="yes" Synchronize="yes" /></CreateFolder>
+      </Component>
+    </DirectoryRef>
+    <DirectoryRef Id="INSTALLFOLDER">
+      <Component Id="VirtualProgramAccess" Guid="F469A9A2-1AA9-445C-9165-FDECCB63C426" Bitness="always64" Condition="SERVICEACCOUNT = &quot;NT SERVICE\KommitEye&quot;">
+        <CreateFolder><PermissionEx Id="VirtualProgramPermissions" Sddl="D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;GRGX;;;S-1-5-80-3680015686-339733092-3489414343-1427611537-2043285906)" /></CreateFolder>
       </Component>
     </DirectoryRef>
     <Feature Id="Server" Title="KommitEye Service" Level="1">
@@ -101,6 +120,7 @@
       <ComponentRef Id="ServiceAccountRights" /><ComponentRef Id="LanFirewall" /><ComponentRef Id="PersistentDataFolder" />
       <ComponentRef Id="ProgramFolderAccess" />
       <ComponentRef Id="NativeSqlite" />
+      <ComponentRef Id="PersistentConfigurationFolder" /><ComponentRef Id="LegacyConfigAccess" /><ComponentRef Id="LegacyDataAccess" /><ComponentRef Id="VirtualProgramAccess" />
       <Files Include="$(PayloadDir)\**" Directory="INSTALLFOLDER">
         <Exclude Files="$(PayloadDir)\KommitEye.Server.exe" />
         <Exclude Files="$(PayloadDir)\e_sqlite3.dll" />
@@ -115,6 +135,7 @@
     <CustomAction Id="ValidateExecute" BinaryRef="SetupActions" DllEntry="ValidateExecute" Execute="immediate" Return="check" HideTarget="yes" />
     <CustomAction Id="RollbackStartMode" BinaryRef="SetupActions" DllEntry="RollbackStartMode" Execute="rollback" Impersonate="no" Return="ignore" />
     <CustomAction Id="ConfigureStartMode" BinaryRef="SetupActions" DllEntry="ConfigureStartMode" Execute="deferred" Impersonate="no" Return="check" />
+    <CustomAction Id="WriteServiceConfig" BinaryRef="SetupActions" DllEntry="WriteServiceConfig" Execute="deferred" Impersonate="no" Return="check" />
     <CustomAction Id="OpenBrowser" BinaryRef="SetupActions" DllEntry="OpenBrowser" Execute="immediate" Return="ignore" />
     <InstallUISequence><Custom Action="InitializeSettings" After="AppSearch" Condition="NOT (REMOVE = &quot;ALL&quot;)" /></InstallUISequence>
     <InstallExecuteSequence>
@@ -122,6 +143,7 @@
       <Custom Action="ValidateExecute" Before="InstallInitialize" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
       <Custom Action="RollbackStartMode" After="InstallServices" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
       <Custom Action="ConfigureStartMode" After="RollbackStartMode" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
+      <Custom Action="WriteServiceConfig" After="ConfigureStartMode" Condition="NOT (REMOVE = &quot;ALL&quot;)" />
     </InstallExecuteSequence>
     <UIRef Id="KommitEyeUI" />
   </Package>

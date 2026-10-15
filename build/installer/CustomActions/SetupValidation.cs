@@ -7,6 +7,9 @@ namespace KommitEye.Setup;
 // Pure validation is shared with the installer checks; no MSI session or machine changes.
 public static class SetupValidation
 {
+    public const string VirtualServiceAccount = @"NT SERVICE\KommitEye";
+    // Deterministic service SID for the fixed SCM name KommitEye (sc.exe showsid KommitEye).
+    public const string VirtualServiceSid = "S-1-5-80-3680015686-339733092-3489414343-1427611537-2043285906";
     public static int Port(string value)
     {
         if (!int.TryParse(value, out var port) || port < 1 || port > 65535)
@@ -33,6 +36,7 @@ public static class SetupValidation
 
     public static string[] Account(string value)
     {
+        if (string.Equals(value, VirtualServiceAccount, StringComparison.OrdinalIgnoreCase)) return new[] { "NT SERVICE", "KommitEye" };
         var parts = (value ?? "").Trim().Split('\\');
         if (parts.Length != 2 || parts.Any(string.IsNullOrWhiteSpace) || parts.Any(p => p.IndexOfAny(new[] { '"', ';', '\r', '\n' }) >= 0))
             throw new ArgumentException("Enter an existing Windows account as COMPUTER\\user or DOMAIN\\user.");

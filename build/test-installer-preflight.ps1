@@ -51,14 +51,16 @@ try {
     # intentionally reject a different data folder or service account.
     $saved = Get-ItemProperty 'HKLM:\SOFTWARE\KommitEye\Server' -ErrorAction SilentlyContinue
     $dataPath = if ($saved.DATADIR) { $saved.DATADIR } else { Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-preflight-' + [guid]::NewGuid().ToString('N')) }
-    $account = if ($saved.SERVICEACCOUNT) { $saved.SERVICEACCOUNT } else { [Security.Principal.WindowsIdentity]::GetCurrent().Name }
+    $account = if ($saved.SERVICEACCOUNT) { $saved.SERVICEACCOUNT } else { 'NT SERVICE\KommitEye' }
     $dataExisted = Test-Path -LiteralPath $dataPath
     Set-Property 'DATADIR' $dataPath
     Set-Property 'SERVICEACCOUNT' $account
     # A fixture string is never used to log on or install a service by these immediate actions.
-    Set-Property 'SERVICEPASSWORD' 'installer-preflight-fixture'
+    Set-Property 'SERVICEPASSWORD' $(if ($account -eq 'NT SERVICE\KommitEye') { '' } else { 'installer-preflight-fixture' })
     Set-Property 'GITEXE' (Get-Command git.exe).Source
     Assert ($session.DoAction('ValidateDialog') -eq 1 -and (Get-Property 'SETUPVALID') -eq '1') 'valid settings pass the actual MSI action'
+    Assert ((Get-Property 'CONFIGFILE').EndsWith('\server.json')) 'service receives an absolute config path'
+    if ($account -eq 'NT SERVICE\KommitEye') { Assert ((Get-Property 'SERVICEPASSWORD') -eq '') 'virtual service validates without a password' }
     Assert ((Get-Property 'LISTENHOST') -eq '127.0.0.1') 'local access maps to loopback'
     Assert (!(Get-Property 'DATAPATH').EndsWith('\')) 'quoted service data argument has no trailing backslash'
     Assert ((Get-Property 'ConfigureStartMode') -eq 'mode=3') 'unchecked auto-start prepares demand startup'

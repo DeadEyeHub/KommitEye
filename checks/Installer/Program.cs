@@ -21,3 +21,21 @@ Check(SetupValidation.Account(@".\svc")[0] == Environment.MachineName, "expand l
 foreach (var value in new[] { "user", @"DOMAIN\", @"\user", @"NT AUTHORITY\SYSTEM", "DOMAIN\\user;injection" })
     Reject(() => SetupValidation.Account(value), "reject invalid or built-in service account");
 Console.WriteLine($"{count} installer validation checks passed.");
+
+Check(SetupValidation.Account(@"NT SERVICE\KommitEye")[1] == "KommitEye", "virtual service account needs no existing user");
+var fixture = Path.Combine(Path.GetTempPath(), "kommiteye-config-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(fixture);
+try
+{
+    var path = Path.Combine(fixture, "server.json");
+    var config = new ServiceConfiguration { DataDirectory = basePath, Urls = "http://127.0.0.1:5080", GitExecutable = @"C:\Program Files\Git\cmd\git.exe", CredentialProtection = "LocalMachine" };
+    Check(config.CreateIfMissing(path), "first install creates configuration");
+    Check(ServiceConfiguration.Read(path).DataDirectory == basePath, "configuration round trips Windows paths");
+    var original = File.ReadAllBytes(path);
+    config.DataDirectory = @"D:\Changed";
+    Check(!config.CreateIfMissing(path) && original.SequenceEqual(File.ReadAllBytes(path)), "repair and upgrade preserve administrator configuration byte for byte");
+    File.WriteAllText(path, "invalid administrator config");
+    Check(!config.CreateIfMissing(path) && File.ReadAllText(path) == "invalid administrator config", "installer never silently replaces invalid configuration");
+    Check(Directory.GetFiles(fixture).Length == 1, "configuration creation leaves no temporary files");
+}
+finally { Directory.Delete(fixture, true); }

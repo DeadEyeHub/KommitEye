@@ -1,6 +1,6 @@
 # Windows Service installer
 
-`artifacts/KommitEye-Service-3.5.4-win-x64.msi` installs the server and its
+`artifacts/KommitEye-Service-3.5.5-win-x64.msi` installs the server and its
 compiled React UI for all users. The .NET 10 runtime is included. Git for Windows
 must already be installed. Setup requires an administrator and .NET Framework
 4.7.2 or newer, which is included in supported Windows 10/11 installations.
@@ -102,7 +102,7 @@ To rebuild just the MSI from an already published server directory:
 ```powershell
 ./build/publish-installer.ps1 -PayloadDirectory '<absolute path to published Service>'
 dotnet run --project checks/Installer -c Release
-./build/verify-installer.ps1 -Path artifacts/KommitEye-Service-3.5.4-win-x64.msi
+./build/verify-installer.ps1 -Path artifacts/KommitEye-Service-3.5.5-win-x64.msi
 ```
 
 The checks validate inputs, inspect the real MSI tables and invoke only the
@@ -133,7 +133,7 @@ Existing releases are kept; bump the shared version if its tag is already publis
 
 Service replaces the former Web Server distribution. The MSI upgrade code and
 Windows service identity remain unchanged so existing Web Server 1.x installations
-can upgrade to Service 3.5.4 while retaining their data and settings.
+can upgrade to Service 3.5.5 while retaining their data and settings.
 
 For a standalone server build, open **Actions → Build Service Installer → Run workflow**.
 This manual workflow builds the web UI, self-contained server and WiX MSI, runs

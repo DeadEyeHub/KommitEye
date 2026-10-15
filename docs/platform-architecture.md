@@ -45,6 +45,9 @@ On non-Windows servers configure:
 | `KOMMITEYE_KEY_CERTIFICATE_PASSWORD_FILE` | Optional file containing its password; only trailing CR/LF is removed |
 | `KOMMITEYE_ADMIN_PASSWORD` | Existing initial administrator bootstrap option; ignored once admin.json exists |
 
+PFX loading uses ephemeral keys on Windows/Linux; macOS
+requires a temporary on-disk keychain managed by .NET, so the platform loader uses
+`DefaultKeySet` there. Hosts must dispose imported certificates when finished.
 Provision the certificate outside the application. Keep it outside the data
 directory and image, restrict private-key access to the service user, and retain
 it across restarts and upgrades. Back up the certificate and key ring: losing

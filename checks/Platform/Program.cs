@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using KommitEye.Platform;
@@ -13,6 +14,27 @@ void Check(bool condition, string message)
 }
 try
 {
+    using (var rsa = RSA.Create(2048))
+    {
+        var request = new CertificateRequest("CN=KommitEye platform fixture", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var original = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddDays(1));
+        var certificatePath = Path.Combine(directory, "fixture.pfx");
+        File.WriteAllBytes(certificatePath, original.Export(X509ContentType.Pfx, "fixture-password"));
+        var data = Encoding.UTF8.GetBytes("platform key import fixture");
+        byte[] signature;
+        using (var loaded = Pkcs12Certificates.Load(certificatePath, "fixture-password"))
+        using (var key = loaded.GetRSAPrivateKey())
+        {
+            Check(key is not null, "PFX loader imports a usable private key on this platform");
+            signature = key!.SignData(data, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        }
+        using (var reloaded = Pkcs12Certificates.Load(certificatePath, "fixture-password"))
+        using (var key = reloaded.GetRSAPublicKey())
+            Check(key!.VerifyData(data, signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1),
+                "PFX can be reloaded after disposing the first import");
+        try { using var invalid = Pkcs12Certificates.Load(certificatePath, "wrong-password"); throw new Exception("Incorrect PFX password accepted"); }
+        catch (CryptographicException) { Console.WriteLine("PASS: PFX loader rejects incorrect passwords"); }
+    }
     var posix = new PosixGitExecutables();
     Check(posix.GitFileName == "git" && posix.FindAgentSsh() == "ssh", "POSIX uses Git and OpenSSH from PATH");
     Check(!posix.SupportsPutty && posix.FindPlink() is null, "POSIX explicitly excludes Windows PuTTY mode");

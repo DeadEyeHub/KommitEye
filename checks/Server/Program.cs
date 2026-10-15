@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using KommitEye.Models;
+using KommitEye.Platform;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using KommitEye.Services;
@@ -184,7 +185,7 @@ try
     var persistedMail = JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(Path.Combine(root, "data", "mail-settings.json")))!;
     if (useCertificate)
     {
-        using var certificate = X509CertificateLoader.LoadPkcs12FromFile(certificatePath, null, X509KeyStorageFlags.EphemeralKeySet);
+        using var certificate = Pkcs12Certificates.Load(certificatePath);
         var provider = DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(root, "data", "session-keys")),
             options => options.SetApplicationName("KommitEye.Server").ProtectKeysWithCertificate(certificate));
         var protector = new DataProtectionSecretProtector(provider);

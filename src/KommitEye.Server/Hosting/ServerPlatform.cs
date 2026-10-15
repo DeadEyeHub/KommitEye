@@ -28,7 +28,7 @@ public sealed class ServerPlatform : IDisposable
             throw new InvalidOperationException("Set KOMMITEYE_KEY_CERTIFICATE to a persistent PFX certificate with its private key on non-Windows servers.");
         var passwordFile = Environment.GetEnvironmentVariable("KOMMITEYE_KEY_CERTIFICATE_PASSWORD_FILE");
         var password = string.IsNullOrWhiteSpace(passwordFile) ? null : File.ReadAllText(passwordFile).TrimEnd('\r', '\n');
-        var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, password, X509KeyStorageFlags.EphemeralKeySet);
+        var certificate = Pkcs12Certificates.Load(path, password);
         if (!certificate.HasPrivateKey)
         {
             certificate.Dispose();

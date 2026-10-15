@@ -1,0 +1,5 @@
+{
+  "DataDirectory": "/data",
+  "Urls": "http://0.0.0.0:5080",
+  "GitExecutable": "/usr/bin/git"
+}

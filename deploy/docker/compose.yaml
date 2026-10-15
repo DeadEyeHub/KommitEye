@@ -1,0 +1,43 @@
+services:
+  server:
+    image: kommiteye-server:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    ports:
+      - "127.0.0.1:${KOMMITEYE_PORT:-5080}:5080"
+    environment:
+      KOMMITEYE_KEY_CERTIFICATE: /run/secrets/key_certificate
+      KOMMITEYE_KEY_CERTIFICATE_PASSWORD_FILE: /run/secrets/certificate_password
+      KOMMITEYE_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+    volumes:
+      - ./server.json:/config/server.json:ro
+      - ./local/data:/data
+      - ./local/repos:/repos
+    secrets:
+      - key_certificate
+      - certificate_password
+      - admin_password
+    stop_grace_period: 30s
+  init:
+    image: kommiteye-server:local
+    profiles: [tools]
+    user: "0:0"
+    entrypoint: ["/opt/kommiteye/init.sh"]
+    volumes:
+      - ./local:/bootstrap
+secrets:
+  key_certificate:
+    file: ./local/secrets/server.pfx
+  certificate_password:
+    file: ./local/secrets/certificate-password
+  admin_password:
+    file: ./local/secrets/admin-password

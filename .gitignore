@@ -54,3 +54,6 @@ session-keys/
 .vs/
 *.user
 *.suo
+
+# Docker local state and credentials.
+/deploy/docker/local/

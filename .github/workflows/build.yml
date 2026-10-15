@@ -11,6 +11,9 @@ concurrency:
   group: build-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  platform:
+    name: Required platform checks
+    uses: ./.github/workflows/platform-checks.yml
   verify:
     name: Verify shared engine and server
     runs-on: windows-latest
@@ -35,7 +38,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installer validation checks failed' }
   build:
     name: Package ${{ matrix.product }}
-    needs: verify
+    needs: [verify, platform]
     runs-on: windows-latest
     timeout-minutes: 30
     strategy:
@@ -77,7 +80,7 @@ jobs:
           compression-level: 0
   release:
     name: Publish complete release
-    needs: build
+    needs: [verify, platform, build]
     if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: windows-latest
     permissions:

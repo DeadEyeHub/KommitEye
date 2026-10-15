@@ -11,8 +11,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  platform:
+    name: Required platform checks
+    uses: ./.github/workflows/platform-checks.yml
   installer:
     name: Build and verify Windows x64 MSI
+    needs: platform
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

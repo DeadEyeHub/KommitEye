@@ -95,5 +95,15 @@ send mail or access real accounts. Windows Platform checks verify both direction
 of legacy DPAPI compatibility. Existing Gmail/Outlook checks exercise Windows
 defaults; the UI checks remain Windows-only.
 
-`platform-checks.yml` runs portable fixtures on Windows, Linux and macOS. Passing
+`platform-checks.yml` is a reusable workflow running portable fixtures on Windows,
+Linux and macOS. Build and Release calls it for the same commit and requires its
+success before packaging or publishing a release. The manual installer workflow
+also requires these checks. A failed, canceled, or skipped platform job blocks
+downstream packaging and release; there is no `always()` bypass. The standalone
+manual Platform checks run remains available for diagnostics.
+
+Local `build/publish.ps1` builds Windows packages; it does not claim to validate
+macOS/Linux. Cross-platform release gating is enforced by GitHub Actions.
+
+Passing
 server fixtures does not certify a future Avalonia UI or installer on those OSes.

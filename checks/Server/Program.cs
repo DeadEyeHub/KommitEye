@@ -41,20 +41,31 @@ const string buildConfiguration = "Debug";
 #else
 const string buildConfiguration = "Release";
 #endif
-var serverArgument = args.FirstOrDefault(arg => arg != "--certificate-protection");
+var serviceConfig = args.Contains("--service-config");
+var serverArgument = args.FirstOrDefault(arg => arg is not ("--certificate-protection" or "--service-config"));
 var serverPath = serverArgument is not null ? Path.GetFullPath(serverArgument) : Path.GetFullPath($"src/KommitEye.Server/bin/{buildConfiguration}/net10.0/KommitEye.Server.dll");
 var useAppHost = !Path.GetExtension(serverPath).Equals(".dll", StringComparison.OrdinalIgnoreCase);
 var gitExecutable = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
     .Select(path => Path.Combine(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')), OperatingSystem.IsWindows() ? "git.exe" : "git"))
     .First(File.Exists);
+HostConfigurationChecks.Run(root, gitExecutable);
+var configurationPath = Path.Combine(root, "service.json");
+File.WriteAllText(configurationPath, JsonSerializer.Serialize(new {
+    DataDirectory = Path.Combine(root, "data"), Urls = $"http://127.0.0.1:{port}", GitExecutable = gitExecutable,
+    CredentialProtection = serviceConfig && OperatingSystem.IsWindows() ? "LocalMachine" : "CurrentUser"
+}));
 Process? server = null;
 var outputLog = new List<string>();
 void Start()
 {
     var start = new ProcessStartInfo(useAppHost ? serverPath : "dotnet") { RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
     if (!useAppHost) start.ArgumentList.Add(serverPath);
-    start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
-    start.ArgumentList.Add("--git-path"); start.ArgumentList.Add(gitExecutable);
+    if (serviceConfig) { start.ArgumentList.Add("--config"); start.ArgumentList.Add(configurationPath); }
+    else
+    {
+        start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
+        start.ArgumentList.Add("--git-path"); start.ArgumentList.Add(gitExecutable);
+    }
     start.Environment["KOMMITEYE_DATA_DIR"] = Path.Combine(root, "data"); start.Environment.Remove("KOMMITEYE_ADMIN_PASSWORD");
     start.Environment.Remove("KOMMITEYE_KEY_CERTIFICATE_PASSWORD_FILE");
     start.Environment.Remove("KOMMITEYE_KEY_CERTIFICATE");
@@ -199,6 +210,8 @@ try
         Check(Directory.GetFiles(Path.Combine(root, "data", "session-keys"), "*.xml")
             .All(path => File.ReadAllText(path).Contains("encryptedSecret")), "persisted key ring is encrypted at rest");
     }
+    else if (serviceConfig && OperatingSystem.IsWindows())
+        Check(persistedMail.GetPassword(new WindowsMachineSecretProtector()) == "fixture-mail-secret", "service config retains LocalMachine-protected SMTP secret after restart");
     else Check(persistedMail.GetPassword() == "fixture-mail-secret", "persisted SMTP password retains Windows DPAPI compatibility");
     Check((await http.GetStringAsync("mail/log")).Contains(sha),"mail log survives server restart");
     var deleteRevision=(long)(await Get("projects"))["revision"]!;

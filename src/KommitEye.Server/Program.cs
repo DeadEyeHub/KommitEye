@@ -9,30 +9,16 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.SignalR;
 
-var gitArgument = Array.IndexOf(args, "--git-path");
-if (gitArgument >= 0)
-{
-    if (gitArgument + 1 >= args.Length) throw new ArgumentException("--git-path requires an executable path.");
-    var gitPath = Path.GetFullPath(args[gitArgument + 1]);
-    if (!File.Exists(gitPath) || !Path.GetFileName(gitPath).Equals(GitExecutables.Current.GitFileName, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
-        throw new ArgumentException($"--git-path must point to an existing {GitExecutables.Current.GitFileName}.");
-    // A service does not inherit the interactive user's PATH. Keep this change local to this process.
+var hostOptions = ServerHostOptions.Load(args);
+Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", hostOptions.DataDirectory);
+if (hostOptions.GitExecutable is { } gitPath)
     Environment.SetEnvironmentVariable("PATH", Path.GetDirectoryName(gitPath) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"));
-}
-var dataArgument = Array.IndexOf(args, "--data-dir");
-if (dataArgument >= 0)
-{
-    if (dataArgument + 1 >= args.Length) throw new ArgumentException("--data-dir requires a path.");
-    Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", Path.GetFullPath(args[dataArgument + 1]));
-}
-if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("KOMMITEYE_DATA_DIR")))
-    Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KommitEye.Server"));
 AppPaths.EnsureCreated();
 // The server is the exclusive owner of its data directory, including the legacy JSON stores.
 using var dataLock = new FileStream(Path.Combine(AppPaths.DataDirectory, "server.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = args, ContentRootPath = AppContext.BaseDirectory });
-if (string.IsNullOrEmpty(builder.Configuration["urls"])) builder.WebHost.UseUrls("http://0.0.0.0:5080");
-using var platform = ServerPlatform.Configure(builder, AppPaths.DataDirectory);
+builder.WebHost.UseUrls(hostOptions.Urls!);
+using var platform = ServerPlatform.Configure(builder, AppPaths.DataDirectory, hostOptions.CredentialProtection);
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
 {
     options.Cookie.Name = "KommitEye.Session"; options.Cookie.HttpOnly = true; options.Cookie.SameSite = SameSiteMode.Strict;

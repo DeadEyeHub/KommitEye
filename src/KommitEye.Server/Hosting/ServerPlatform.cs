@@ -10,7 +10,7 @@ public sealed class ServerPlatform : IDisposable
     private readonly X509Certificate2? _certificate;
     private ServerPlatform(X509Certificate2? certificate) => _certificate = certificate;
 
-    public static ServerPlatform Configure(WebApplicationBuilder builder, string dataDirectory)
+    public static ServerPlatform Configure(WebApplicationBuilder builder, string dataDirectory, string credentialProtection = "CurrentUser")
     {
         var protection = builder.Services.AddDataProtection()
             .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDirectory, "session-keys")));
@@ -19,8 +19,9 @@ public sealed class ServerPlatform : IDisposable
         var path = Environment.GetEnvironmentVariable("KOMMITEYE_KEY_CERTIFICATE");
         if (OperatingSystem.IsWindows() && string.IsNullOrWhiteSpace(path))
         {
-            protection.ProtectKeysWithDpapi();
-            builder.Services.AddSingleton<ISecretProtector>(new WindowsSecretProtector());
+            var machine = credentialProtection == "LocalMachine";
+            protection.ProtectKeysWithDpapi(protectToLocalMachine: machine);
+            builder.Services.AddSingleton<ISecretProtector>(machine ? new WindowsMachineSecretProtector() : new WindowsSecretProtector());
             return new(null);
         }
 

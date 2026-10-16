@@ -15,6 +15,11 @@ import {
   type Data,
 } from "../ui";
 export function Projects({ tick }: { tick: number }) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [data, setData] = useState<Data>({
       projects: [],
       statuses: [],
@@ -56,7 +61,6 @@ export function Projects({ tick }: { tick: number }) {
     };
   }, [selected, details, tick]);
   const fields = [
-    "displayName",
     "pollIntervalSeconds",
     "pullEnabled",
     "fetchSubmodules",
@@ -71,7 +75,7 @@ export function Projects({ tick }: { tick: number }) {
       projectId: "",
       displayName: "",
       repositoryPath: "",
-      branchRef: "main",
+      branchRef: "",
       pollIntervalSeconds: 60,
       pullEnabled: true,
       fetchSubmodules: false,
@@ -105,6 +109,11 @@ export function Projects({ tick }: { tick: number }) {
       {edit ? (
         <section className="panel">
           <h2>{t("Настройки проекта", "Project settings")}</h2>
+          <Field
+            name="displayName"
+            value={edit.displayName}
+            onChange={(displayName) => setEdit({ ...edit, displayName })}
+          />
           <p>
             {t(
               "Пути и Git-ключи относятся к компьютеру сервера.",
@@ -137,6 +146,7 @@ export function Projects({ tick }: { tick: number }) {
           <div className="buttons">
             <Action
               onClick={async () => {
+                validateSelection(edit);
                 await api("/projects", {
                   revision: edit._revision,
                   settings: edit,
@@ -225,6 +235,14 @@ export function Projects({ tick }: { tick: number }) {
                               : ""}
                           </small>
                         )}
+                        {status.running && status.nextRun && (
+                          <small
+                            className="countdown"
+                            title={new Date(status.nextRun).toLocaleString()}
+                          >
+                            {countdown(status.nextRun, now)}
+                          </small>
+                        )}
                       </td>
                       <td className="mono">
                         {status.commit?.slice(0, 12) || "—"}
@@ -233,6 +251,7 @@ export function Projects({ tick }: { tick: number }) {
                         <div className="buttons">
                           <Action
                             onClick={async () => {
+                              if (!status.running) validateSelection(p);
                               await api(
                                 `/projects/${p.projectId}/${status.running ? "stop" : "start"}`,
                                 { requestKey: requestId() },
@@ -429,4 +448,35 @@ export function Projects({ tick }: { tick: number }) {
       )}
     </>
   );
+}
+
+function validateSelection(project: Data) {
+  if (!project.repositoryPath?.trim())
+    throw new Error(
+      t(
+        "Выберите папку репозитория в настройках проекта.",
+        "Select a repository folder in project settings.",
+      ),
+    );
+  if (!project.branchRef?.trim())
+    throw new Error(
+      t(
+        "Выберите ветку в настройках проекта перед запуском проверки.",
+        "Select a branch in project settings before starting a review.",
+      ),
+    );
+}
+
+function countdown(nextRun: string, now: number) {
+  const deadline = Date.parse(nextRun);
+  if (!Number.isFinite(deadline)) return "";
+  const seconds = Math.max(0, Math.ceil((deadline - now) / 1000));
+  if (seconds === 0)
+    return t("Ожидание следующей проверки…", "Waiting for the next check…");
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const time = [hours, minutes, seconds % 60]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+  return t("До следующей проверки: ", "Next check in: ") + time;
 }

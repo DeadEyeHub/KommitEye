@@ -1,6 +1,6 @@
 # Server and web refactor
 
-KommitEye Service and Desktop are currently version 3.5.5. Both use the single
+KommitEye Service and Desktop are currently version 3.5.6. Both use the single
 `Version` in `Directory.Build.props` and ship together in release `v<version>`.
 The existing WPF application remains a compatibility host. Service is now the LAN
 server plus the browser UI, not the WPF executable.
@@ -25,6 +25,20 @@ The server and shared libraries target `net10.0`. Windows retains DPAPI and its
 existing Git authentication modes. Non-Windows hosts require a persistent key
 certificate; see [platform architecture](platform-architecture.md). The published
 MSI/ZIP packages remain Windows distributions.
+
+Service mail settings use one `mail-settings.json` with `version`,
+`activeProvider` and a `providers` object containing the saved SMTP/Gmail/Outlook
+settings. On first load, the service migrates legacy settings, giving the main
+file precedence over the active provider's older sidecar. It deletes the old
+`.smtp`, `.gmail` and `.outlook` files only after the unified file is saved.
+Encrypted passwords retain their existing protection. Desktop storage is unchanged;
+do not share a data directory between the two hosts.
+
+The Projects screen shows a live countdown when the server schedules its next
+check. Creating a project starts with its name and requires an explicit branch
+selection. Missing repository/branch selections produce validation errors before
+a job is created. Clicking a report opens its formatted HTML in a new tab;
+separate Markdown and HTML download links remain available.
 
 ## Run and build
 

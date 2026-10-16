@@ -26,7 +26,7 @@ public sealed class OAuthOperations(ISecretProtector protector) : IAsyncDisposab
             {
                 Update("waiting", "Enter this code on Microsoft's sign-in page.", result.VerificationUrl, result.UserCode);
                 return Task.CompletedTask;
-            }), protector: protector)], protector: protector);
+            }), protector: protector)], protector: protector, unifiedSettings: true);
     private void Update(string status, string message, string? url = null, string? code = null)
     {
         var id = _current.Value!; _operations[id] = new(id, status, message, url, code);

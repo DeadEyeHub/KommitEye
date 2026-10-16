@@ -84,6 +84,7 @@ public sealed class MailJob
 public sealed class MailNotifications : IAsyncDisposable
 {
     private readonly ISecretProtector _protector;
+    private readonly MailSettingsStore? _unifiedSettings;
     private readonly object _gate = new();
     private readonly Dictionary<string, IEmailProvider> _providers;
     public EmailAccount? GetAccount(string provider) => _providers.GetValueOrDefault(provider)?.Account;
@@ -93,6 +94,7 @@ public sealed class MailNotifications : IAsyncDisposable
         lock (_gate)
         {
             if (_settings.Provider == provider) return _settings.Clone();
+            if (_unifiedSettings is not null) return _unifiedSettings.Get(provider);
             if (provider is not ("gmail" or "outlook" or "smtp")) throw new ArgumentException(nameof(provider));
             var path = _settingsPath + "." + provider;
             return File.Exists(path) ? JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(path)) ?? throw new InvalidDataException()
@@ -116,7 +118,7 @@ public sealed class MailNotifications : IAsyncDisposable
     public MailSettings Settings { get { lock (_gate) return _settings.Clone(); } }
 
     public MailNotifications(string directory, Action<string> log,
-        Func<MailSettings, MailJob, CancellationToken, Task>? send = null, bool startWorker = true, Func<DateTimeOffset>? now = null, IEnumerable<IEmailProvider>? providers = null, ISecretProtector? protector = null)
+        Func<MailSettings, MailJob, CancellationToken, Task>? send = null, bool startWorker = true, Func<DateTimeOffset>? now = null, IEnumerable<IEmailProvider>? providers = null, ISecretProtector? protector = null, bool unifiedSettings = false)
     {
         _protector = protector ?? SecretProtectors.CurrentUser;
         _providers = (providers ?? [new GmailEmailProvider(directory, protector: _protector), new OutlookEmailProvider(directory, protector: _protector)]).ToDictionary(p => p.Id, StringComparer.Ordinal);
@@ -129,11 +131,16 @@ public sealed class MailNotifications : IAsyncDisposable
         _now = now ?? (() => DateTimeOffset.UtcNow);
         try
         {
-            _settings = File.Exists(_settingsPath) ? JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(_settingsPath))
+            _settings = !unifiedSettings && File.Exists(_settingsPath) ? JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(_settingsPath))
                 ?? throw new InvalidDataException() : new();
             _jobs = File.Exists(_queuePath) ? JsonSerializer.Deserialize<List<MailJob>>(File.ReadAllText(_queuePath))
                 ?? throw new InvalidDataException() : [];
             if (_jobs.Any(j => j is null || string.IsNullOrWhiteSpace(j.Key) || j.Attempts < 0)) throw new InvalidDataException();
+            if (unifiedSettings)
+            {
+                _unifiedSettings = new MailSettingsStore(_settingsPath, _log);
+                _settings = _unifiedSettings.Active;
+            }
         }
         catch (Exception e)
         {
@@ -166,6 +173,12 @@ public sealed class MailNotifications : IAsyncDisposable
         lock (_gate)
         {
             if (LoadError is not null) throw new InvalidOperationException(LoadError);
+            if (_unifiedSettings is not null)
+            {
+                _unifiedSettings.Save(settings, activate);
+                _settings = _unifiedSettings.Active;
+                return;
+            }
             if (!activate && _settings.Provider != settings.Provider)
             {
                 Save(_settingsPath + "." + settings.Provider, settings);
@@ -209,7 +222,8 @@ public sealed class MailNotifications : IAsyncDisposable
             settings.AuthorizationRequired = true;
             lock (_gate)
             {
-                if (_settings.Provider == provider) { Save(_settingsPath, settings); _settings = settings; }
+                if (_unifiedSettings is not null) { _unifiedSettings.Save(settings, false); _settings = _unifiedSettings.Active; }
+                else if (_settings.Provider == provider) { Save(_settingsPath, settings); _settings = settings; }
                 else Save(_settingsPath + "." + provider, settings);
             }
             await _providers[provider].DisconnectAsync(linked.Token);
@@ -273,7 +287,8 @@ public sealed class MailNotifications : IAsyncDisposable
             var saved = GetSettings(failedSettings.Provider);
             if (saved.AccountId != failedSettings.AccountId) return;
             saved.AuthorizationRequired = true;
-            if (_settings.Provider == saved.Provider) { Save(_settingsPath, saved); _settings = saved; }
+            if (_unifiedSettings is not null) { _unifiedSettings.Save(saved, false); _settings = _unifiedSettings.Active; }
+            else if (_settings.Provider == saved.Provider) { Save(_settingsPath, saved); _settings = saved; }
             else Save(_settingsPath + "." + saved.Provider, saved);
         }
     }

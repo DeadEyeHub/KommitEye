@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.DataProtection;
 
 var root = Path.Combine(Path.GetTempPath(), "kommiteye-server-check-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
+await MailSettingsChecks.RunAsync(root);
 var useCertificate = !OperatingSystem.IsWindows() || args.Contains("--certificate-protection");
 var certificatePath = Path.Combine(root, "fixture.pfx");
 if (useCertificate)
@@ -125,6 +126,15 @@ try
     Check((await http.PostAsJsonAsync("setup",new {password="replacement"})).StatusCode==HttpStatusCode.Conflict,"setup cannot replace an existing administrator password");
     var snapshot = await Get("projects");
     var project = snapshot["projects"]![0]!.Deserialize<AppSettings>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    using (var invalid = await http.PostAsJsonAsync($"projects/{project.ProjectId}/start", new { requestKey = Guid.NewGuid().ToString() }))
+        Check(invalid.StatusCode == HttpStatusCode.BadRequest && (await invalid.Content.ReadAsStringAsync()).Contains("repository", StringComparison.OrdinalIgnoreCase), "start rejects an unconfigured repository");
+    // Simulate a legacy project with a repository but no explicitly selected branch.
+    project.RepositoryPath = repo;
+    project.BranchRef = "";
+    File.WriteAllText(Path.Combine(root, "data", "projects.json"), JsonSerializer.Serialize(new ProjectCatalog { Projects = [project] }));
+    using (var invalid = await http.PostAsJsonAsync($"projects/{project.ProjectId}/start", new { requestKey = Guid.NewGuid().ToString() }))
+        Check(invalid.StatusCode == HttpStatusCode.BadRequest && (await invalid.Content.ReadAsStringAsync()).Contains("branch", StringComparison.OrdinalIgnoreCase), "start rejects missing branch instead of silently using HEAD");
+    Check((await Get("jobs")).AsArray().Count == 0, "invalid starts create no jobs");
     project.DisplayName="Fixture";project.RepositoryPath=repo;project.BranchRef="refs/heads/main";project.PullEnabled=false;
     var fixtureKey = Path.Combine(repo,"fixture.key"); await File.WriteAllTextAsync(fixtureKey,"PRIVATE-KEY-CONTENT-MUST-NOT-LEAVE-SERVER");
     var folders = await Post("repositories/browse",new {path=repo,files=false});
@@ -140,6 +150,10 @@ try
     project.GitAuthenticationMode="invalid";
     Check((await http.PostAsJsonAsync("repositories/test",project)).StatusCode==HttpStatusCode.BadRequest,"unsupported authentication mode rejected");
     project.GitAuthenticationMode="auto";
+    project.BranchRef = " ";
+    using (var invalid = await http.PostAsJsonAsync("projects", new { revision = (long)snapshot["revision"]!, settings = project }))
+        Check(invalid.StatusCode == HttpStatusCode.BadRequest && (await invalid.Content.ReadAsStringAsync()).Contains("branch", StringComparison.OrdinalIgnoreCase), "missing branch returns an actionable validation error");
+    project.BranchRef = "refs/heads/main";
     await Post("projects",new {revision=(long)snapshot["revision"]!,settings=project});
     Check((await http.PostAsJsonAsync("projects",new {revision=(long)snapshot["revision"]!,settings=project})).StatusCode==HttpStatusCode.Conflict,"stale project edit rejected");
     var models=await Get("models");
@@ -160,8 +174,10 @@ try
     using(var htmlResponse=await http.GetAsync("reports/"+Uri.EscapeDataString(reportName)+"?format=html"))
     {
         var html=await htmlResponse.Content.ReadAsStringAsync();
-        Check(htmlResponse.Content.Headers.ContentType?.MediaType=="text/html" && htmlResponse.Content.Headers.ContentDisposition is not null && html.Contains("<!doctype html>") && html.Contains("<h2>"),"HTML report is a downloadable standalone formatted document");
+        Check(htmlResponse.Content.Headers.ContentType?.MediaType=="text/html" && htmlResponse.Content.Headers.ContentDisposition is null && html.Contains("<!doctype html>") && html.Contains("<h2>"),"HTML report opens inline as a standalone formatted document");
     }
+    using (var download = await http.GetAsync("reports/" + Uri.EscapeDataString(reportName) + "?format=html&download=true"))
+        Check(download.Content.Headers.ContentDisposition?.DispositionType == "attachment", "explicit HTML download remains available");
     var hostileHtml=KommitEye.Server.HtmlReport.Render("<script>title</script>","## `<img src=x onerror=alert(1)>`\n<script>alert(1)</script>\n```text\n</code><script>alert(1)</script>\n```");
     Check(!hostileHtml.Contains("<script>") && !hostileHtml.Contains("<img") && hostileHtml.Contains("&lt;script&gt;"),"HTML rendering escapes executable Git and model content");
     Check((await Get($"projects/{project.ProjectId}/commits?offset=0"))["commits"]!.AsArray().Count==1,"commit paging uses server repository");
@@ -193,7 +209,9 @@ try
     var after=await Post($"projects/{project.ProjectId}/reviews",new {requestKey=key,sha});
     Check((string)after!["id"]! == (string)job["id"]!,"request deduplication survives restart");
     Check((await Get("mail/smtp"))["passwordConfigured"]!.GetValue<bool>(),"SMTP secret survives restart");
-    var persistedMail = JsonSerializer.Deserialize<MailSettings>(File.ReadAllText(Path.Combine(root, "data", "mail-settings.json")))!;
+    var persistedDocument = JsonNode.Parse(File.ReadAllText(Path.Combine(root, "data", "mail-settings.json")))!;
+    Check((string)persistedDocument["activeProvider"]! == "smtp" && !File.Exists(Path.Combine(root, "data", "mail-settings.json.smtp")), "service saves mail settings in one file");
+    var persistedMail = persistedDocument["providers"]!["smtp"]!.Deserialize<MailSettings>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     if (useCertificate)
     {
         using var certificate = Pkcs12Certificates.Load(certificatePath);

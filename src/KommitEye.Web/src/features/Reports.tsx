@@ -13,7 +13,6 @@ import {
 } from "../ui";
 export function Reports({ tick }: { tick: number }) {
   const [list, setList] = useState<Data[]>([]),
-    [report, setReport] = useState(""),
     [error, setError] = useState("");
   useEffect(() => {
     api<Data[]>("/reports")
@@ -40,20 +39,24 @@ export function Reports({ tick }: { tick: number }) {
       )}
       {list.map((r) => (
         <div className="report-row" key={r.name}>
-          <Action
-            onClick={async () =>
-              setReport(await api("/reports/" + encodeURIComponent(r.name)))
+          <a
+            href={
+              "/api/v1/reports/" + encodeURIComponent(r.name) + "?format=html"
             }
+            target="_blank"
+            rel="noopener noreferrer"
           >
             {r.name}
-          </Action>
+          </a>
           <small>{new Date(r.modified).toLocaleString()}</small>
           <a href={"/api/v1/reports/" + encodeURIComponent(r.name)} download>
             {t("Скачать Markdown", "Download Markdown")}
           </a>
           <a
             href={
-              "/api/v1/reports/" + encodeURIComponent(r.name) + "?format=html"
+              "/api/v1/reports/" +
+              encodeURIComponent(r.name) +
+              "?format=html&download=true"
             }
             download
           >
@@ -61,7 +64,6 @@ export function Reports({ tick }: { tick: number }) {
           </a>
         </div>
       ))}
-      {report && <pre className="report">{report}</pre>}
     </>
   );
 }

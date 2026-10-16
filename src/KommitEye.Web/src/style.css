@@ -340,9 +340,11 @@ td .buttons {
   padding: 14px 0;
   border-bottom: 1px solid #d4ddd7;
 }
-.report-row button {
+.report-row button,
+.report-row a {
   text-align: left;
   overflow-wrap: anywhere;
+  min-width: 0;
 }
 .tabs {
   display: flex;
@@ -542,4 +544,8 @@ dialog.modal:has(.project-log) {
   background: #fff4da;
   padding: 12px;
   border-radius: 8px;
+}
+
+.countdown {
+  font-variant-numeric: tabular-nums;
 }

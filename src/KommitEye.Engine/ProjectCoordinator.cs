@@ -71,6 +71,7 @@ public sealed class ProjectCoordinator : IAsyncDisposable
         try
         {
             if (revision != _jobs.Revision()) throw new InvalidOperationException("Settings changed in another browser. Reload before saving.");
+            ValidateProjectSelection(project);
             if (project.PollIntervalSeconds is < 5 or > 86400) throw new ArgumentException("Polling interval must be 5–86400 seconds.");
             _ = new DailyModelSchedule(project);
             if (string.IsNullOrWhiteSpace(project.RepositoryPath)) throw new ArgumentException("Enter a repository path on the server.");
@@ -107,6 +108,7 @@ public sealed class ProjectCoordinator : IAsyncDisposable
             var runtime = _runtimes.GetValueOrDefault(id) ?? throw new KeyNotFoundException("Project not found.");
             if (runtime.Status.Running) throw new InvalidOperationException("Project is already running.");
             var project = _configuration.LoadProjects().Projects.Single(p => p.ProjectId == id);
+            ValidateProjectSelection(project);
             var models = _configuration.LoadModels();
             var profile = models.Profiles.FirstOrDefault(p => p.Name == models.ActiveProfile) ?? throw new ArgumentException("Select an active model profile first.");
             profile.Parameters.Validate();
@@ -169,6 +171,14 @@ public sealed class ProjectCoordinator : IAsyncDisposable
             Changed?.Invoke(new(id, "project-deleted", "", DateTimeOffset.UtcNow));
         }
         finally { _commands.Release(); }
+    }
+    private static void ValidateProjectSelection(AppSettings project)
+    {
+        using var language = Localization.UseLanguage(project.Language);
+        if (string.IsNullOrWhiteSpace(project.RepositoryPath))
+            throw new ArgumentException(Localization.Text("Select a repository folder in project settings.", "Выберите папку репозитория в настройках проекта."));
+        if (string.IsNullOrWhiteSpace(project.BranchRef))
+            throw new ArgumentException(Localization.Text("Select a branch in project settings before starting a review.", "Выберите ветку в настройках проекта перед запуском проверки."));
     }
     public async Task StopAsync(string id)
     {

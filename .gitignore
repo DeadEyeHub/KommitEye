@@ -5,6 +5,12 @@ settings.conf
 state.json
 review-report.md
 reports/
+!/checks/Reports/
+report-exports/
+reports.db
+reports.db-wal
+reports.db-shm
+reports.db-journal
 bin/
 obj/
 dist/

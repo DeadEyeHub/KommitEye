@@ -20,7 +20,7 @@ jobs:
       - name: Platform, Git, reports and server fixtures
         shell: pwsh
         run: |
-          foreach ($check in @('Platform', 'CommitPaging', 'ReportRepair', 'Server')) {
+          foreach ($check in @('Platform', 'CommitPaging', 'Reports', 'ReportRepair', 'Server')) {
             dotnet run --project "checks/$check/$check.csproj" -c Release
             if ($LASTEXITCODE -ne 0) { throw "$check failed" }
           }

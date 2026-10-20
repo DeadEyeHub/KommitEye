@@ -93,6 +93,7 @@ dotnet run --project checks/Server/Server.csproj -c Release
 dotnet run --project checks/Server/Server.csproj -c Release -- --certificate-protection
 dotnet run --project checks/CommitPaging/CommitPaging.csproj -c Release
 dotnet run --project checks/ReportRepair/ReportRepair.csproj -c Release
+dotnet run --project checks/Reports/Reports.csproj -c Release
 dotnet run --project checks/ModelAvailability/ModelAvailability.csproj -c Release -- --deadlines
 ```
 

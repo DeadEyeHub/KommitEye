@@ -222,6 +222,12 @@ directory between Desktop and Server.
 Model profiles may contain API keys; detailed logs can contain repository content.
 Inspect logs and crash reports before sharing them.
 
+Review reports are stored in `reports.db`; Markdown and HTML remain available as
+exports. Existing `reports/*.md` files are imported automatically and preserved.
+Rechecking a commit replaces its previous result in the same repository/branch.
+See [report storage and migration](docs/server-web.md#html-report-export) for
+migration details and backup instructions.
+
 Previously called **Git Reviewer**. Existing installations keep using
 `%LOCALAPPDATA%\GitReviewer` if the new directory does not exist.
 `GITREVIEWER_DATA_DIR` and `GITREVIEWER_SNAPSHOT_MB` remain supported; the new

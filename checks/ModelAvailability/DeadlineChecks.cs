@@ -48,14 +48,14 @@ static class DeadlineChecks
             Check(runner.Start(settings, profile), "automatic review starts");
             try { await skipped.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
             finally { await runner.StopAsync(); }
-            var report = await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single());
+            var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
             Check(report.Contains("probably too complex"), "complexity explanation saved in report");
             Check(activeHandler.Reviews == 1 && activeHandler.Probes == 0, "active model is not retried or probed");
             Check(notifications.Count == 1 && notifications[0].Failed && notifications[0].ReportMarkdown.Contains("probably too complex"), "terminal failure publishes saved report for notification");
             Console.WriteLine("PASS: active deadline writes complexity report without retries.");
         }
 
-        var reportsBefore = await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single());
+        var reportsBefore = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
         var silentHandler = new DeadlineHandler(new ReviewClock(), "silent");
         using (var http = new HttpClient(silentHandler))
         using (var cancellation = new CancellationTokenSource())
@@ -74,7 +74,7 @@ static class DeadlineChecks
             catch (OperationCanceledException) { }
             Check(silentHandler.Probes == 1, "silent deadline probes immediately");
             Check(notifications.Count == 0, "temporary outage and cancellation do not notify failure");
-            Check(reportsBefore == await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single()), "silent deadline produces no failed report");
+            Check(reportsBefore == new ReportWriter().Read(new ReportWriter().List().Single().Name)!, "silent deadline produces no failed report");
             Console.WriteLine("PASS: silent deadline probes immediately and remains cancellable, with no failure report.");
         }
         var manualHandler = new DeadlineHandler(new ReviewClock(), "content");

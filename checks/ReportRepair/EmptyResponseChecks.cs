@@ -53,7 +53,7 @@ static class EmptyResponseChecks
         try { await saved.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
         finally { await runner.StopAsync(); }
         Check(failedHandler.Requests == 3 && failures == 1 && successes == 0, "empty failure must not restart analysis");
-        var report = await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single());
+        var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
         Check(report.Contains("without a final report") && !report.Contains("no bugs found"), "empty failure persisted without false NO_BUGS");
         Console.WriteLine("PASS: empty response runner failure without false NO_BUGS");
     }

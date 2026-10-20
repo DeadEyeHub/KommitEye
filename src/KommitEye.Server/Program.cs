@@ -111,13 +111,14 @@ api.MapGet("/projects/{id}/log", (string id, bool? details, ProjectCoordinator c
 api.MapPost("/projects/{id}/log/clear", (string id, bool? details, ProjectCoordinator coordinator) => { coordinator.ClearLog(id, details == true); return Results.Ok(); });
 api.MapGet("/jobs", (JobStore jobs) => jobs.List().Take(200));
 api.MapGet("/jobs/{id}", (string id, JobStore jobs) => jobs.List().FirstOrDefault(j => j.Id == id) is { } job ? Results.Ok(job) : Results.NotFound());
-api.MapGet("/reports", () => Directory.GetFiles(AppPaths.ReportsDirectory, "*.md").Select(path => new { name = Path.GetFileName(path), modified = File.GetLastWriteTimeUtc(path), size = new FileInfo(path).Length }).OrderByDescending(r => r.modified));
-api.MapGet("/reports/{name}", (string name, string? format, bool? download) =>
+api.MapGet("/reports", (ReportWriter reports) => reports.List());
+api.MapGet("/reports/{name}", (string name, string? format, bool? download, ReportWriter reports) =>
 {
     if (name != Path.GetFileName(name) || !name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest();
-    var path = Path.Combine(AppPaths.ReportsDirectory, name);
-    if (format == "html" && File.Exists(path)) return Results.File(System.Text.Encoding.UTF8.GetBytes(HtmlReport.Render(name, File.ReadAllText(path))), "text/html; charset=utf-8", download == true ? Path.ChangeExtension(name, ".html") : null);
-    return File.Exists(path) ? Results.File(path, "text/plain; charset=utf-8") : Results.NotFound();
+    var markdown = reports.Read(name);
+    if (markdown is null) return Results.NotFound();
+    if (format == "html") return Results.File(System.Text.Encoding.UTF8.GetBytes(HtmlReport.Render(name, markdown)), "text/html; charset=utf-8", download == true ? Path.ChangeExtension(name, ".html") : null);
+    return Results.File(System.Text.Encoding.UTF8.GetBytes(markdown), "text/plain; charset=utf-8", download == true ? name : null);
 });
 api.MapGet("/projects/{id}/commits", async (string id, int? offset, string? head, ProjectCoordinator coordinator) =>
 {

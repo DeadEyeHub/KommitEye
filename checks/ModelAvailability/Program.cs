@@ -46,7 +46,7 @@ await Task.Delay(100);
 Check(next > DateTimeOffset.Now.AddSeconds(50), "configured delay");
 await runner.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
 Check(await state.GetCursorAsync(identity.CommonGitDirectory, settings.BranchRef, default) is null, "no cursor advance during outage");
-Check(!Directory.EnumerateFiles(AppPaths.ReportsDirectory).Any(), "no failed report during outage");
+Check(new ReportWriter().List().Count == 0, "no failed report during outage");
 Check(handler.Requests == 1, "no early probe");
 Console.WriteLine("PASS: outage preserves commit; Stop cancels waiting; interval persists.");
 
@@ -63,7 +63,7 @@ try
     Check(review.Sha == sha, "same commit resumed");
     Check(handler.Probes == 1, "selected model probed once");
     Check(await state.GetCursorAsync(identity.CommonGitDirectory, settings.BranchRef, default) == sha, "cursor saved after recovery");
-    var report = await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single());
+    var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
     Check(!report.Contains("review failed; skipped:"), "outage never recorded as skip");
 }
 finally { await runner.StopAsync(); }

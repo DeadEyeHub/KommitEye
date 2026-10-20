@@ -193,4 +193,26 @@ The Reports page offers Markdown and HTML downloads for every saved report.
 HTML is generated on demand from the current Markdown report, including old
 reports, and contains its own styles for offline viewing and printing. Model
 and Git text is HTML-escaped; no scripts or external assets are included.
-The Markdown source remains the persisted report used by the review engine.
+Reports are persisted in `reports.db` in the data directory. Each repository/branch
+has a group; each commit has one current review, with structured findings and its
+Markdown text. Rechecking the same SHA replaces its result and findings, preserving
+its position in the report. Markdown and HTML downloads are generated from SQLite.
+
+On first use, existing `reports/*.md` files are imported automatically. Original
+files remain untouched, and their complete text is also retained in `legacy_imports`.
+Commit markers (including older manual-review markers) are recognized outside code
+fences. Duplicate SHA entries use the last result at the first entry's position.
+Legacy metadata that cannot be reliably recovered remains null; unknown-format
+reports remain readable as their original text. Repository identity is attached
+when a subsequent review matches the existing report filename.
+
+Import is transactional per file and recorded by filename, so restarting does not
+duplicate or resurrect cleared reports. Do not edit old Markdown files expecting
+them to update SQLite. Clearing a report archives its database group; subsequent
+reviews start a new group. Desktop opens a generated file in `report-exports/`.
+
+Back up the data directory with the application/service stopped, including
+`reports.db` and `reports.db-wal` if present. Do not copy only the database while
+the application is running. `build/Import-DesktopData.ps1` copies both files and
+requires exclusive access to them. Downgrading to a file-only version will not
+show new SQLite reviews unless they have been exported.

@@ -76,7 +76,7 @@ using (var http = new HttpClient(failedHandler))
     finally { await runner.StopAsync(); }
     Check(failedHandler.Repairs == 1 && failedHandler.Reviews == 2 && !completed, "failed repair was retried or completed");
     Check(failures == 1, "terminal failure must notify exactly once");
-    var report = await File.ReadAllTextAsync(Directory.EnumerateFiles(AppPaths.ReportsDirectory).Single());
+    var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
     Check(report.Contains("Report format repair failed") && !report.Contains("no bugs found"), "failure became no bugs");
     Console.WriteLine("PASS: failed repair remains a reported failure without analysis retries.");
 }

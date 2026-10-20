@@ -156,6 +156,59 @@ keeps the window open; **OK** saves and closes it. **Cancel** or closing the win
 discards edits since the last Apply, including checkbox changes. Model and prompt
 changes affect subsequent reviews, not an active request.
 
+## Reports and SQLite storage
+
+Desktop and Service store reports in `reports.db` inside their data directory.
+All repositories and branches share the same review table; findings are stored
+in a separate table. Each repository/branch pair has one current result per
+commit SHA.
+
+- Reviewing a new commit adds its result to the branch report.
+- Rechecking the same SHA in the same branch replaces its previous result and
+  findings, keeping its original position. Findings from successive checks are
+  not merged.
+- The same SHA in another branch or repository has a separate result.
+- Clearing a report archives its group in SQLite. Subsequent checks start a new
+  report; archived data remains in the database.
+
+The Service Reports page provides Markdown and HTML exports generated from
+SQLite. Desktop opens a generated Markdown file in `report-exports/`. Exported
+files can be shared independently; editing an export does not update the database.
+
+### Upgrading existing reports
+
+Existing `reports/*.md` files are imported automatically when the report store is
+first opened. No manual conversion is needed. Original files remain unchanged,
+and their complete text is also retained in the database.
+
+The importer recognizes commit blocks and older manual-review entries. If a file
+contains multiple entries for the same SHA, the last result is retained at the
+first entry's position. The complete original text, including duplicates, remains
+available in `legacy_imports`. Unrecognized reports are preserved as text.
+
+Legacy findings remain in the imported Markdown; they are not reconstructed as
+structured finding rows. New checks populate structured fields and findings.
+Import is transactional per file and recorded by filename, so restarting neither
+duplicates imported reports nor restores cleared ones. Later edits to imported
+Markdown files are not synchronized back to SQLite.
+
+### Backup and transfer
+
+Stop the application or service before backing up its data directory. Include
+`reports.db` and `reports.db-wal` if present: the WAL may contain the latest saved
+reviews. Keep the original `reports/` directory as well.
+
+To transfer Desktop data to a new, empty directory:
+
+```powershell
+./build/Import-DesktopData.ps1 -Source "<desktop-data-directory>" -Destination "<new-data-directory>"
+```
+
+The script preserves the source and copies the database together with its WAL;
+it requires exclusive access to those files. Older file-only application versions
+cannot read new SQLite reports. Export reports before downgrading if needed.
+See [report storage and migration](docs/server-web.md#html-report-export) for details.
+
 ## Gmail notifications
 
 1. Enable Gmail API in Google Cloud and configure the OAuth consent screen.
@@ -222,11 +275,8 @@ directory between Desktop and Server.
 Model profiles may contain API keys; detailed logs can contain repository content.
 Inspect logs and crash reports before sharing them.
 
-Review reports are stored in `reports.db`; Markdown and HTML remain available as
-exports. Existing `reports/*.md` files are imported automatically and preserved.
-Rechecking a commit replaces its previous result in the same repository/branch.
-See [report storage and migration](docs/server-web.md#html-report-export) for
-migration details and backup instructions.
+See [Reports and SQLite storage](#reports-and-sqlite-storage) for report migration,
+exports, and backup instructions.
 
 Previously called **Git Reviewer**. Existing installations keep using
 `%LOCALAPPDATA%\GitReviewer` if the new directory does not exist.
@@ -244,6 +294,7 @@ dotnet run --project checks/Gmail/Gmail.csproj
 dotnet run --project checks/Outlook/Outlook.csproj
 dotnet run --project checks/ApplyChanges/ApplyChanges.csproj
 dotnet run --project checks/CommitPaging/CommitPaging.csproj
+dotnet run --project checks/Reports/Reports.csproj
 dotnet run --project checks/ReportRepair/ReportRepair.csproj
 dotnet run --project checks/ModelAvailability/ModelAvailability.csproj
 dotnet run --project checks/Server/Server.csproj

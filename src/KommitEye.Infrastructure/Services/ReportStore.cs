@@ -8,7 +8,7 @@ namespace KommitEye.Services;
 public sealed record ReportSummary(string Name, DateTimeOffset Modified, long Size);
 
 /// <summary>SQLite is authoritative; Markdown files are legacy input or disposable exports.</summary>
-public sealed class ReportStore
+public sealed partial class ReportStore
 {
     private readonly string _connection;
 

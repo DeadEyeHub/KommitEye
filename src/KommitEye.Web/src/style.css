@@ -10,6 +10,39 @@
   line-height: 1.5;
   color-scheme: light;
 }
+.report-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 16px;
+  margin: 24px 0 16px;
+}
+.report-controls label { display: grid; gap: 6px; flex: 1 1 160px; min-width: 0; }
+.report-controls .report-search { flex: 2 1 280px; }
+.report-controls select, .report-controls input { width: 100%; }
+.report-controls button { min-height: 43px; }
+.report-downloads { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.report-downloads a { text-underline-offset: 3px; }
+.report-status, .review-meta, .review-location { color: #52665f; }
+.report-status { margin: 24px 0 8px; }
+.review-entry { display: grid; grid-template-columns: 135px minmax(0, 1fr); gap: 20px; padding: 22px 0; border-bottom: 1px solid #ccd6cf; }
+.review-outcome { display: flex; flex-direction: column; gap: 6px; color: #52665f; }
+.review-outcome-label { font-size: .85rem; color: #52665f; }
+.review-outcome-bug strong, .review-outcome-failed strong { color: #a12828; }
+.review-outcome-clean strong { color: #155c50; }
+.review-entry-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px 24px; flex-wrap: wrap; }
+.review-entry-heading h2 { margin: 0; font-size: 1.1rem; overflow-wrap: anywhere; flex: 1 1 280px; }
+.review-entry-heading time { color: #52665f; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.review-entry-heading code { margin-right: 8px; font-size: .95em; }
+.review-location { margin: 8px 0 4px; overflow-wrap: anywhere; font-size: .9rem; }
+.review-meta { margin: 4px 0 14px; overflow-wrap: anywhere; }
+.report-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .review-entry { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .review-outcome { flex-direction: row; align-items: baseline; gap: 12px; }
+  .report-controls label, .report-controls .report-search { flex-basis: 100%; }
+  .report-downloads { gap: 12px 16px; }
+}
 * {
   box-sizing: border-box;
 }

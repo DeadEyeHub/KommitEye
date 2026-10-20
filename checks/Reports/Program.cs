@@ -41,6 +41,10 @@ try
     Check(imported.Contains("newer finding") && !imported.Contains("old finding"), "latest legacy duplicate wins");
     Check(new ReportWriter().Read(legacyName) == imported, "restart does not duplicate import");
     Check(writer.Read("unknown.md") == "# Неизвестный отчёт\nТекст без маркеров.", "unknown content round trips");
+    var legacyPage = writer.Browse("NEWER FINDING");
+    Check(legacyPage.Total == 1 && legacyPage.Items[0].Legacy && legacyPage.Items[0].Subject == "manual",
+        "legacy report content is searchable and subject is extracted");
+    Check(writer.ReadReview(legacyPage.Items[0].Id)!.Contains("newer finding"), "individual commit can be read");
 
     var result = new ReviewResult { AnalysisDuration = TimeSpan.FromSeconds(3) };
     result.Findings.Add(new("file.cs", 7, "NEW", "Ошибка"));
@@ -83,8 +87,30 @@ try
     await Task.WhenAll(Enumerable.Range(1, 12).Select(i => new ReportWriter().AppendAsync(repository, "main",
         commit with { Sha = i.ToString("x40") }, new ReviewResult(), false, default, identity)));
     Check((long)Scalar("SELECT count(*) FROM reviews")! == 16, "concurrent writers preserve all commits");
+    var ascending = writer.Browse(sort: "sha", descending: false, limit: 200);
+    var descending = writer.Browse(sort: "sha", descending: true, limit: 200);
+    Check(ascending.Total == 16 && ascending.Items.Select(r => r.Id).Reverse().SequenceEqual(descending.Items.Select(r => r.Id)),
+        "sorting reverses all results with deterministic ties");
+    var page1 = writer.Browse(sort: "sha", descending: false, limit: 3);
+    var page2 = writer.Browse(sort: "sha", descending: false, offset: 3, limit: 3);
+    Check(page1.Total == 16 && page1.Items.Concat(page2.Items).Select(r => r.Id)
+        .SequenceEqual(ascending.Items.Take(6).Select(r => r.Id)), "pagination follows sorted results without overlap");
+    Check(writer.Browse("ошИБКА").Total == 2, "Unicode case-insensitive search includes finding text");
+    Check(writer.Browse("авТОР").Total == 15, "Unicode case-insensitive author search");
+    Check(writer.Browse(reportName: legacyName).Total == 14, "branch filter scopes commit results");
+    Check(writer.Browse("%_").Total == 0 && writer.Browse("' OR 1=1 --").Total == 0,
+        "search treats SQL wildcards and SQL syntax as literal text");
+    foreach (var sort in new[] { "saved", "date", "author", "subject", "branch", "repository", "sha" })
+        Check(writer.Browse(sort: sort).Total == 16, "supported sort: " + sort);
+    try { writer.Browse(sort: "id; DROP TABLE reviews"); throw new Exception("Invalid sort accepted"); }
+    catch (ArgumentException) { }
+    try { writer.Browse(offset: -1); throw new Exception("Invalid page accepted"); }
+    catch (ArgumentException) { }
+    var archivedReviewId = writer.Browse(reportName: legacyName).Items[0].Id;
 
     await writer.ClearAsync(repository, "main", identity);
+    Check(writer.Browse().Total == 2 && writer.ReadReview(archivedReviewId) is null,
+        "archived groups are excluded from search and individual reads");
     Check(writer.Read(legacyName) is null && new ReportWriter().Read(legacyName) is null,
         "clear archives group and restart cannot resurrect legacy file");
     Check((long)Scalar("SELECT count(*) FROM report_groups WHERE archived=1")! == 1, "cleared data retained for recovery");
@@ -95,6 +121,7 @@ try
     Check(File.ReadAllText(Path.Combine(directory, "reports", legacyName)) == old + manual + fenced,
         "original Markdown file untouched");
     Check(new ReportWriter().List().Count == 4, "restart retains SQLite-only reports");
+    OutcomeChecks.Run(Path.Combine(directory, "outcome-checks"));
 }
 finally
 {

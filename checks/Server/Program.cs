@@ -171,6 +171,27 @@ try
     Check(mailLog.Contains("Mail:") && mailLog.Contains(sha),"mail log includes notification result for reviewed commit");
     Check((await Get("reports")).AsArray().Count==1,"persisted report available through API");
     var reportName=(string)(await Get("reports"))[0]!["name"]!;
+    var entries = await Get("report-entries?q=" + sha);
+    Check((long)entries["total"]! == 1 && (string)entries["items"]![0]!["sha"]! == sha,
+        "commit report API searches by SHA");
+    var entryId = (long)entries["items"]![0]!["id"]!;
+    Check((string)entries["items"]![0]!["outcome"]! == "empty", "empty diff is not classified as a completed clean review");
+    Check((long)(await Get("report-entries?outcome=bug"))["total"]! == 0 &&
+          (long)(await Get("report-entries?outcome=empty"))["total"]! == 1,
+        "outcome API filter scopes results");
+    Check((await http.GetAsync("report-entries?outcome=invalid")).StatusCode == HttpStatusCode.BadRequest,
+        "invalid outcome filter rejected");
+    Check((await http.GetStringAsync("report-entries/" + entryId)).Contains(sha), "individual Markdown report is available");
+    using (var entryHtml = await http.GetAsync("report-entries/" + entryId + "?format=html&download=true"))
+        Check(entryHtml.Content.Headers.ContentType?.MediaType == "text/html" &&
+              entryHtml.Content.Headers.ContentDisposition?.DispositionType == "attachment",
+            "individual HTML report can be downloaded");
+    Check((long)(await Get("report-entries?q=no-such-report"))["total"]! == 0, "report search returns empty results");
+    Check((await http.GetAsync("report-entries?sort=invalid")).StatusCode == HttpStatusCode.BadRequest &&
+          (await http.GetAsync("report-entries?offset=-1")).StatusCode == HttpStatusCode.BadRequest,
+        "report API rejects invalid sorting and pagination");
+    Check((await http.GetAsync("report-entries/9223372036854775807")).StatusCode == HttpStatusCode.NotFound,
+        "missing review returns 404");
     using(var htmlResponse=await http.GetAsync("reports/"+Uri.EscapeDataString(reportName)+"?format=html"))
     {
         var html=await htmlResponse.Content.ReadAsStringAsync();

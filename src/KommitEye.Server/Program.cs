@@ -112,6 +112,21 @@ api.MapPost("/projects/{id}/log/clear", (string id, bool? details, ProjectCoordi
 api.MapGet("/jobs", (JobStore jobs) => jobs.List().Take(200));
 api.MapGet("/jobs/{id}", (string id, JobStore jobs) => jobs.List().FirstOrDefault(j => j.Id == id) is { } job ? Results.Ok(job) : Results.NotFound());
 api.MapGet("/reports", (ReportWriter reports) => reports.List());
+api.MapGet("/report-entries", (string? q, string? sort, bool? descending, int? offset, int? limit, string? report, string? outcome, ReportWriter reports) =>
+{
+    try { return Results.Ok(reports.Browse(q, sort ?? "saved", descending ?? true, offset ?? 0, limit ?? 50, report, outcome)); }
+    catch (ArgumentException error) { return Results.BadRequest(new { error = error.Message }); }
+});
+api.MapGet("/report-entries/{id:long}", (long id, string? format, bool? download, ReportWriter reports) =>
+{
+    var markdown = reports.ReadReview(id);
+    if (markdown is null) return Results.NotFound();
+    var name = $"review-{id}";
+    if (format == "html") return Results.File(System.Text.Encoding.UTF8.GetBytes(HtmlReport.Render(name, markdown)),
+        "text/html; charset=utf-8", download == true ? name + ".html" : null);
+    return Results.File(System.Text.Encoding.UTF8.GetBytes(markdown), "text/plain; charset=utf-8",
+        download == true ? name + ".md" : null);
+});
 api.MapGet("/reports/{name}", (string name, string? format, bool? download, ReportWriter reports) =>
 {
     if (name != Path.GetFileName(name) || !name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest();

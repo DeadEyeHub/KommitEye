@@ -15,6 +15,10 @@ public sealed class ReportWriter
 
     public IReadOnlyList<ReportSummary> List() => _store.List();
     public string? Read(string name) => _store.Read(name);
+    public ReviewReportPage Browse(string? query = null, string sort = "saved", bool descending = true,
+        int offset = 0, int limit = 50, string? reportName = null, string? outcome = null) =>
+        _store.Browse(query, sort, descending, offset, limit, reportName, outcome);
+    public string? ReadReview(long id) => _store.ReadReview(id);
 
     public string GetReportPath(string repositoryPath, string branch, string? repositoryIdentity = null)
     {

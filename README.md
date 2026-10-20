@@ -7,8 +7,8 @@ contains two applications sharing the same review engine:
 
 | Application | Interface | Windows x64 distribution |
 | --- | --- | --- |
-| Desktop 3.5.7 | WPF desktop app with a system tray icon | Self-contained EXE |
-| Service 3.5.7 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+| Desktop 3.5.8 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Service 3.5.8 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
 
 Both support multiple repositories, review reports and mail notifications.
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
@@ -78,9 +78,9 @@ Run from the repository root:
 
 Outputs in `artifacts/`:
 
-- `KommitEye-Desktop-3.5.7-win-x64.exe`
-- `KommitEye-Service-3.5.7-win-x64.zip`
-- `KommitEye-Service-3.5.7-win-x64.msi`
+- `KommitEye-Desktop-3.5.8-win-x64.exe`
+- `KommitEye-Service-3.5.8-win-x64.zip`
+- `KommitEye-Service-3.5.8-win-x64.msi`
 - `SHA256SUMS-<product>.txt`
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds
@@ -162,6 +162,26 @@ Desktop and Service store reports in `reports.db` inside their data directory.
 All repositories and branches share the same review table; findings are stored
 in a separate table. Each repository/branch pair has one current result per
 commit SHA.
+
+Open **Reports** in Desktop's sidebar or the Service web UI to browse individual
+commit reviews. Search across SHA, author, subject, repository, branch and report
+text, including imported Markdown. Search is case-insensitive and supports
+Cyrillic. Select a repository/branch to narrow the results, and sort by saved date,
+commit date, author, subject, branch, repository or SHA in either direction.
+Results are paged in groups of 50; search and sorting apply to all active reports,
+not just the current page. Cleared reports are excluded.
+
+Desktop shows the selected review in the same window and can save it as Markdown.
+The web UI opens individual reviews as HTML and offers Markdown/HTML downloads.
+Both interfaces retain access to the full branch report, including legacy reports
+without recognizable commit entries. For imported reviews, the saved date is the
+original report file's modification date; unknown commit metadata remains empty.
+
+The **Bug / No bug** column and filter distinguish reviews with findings from
+completed reviews without findings. Failed reviews, empty diffs and unknown or
+unstructured results have separate states. Imported reports use their recognized
+English/Russian result line; an unrecognized result is never treated as clean.
+The result filter combines with text search and branch selection before pagination.
 
 - Reviewing a new commit adds its result to the branch report.
 - Rechecking the same SHA in the same branch replaces its previous result and

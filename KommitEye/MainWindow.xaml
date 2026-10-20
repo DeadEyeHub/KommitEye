@@ -20,6 +20,7 @@
                     <Button Style="{StaticResource NavigationButton}" x:Name="MailSettingsButton" Content="Mail" Tag="mail" Click="OpenSettings_Click" />
                     <Button Style="{StaticResource NavigationButton}" x:Name="PromptSettingsButton" Tag="prompt" Click="OpenSettings_Click"><TextBlock Text="System prompt" TextWrapping="Wrap" TextAlignment="Left" /></Button>
                     <Button Style="{StaticResource NavigationButton}" x:Name="JournalSettingsButton" Content="Journal" Tag="journal" Click="OpenSettings_Click" />
+                    <Button Style="{StaticResource NavigationButton}" x:Name="ReportsButton" Content="Reports" Click="Reports_Click" />
                 </UniformGrid>
             </StackPanel>
         </Border>

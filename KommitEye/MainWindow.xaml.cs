@@ -1130,6 +1130,15 @@ public partial class MainWindow : Window
 
     private async void OpenReport_Click(object sender, RoutedEventArgs e) => await OpenReportAsync();
 
+    private ReportsWindow? _reportsWindow;
+    private void Reports_Click(object sender, RoutedEventArgs e)
+    {
+        if (_reportsWindow is not null) { _reportsWindow.Activate(); return; }
+        _reportsWindow = new ReportsWindow(_reportWriter) { Owner = this };
+        _reportsWindow.Closed += (_, _) => _reportsWindow = null;
+        _reportsWindow.Show();
+    }
+
     private async void ClearReport_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -1142,7 +1151,7 @@ public partial class MainWindow : Window
                 "Очистить отчёт для {0}, {1}? Будет сохранена резервная копия. Позиция проверки и очередь писем не изменятся.", path, branch),
                 "KommitEye", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
             await _reportWriter.ClearAsync(identity.WorkTreeRoot, branch, identity.CommonGitDirectory);
-            AppendLog(Localization.Text("Report cleared; backup saved beside the report.", "Отчёт очищен; резервная копия сохранена рядом с отчётом."));
+            AppendLog(Localization.Text("Report cleared; archived in the database.", "Отчёт очищен; архив сохранён в базе данных."));
         }
         catch (Exception exception) { ShowError(exception.Message); }
     }

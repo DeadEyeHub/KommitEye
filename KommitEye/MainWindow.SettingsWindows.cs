@@ -43,6 +43,7 @@ public partial class MainWindow
         MailSettingsButton.Content = Localization.Text("Mail", "Почта");
         ((TextBlock)PromptSettingsButton.Content).Text = Localization.Text("System prompt", "Системный промпт");
         JournalSettingsButton.Content = Localization.Text("Journal", "Журнал");
+        ReportsButton.Content = Localization.Text("Reports", "Отчёты");
     }
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)

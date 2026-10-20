@@ -1,0 +1,73 @@
+<Window x:Class="KommitEye.ReportsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Style="{StaticResource {x:Type Window}}" Title="Reports"
+        Width="1160" Height="780" MinWidth="760" MinHeight="560"
+        WindowStartupLocation="CenterOwner" Icon="Assets/app.ico">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="2*" MinHeight="120"/><RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/><RowDefinition Height="3*" MinHeight="120"/>
+        </Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock x:Name="Heading" FontSize="26" FontWeight="SemiBold"/>
+            <TextBlock x:Name="Description" Margin="0,6,0,16" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+        </StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="2*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <StackPanel Margin="0,0,12,0">
+                <Label x:Name="SearchLabel" Target="{Binding ElementName=SearchBox}" Padding="0,0,0,5"/>
+                <TextBox x:Name="SearchBox" MaxLength="500" MinHeight="36" TextChanged="FiltersChanged"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                <Label x:Name="GroupLabel" Target="{Binding ElementName=GroupBox}" Padding="0,0,0,5"/>
+                <ComboBox x:Name="GroupBox" MinHeight="36" DisplayMemberPath="Label" SelectedValuePath="Value" SelectionChanged="FiltersChanged"/>
+            </StackPanel>
+            <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                <Label x:Name="SortLabel" Target="{Binding ElementName=SortBox}" Padding="0,0,0,5"/>
+                <ComboBox x:Name="SortBox" MinHeight="36" DisplayMemberPath="Label" SelectedValuePath="Value" SelectionChanged="FiltersChanged"/>
+            </StackPanel>
+            <StackPanel Grid.Column="3" Margin="0,0,12,0">
+                <Label x:Name="OrderLabel" Target="{Binding ElementName=OrderBox}" Padding="0,0,0,5"/>
+                <ComboBox x:Name="OrderBox" MinHeight="36" SelectionChanged="FiltersChanged"/>
+            </StackPanel>
+            <Button Grid.Column="4" x:Name="RefreshButton" VerticalAlignment="Bottom" Click="Refresh_Click"/>
+            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,12,0,0">
+                <Label x:Name="OutcomeLabel" Target="{Binding ElementName=OutcomeBox}" VerticalAlignment="Center" Padding="0,0,12,0"/>
+                <ComboBox x:Name="OutcomeBox" MinWidth="190" MinHeight="36" DisplayMemberPath="Label" SelectedValuePath="Value" SelectionChanged="FiltersChanged"/>
+            </StackPanel>
+        </Grid>
+        <TextBlock Grid.Row="2" x:Name="Status" Margin="0,12" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"/>
+        <DataGrid Grid.Row="3" x:Name="Entries" AutoGenerateColumns="False" IsReadOnly="True"
+                  CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False"
+                  SelectionMode="Single" SelectionUnit="FullRow" SelectionChanged="EntrySelected"
+                  GridLinesVisibility="Horizontal" RowHeaderWidth="0" HeadersVisibility="Column"
+                  BorderBrush="{StaticResource LineBrush}" Background="White" RowHeight="34">
+            <DataGrid.Columns>
+                <DataGridTextColumn x:Name="ShaColumn" Header="SHA" Binding="{Binding ShortSha}" Width="90"/>
+                <DataGridTextColumn x:Name="OutcomeColumn" Binding="{Binding OutcomeLabel}" Width="135"/>
+                <DataGridTextColumn x:Name="SubjectColumn" Binding="{Binding Subject}" Width="2*"/>
+                <DataGridTextColumn x:Name="AuthorColumn" Binding="{Binding Author}" Width="*"/>
+                <DataGridTextColumn x:Name="BranchColumn" Binding="{Binding Branch}" Width="*"/>
+                <DataGridTextColumn x:Name="DateColumn" Binding="{Binding SavedAt, StringFormat={}{0:g}}" Width="145"/>
+            </DataGrid.Columns>
+        </DataGrid>
+        <Grid Grid.Row="4" Margin="0,10">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <Button x:Name="PreviousButton" Click="Previous_Click"/>
+            <TextBlock Grid.Column="1" x:Name="PageLabel" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <Button Grid.Column="2" x:Name="NextButton" Click="Next_Click"/>
+        </Grid>
+        <DockPanel Grid.Row="5" Margin="0,8,0,10">
+            <WrapPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
+                <Button x:Name="SaveButton" Margin="8,0,0,0" Click="Save_Click" IsEnabled="False"/>
+                <Button x:Name="BranchButton" Margin="8,0,0,0" Click="Branch_Click" IsEnabled="False"/>
+            </WrapPanel>
+            <TextBlock x:Name="PreviewTitle" TextWrapping="Wrap" VerticalAlignment="Center" FontWeight="SemiBold"/>
+        </DockPanel>
+        <FlowDocumentScrollViewer Grid.Row="6" x:Name="Preview" VerticalScrollBarVisibility="Auto"
+                                  IsToolBarVisible="False" Background="White"/>
+    </Grid>
+</Window>

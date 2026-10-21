@@ -28,7 +28,14 @@ export function Modal({
     </dialog>
   );
 }
-export let language = localStorage.getItem("language") || "ru";
+function readLanguage() {
+  try {
+    return localStorage.getItem("language") === "ru" ? "ru" : "en";
+  } catch {
+    return "en";
+  }
+}
+export let language = readLanguage();
 export const t = (ru: string, en: string) => (language === "ru" ? ru : en);
 // randomUUID is unavailable on plain HTTP LAN origins; getRandomValues is supported there.
 export const requestId = () => {
@@ -252,6 +259,10 @@ export function Heading({
 }
 
 export function setLanguage(value: string) {
-  language = value;
-  localStorage.setItem("language", value);
+  language = value === "ru" ? "ru" : "en";
+  try {
+    localStorage.setItem("language", language);
+  } catch {
+    // Keep switching available when browser storage is disabled.
+  }
 }

@@ -1,9 +1,13 @@
 # Server and web refactor
 
-KommitEye Service and Desktop are currently version 3.5.6. Both use the single
+KommitEye Service and Desktop are currently version 3.6.0. Both use the single
 `Version` in `Directory.Build.props` and ship together in release `v<version>`.
 The existing WPF application remains a compatibility host. Service is now the LAN
 server plus the browser UI, not the WPF executable.
+
+The web interface defaults to English. Use **Language / Язык** below the navigation
+menu or on the sign-in screen to switch between English and Russian. The browser
+remembers your selection; existing saved language preferences remain unchanged.
 
 ## Projects
 

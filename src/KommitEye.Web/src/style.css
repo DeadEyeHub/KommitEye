@@ -172,6 +172,10 @@ nav button[aria-current="page"] {
   gap: 12px;
   font-size: 13px;
 }
+.language-menu {
+  margin-block: 20px;
+  max-width: 240px;
+}
 .connection {
   color: #775c20;
 }

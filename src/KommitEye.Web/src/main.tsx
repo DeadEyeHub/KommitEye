@@ -24,6 +24,24 @@ function App() {
     [tick, setTick] = useState(0),
     [lang, setLang] = useState(language);
   useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+  const languageMenu = (
+    <label className="field language-menu">
+      <span>{t("Язык / Language", "Language / Язык")}</span>
+      <select
+        value={lang}
+        onChange={(e) => {
+          setLanguage(e.target.value);
+          setLang(language);
+        }}
+      >
+        <option value="en">English</option>
+        <option value="ru">Русский</option>
+      </select>
+    </label>
+  );
+  useEffect(() => {
     api<Data>("/setup")
       .then(setSetup)
       .catch((e) => setError(e.message));
@@ -112,6 +130,7 @@ function App() {
     return (
       <main className="login">
         <h1>KommitEye</h1>
+        {languageMenu}
         <p>{error || t("Подключение к серверу…", "Connecting to server…")}</p>
       </main>
     );
@@ -121,6 +140,7 @@ function App() {
         <div className="brand">
           KommitEye<span> / web server</span>
         </div>
+        {languageMenu}
         <h1>
           {setup?.required
             ? t("Создайте пароль", "Create your password")
@@ -221,6 +241,7 @@ function App() {
             </button>
           ))}
         </nav>
+        {languageMenu}
         <div className="sidebar-bottom">
           <span className={"connection " + connection}>
             {connection === "connected"
@@ -230,17 +251,6 @@ function App() {
           <small>
             {info.machine} · v{info.version}
           </small>
-          <select
-            aria-label="Language"
-            value={lang}
-            onChange={(e) => {
-              setLanguage(e.target.value);
-              setLang(e.target.value);
-            }}
-          >
-            <option value="ru">Русский</option>
-            <option value="en">English</option>
-          </select>
           <Action
             onClick={async () => {
               await api("/logout", {});

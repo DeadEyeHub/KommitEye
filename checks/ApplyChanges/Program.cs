@@ -77,7 +77,13 @@ class Program
         var tabs = Field<TabControl>("MainTabs");
         Check(ReferenceEquals(tabs.SelectedItem, Field<TabItem>("DashboardTab")), "main stays on dashboard");
         var settingsButtons = Field<UniformGrid>("SettingsButtons");
-        Check(settingsButtons.Children.OfType<Button>().Count() == 5, "all five sections available as dashboard buttons");
+        var sections = new[] { "project", "models", "mail", "prompt", "journal" };
+        var navigation = settingsButtons.Children.OfType<Button>().ToArray();
+        Check(navigation.Where(b => b.Tag is string).Select(b => (string)b.Tag).Order()
+            .SequenceEqual(sections.Order()), "all settings sections available as navigation buttons");
+        var reportsButton = Field<Button>("ReportsButton");
+        Check(navigation.Contains(reportsButton) && reportsButton.IsEnabled,
+            "reports available as a separate navigation button");
         void Render(FrameworkElement surface, string name, double width, double height)
         {
             surface.Measure(new Size(width,height)); surface.Arrange(new Rect(0,0,width,height)); surface.UpdateLayout();
@@ -89,7 +95,18 @@ class Program
         Render((FrameworkElement)window.Content,"dashboard",940,660);
         window.WindowStartupLocation = WindowStartupLocation.Manual; window.Left = -10000; window.Top = -10000;
         window.ShowActivated = false; window.ShowInTaskbar = false; window.Show();
-        foreach(var section in new[]{"project","models","mail","prompt","journal"})
+        reportsButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        var reportsWindow = Field<ReportsWindow>("_reportsWindow");
+        Check(reportsWindow.IsVisible && reportsWindow.Owner == window, "reports opens a separate owned window");
+        Check(reportsWindow.FindName("SearchBox") is TextBox &&
+              reportsWindow.FindName("SortBox") is ComboBox &&
+              reportsWindow.FindName("OutcomeBox") is ComboBox, "reports exposes search, sorting and outcome filter");
+        reportsButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Check(ReferenceEquals(reportsWindow, Field<ReportsWindow>("_reportsWindow")), "reports reuses its open window");
+        reportsWindow.Close();
+        Check(Field<ReportsWindow?>("_reportsWindow") is null, "reports ownership cleared on close");
+        Check(ReferenceEquals(tabs.SelectedItem, Field<TabItem>("DashboardTab")), "reports leaves main dashboard selected");
+        foreach(var section in sections)
         {
             Exception? failure = null;
             window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
@@ -116,7 +133,7 @@ class Program
                 }
                 catch(Exception error) { failure=error; dialog?.Close(); }
             }));
-            settingsButtons.Children.OfType<Button>().Single(b => (string)b.Tag == section)
+            navigation.Single(b => b.Tag is string tag && tag == section)
                 .RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             if(failure is not null) throw failure;
             Check(Field<Window?>("_settingsWindow") is null, "dialog ownership cleared");

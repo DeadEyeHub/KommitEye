@@ -150,8 +150,8 @@ recovery. Configure the probe interval and response inactivity threshold in mode
 settings. At the review deadline, a silent model triggers availability checking;
 recent responses instead produce an incomplete-review report. **Stop** cancels waiting.
 
-The main window shows the project dashboard. Five buttons below **Recent journal entries** open Project, Models,
-Mail, System prompt, and Journal in separate windows. **Apply changes** saves and
+The main window shows the project dashboard. Sidebar buttons open Project, Models,
+Mail, System prompt, Journal, and Reports in separate windows. **Apply changes** saves and
 keeps the window open; **OK** saves and closes it. **Cancel** or closing the window
 discards edits since the last Apply, including checkbox changes. Model and prompt
 changes affect subsequent reviews, not an active request.

@@ -27,7 +27,6 @@ static class DeadlineChecks
             catch (Exception error) { failure = error; }
             var expected = mode switch
             {
-                "silent" or "stale" or "completed-stale" or "heartbeat" => typeof(ModelResponseTimeoutException),
                 "cancel" => typeof(OperationCanceledException),
                 _ => typeof(ReviewComplexityException)
             };
@@ -49,33 +48,27 @@ static class DeadlineChecks
             try { await skipped.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
             finally { await runner.StopAsync(); }
             var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
-            Check(report.Contains("probably too complex"), "complexity explanation saved in report");
+            Check(report.Contains("review is incomplete"), "complexity explanation saved in report");
             Check(activeHandler.Reviews == 1 && activeHandler.Probes == 0, "active model is not retried or probed");
-            Check(notifications.Count == 1 && notifications[0].Failed && notifications[0].ReportMarkdown.Contains("probably too complex"), "terminal failure publishes saved report for notification");
+            Check(notifications.Count == 1 && notifications[0].Failed && notifications[0].ReportMarkdown.Contains("review is incomplete"), "terminal failure publishes saved report for notification");
             Console.WriteLine("PASS: active deadline writes complexity report without retries.");
         }
 
-        var reportsBefore = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
         var silentHandler = new DeadlineHandler(new ReviewClock(), "silent");
         using (var http = new HttpClient(silentHandler))
-        using (var cancellation = new CancellationTokenSource())
         {
             var runner = new ReviewRunner(git, new ModelClient(http, silentHandler.Clock), config, new StateStore(), new ReportWriter());
             var notifications = new List<CommitReviewed>();
             runner.Reviewed += notifications.Add;
-            var review = runner.ReviewSingleCommitAsync(settings, profile, await git.GetHeadAsync(repo, default), cancellation.Token);
             try
             {
-                await silentHandler.ProbeStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
-                Check(!review.IsCompleted, "silent review remains pending during probe");
+                await runner.ReviewSingleCommitAsync(settings, profile, await git.GetHeadAsync(repo, default), default);
+                throw new Exception("Expected incomplete review");
             }
-            finally { cancellation.Cancel(); }
-            try { await review; throw new Exception("Review must cancel"); }
-            catch (OperationCanceledException) { }
-            Check(silentHandler.Probes == 1, "silent deadline probes immediately");
-            Check(notifications.Count == 0, "temporary outage and cancellation do not notify failure");
-            Check(reportsBefore == new ReportWriter().Read(new ReportWriter().List().Single().Name)!, "silent deadline produces no failed report");
-            Console.WriteLine("PASS: silent deadline probes immediately and remains cancellable, with no failure report.");
+            catch (ReviewComplexityException) { }
+            Check(silentHandler.Probes == 0 && silentHandler.Reviews == 1, "silent deadline never probes or retries");
+            Check(notifications.Count == 1 && notifications[0].Failed, "silent deadline persists incomplete review");
+            Console.WriteLine("PASS: silent deadline produces incomplete review without availability probes.");
         }
         var manualHandler = new DeadlineHandler(new ReviewClock(), "content");
         using (var http = new HttpClient(manualHandler))

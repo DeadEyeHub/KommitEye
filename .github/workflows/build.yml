@@ -32,6 +32,8 @@ jobs:
             dotnet run --project "checks/$check/$check.csproj" -c Release
             if ($LASTEXITCODE -ne 0) { throw "$check failed" }
           }
+          dotnet run --project checks/ModelAvailability/ModelAvailability.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'API error checks failed' }
           dotnet run --project checks/ModelAvailability/ModelAvailability.csproj -c Release -- --deadlines
           if ($LASTEXITCODE -ne 0) { throw 'Deadline checks failed' }
           dotnet run --project checks/Installer/Installer.csproj -c Release

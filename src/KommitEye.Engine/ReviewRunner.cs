@@ -253,12 +253,12 @@ public sealed class ReviewRunner
                 if (failedCommit != _activeCommit) failures = 0;
                 failedCommit = _activeCommit;
                 failures++;
-                if (failures > profile.Parameters.MaxRetries)
+                if (exception is ReviewApiException { Kind: ReviewApiErrorKind.Authentication or ReviewApiErrorKind.Configuration } || failures > profile.Parameters.MaxRetries)
                 {
                     var message = Localization.Format(
                         "Automatic review stopped after {0} failed attempts ({1} retries). Press Start to try again.",
                         "Автопроверка остановлена после {0} неудачных попыток ({1} повторов). Для повторного запуска нажмите «Старт».",
-                        failures, profile.Parameters.MaxRetries);
+                        failures, failures - 1);
                     Log?.Invoke(message);
                     StatusChanged?.Invoke(message);
                     Publish(NextRunChanged, (DateTimeOffset?)null);
@@ -476,26 +476,18 @@ public sealed class ReviewRunner
             }
             catch (ModelSchedulePauseException) { throw; }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception exception) when (IsModelUnavailable(exception))
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                analysisClock.Stop();
-                await WaitForModelAsync(profile, sha, exception, cancellationToken);
-                analysisClock.Start();
-                Emit(ReviewStage.Started, profile, sha);
-            }
             catch (Exception exception)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (manualReview)
+                if (manualReview || exception is ReviewApiException { Kind: ReviewApiErrorKind.Authentication or ReviewApiErrorKind.Configuration })
                 {
                     var failed = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message), AnalysisDuration = analysisClock.Elapsed };
-                    await _reportWriter.AppendAsync(repositoryPath, branch, commit, failed, true, cancellationToken, repositoryIdentity);
-                    PublishFailedReview(repositoryPath, branch, sha, failed, true);
+                    await _reportWriter.AppendAsync(repositoryPath, branch, commit, failed, manualReview, cancellationToken, repositoryIdentity);
+                    PublishFailedReview(repositoryPath, branch, sha, failed, manualReview);
                     throw;
                 }
                 Emit(ReviewStage.Failed, profile, sha, exception.Message);
-                if (exception is ReviewComplexityException or ReviewFormatException or EmptyReviewResponseException || attempt++ >= profile.Parameters.MaxRetries)
+                if (exception is ReviewApiException or OperationCanceledException or ReviewComplexityException or ReviewFormatException or EmptyReviewResponseException || attempt++ >= profile.Parameters.MaxRetries)
                 {
                     result = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message) };
                     break;
@@ -526,7 +518,6 @@ public sealed class ReviewRunner
         ModelProfile profile, string repositoryIdentity, CancellationToken cancellationToken)
     {
         Emit(ReviewStage.PreparingDiff, profile, sha);
-        profile.Parameters.Validate();
         using var tools = await GitToolSession.CreateAsync(repositoryPath, sha, cancellationToken, profile.Parameters.SnapshotMb);
         var result = new ReviewResult { EmptyDiff = await tools.IsEmptyAsync(cancellationToken) };
         if (!result.EmptyDiff)
@@ -542,51 +533,6 @@ public sealed class ReviewRunner
         }
 
         return result;
-    }
-
-    internal static bool IsModelUnavailable(Exception exception) => exception switch
-    {
-        System.Net.Http.HttpRequestException http => http.StatusCode is null ||
-            (int)http.StatusCode is 401 or 403 or 404 or 408 or 409 or 429 or >= 500,
-        ModelResponseTimeoutException => true,
-        OperationCanceledException => true, // Caller cancellation is handled before this filter.
-        _ => false
-    };
-
-    private async Task WaitForModelAsync(ModelProfile profile, string sha, Exception failure, CancellationToken token)
-    {
-        Emit(ReviewStage.ModelUnavailable, profile, sha);
-        Publish(Log, Localization.Format("Model unavailable: {0}. Keeping commit {1} pending.",
-            "Модель недоступна: {0}. Коммит {1} остаётся в ожидании.", failure.Message, Short(sha)));
-        var checkImmediately = failure is ModelResponseTimeoutException;
-        while (true)
-        {
-            if (!checkImmediately)
-            {
-                var nextCheck = DateTimeOffset.Now.AddMinutes(profile.Parameters.AvailabilityCheckMinutes);
-                Publish(StatusChanged, Localization.Format("Waiting for model; next check at {0:HH:mm}.",
-                    "Ожидание модели; следующая проверка в {0:HH:mm}.", nextCheck));
-                Publish(NextRunChanged, (DateTimeOffset?)nextCheck);
-                try { await Task.Delay(TimeSpan.FromMinutes(profile.Parameters.AvailabilityCheckMinutes), token); }
-                finally { Publish(NextRunChanged, (DateTimeOffset?)null); }
-            }
-            checkImmediately = false;
-            await WaitForScheduleAsync(token);
-            try
-            {
-                Publish(StatusChanged, Localization.Text("Checking model availability", "Проверка доступности модели"));
-                await _model.TestConnectionAsync(profile, token);
-                Publish(Log, Localization.Format("Model available; resuming commit {0}.",
-                    "Модель доступна; возобновляем проверку коммита {0}.", Short(sha)));
-                return;
-            }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (Exception error)
-            {
-                Publish(Log, Localization.Format("Model availability check failed: {0}",
-                    "Проверка доступности модели не удалась: {0}", error.Message));
-            }
-        }
     }
 
     private async Task WaitForScheduleAsync(CancellationToken token)

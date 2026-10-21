@@ -7,7 +7,7 @@ using KommitEye.Models;
 
 namespace KommitEye.Services;
 
-public sealed class ModelClient
+public sealed partial class ModelClient
 {
     public static readonly TimeSpan ReviewTimeLimit = TimeSpan.FromMinutes(15);
     private readonly HttpClient _httpClient;
@@ -25,16 +25,26 @@ public sealed class ModelClient
     public async Task<IReadOnlyList<AvailableModel>> DiscoverModelsAsync(
         ModelProfile profile, CancellationToken cancellationToken)
     {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5), _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        try { return await DiscoverModelsCoreAsync(profile, linked.Token, cancellationToken); }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeout.IsCancellationRequested)
+        {
+            // Metadata is optional: retain the manually entered model and unknown context length.
+            return [];
+        }
+    }
+
+    private async Task<IReadOnlyList<AvailableModel>> DiscoverModelsCoreAsync(
+        ModelProfile profile, CancellationToken cancellationToken, CancellationToken callerToken)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Get, ResolveEndpoint(profile.Endpoint, true));
         var apiKey = ResolveApiKey(profile);
         if (apiKey.Length > 0)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        await EnsureSuccessAsync(response, profile, callerToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException(Localization.Format(
-                "API returned {0}: {1}", "API вернул {0}: {1}",
-                (int)response.StatusCode, body[..Math.Min(body.Length, 1000)]), null, response.StatusCode);
         try
         {
             using var document = JsonDocument.Parse(body);
@@ -95,13 +105,6 @@ public sealed class ModelClient
         using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(parameters.ReviewMinutes), _timeProvider);
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(callerToken, deadline.Token);
         cancellationToken = linkedCancellation.Token;
-        var lastResponse = _timeProvider.GetTimestamp();
-        var receivedResponse = false;
-        void RecordResponse()
-        {
-            lastResponse = _timeProvider.GetTimestamp();
-            receivedResponse = true;
-        }
         progress?.Invoke(ReviewStage.AgentStarted);
         if (systemPrompt.Length > 32_000 || branch.Length > 4096)
             throw new InvalidDataException("Review instructions or branch context exceed input limits.");
@@ -187,24 +190,14 @@ public sealed class ModelClient
                 log?.Invoke("API request body: " + await request.Content.ReadAsStringAsync(cancellationToken));
                 log?.Invoke($"Review request round {round + 1}/{parameters.MaxRounds}; empty recovery attempts={emptyRecoveries}.");
                 progress?.Invoke(ReviewStage.Request);
-                beforeRequest?.Invoke();
-                var responseTask = _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                 progress?.Invoke(ReviewStage.Waiting);
-                using var response = await responseTask;
-                log?.Invoke($"API response status: {(int)response.StatusCode}");
-                if (!response.IsSuccessStatusCode)
-                    throw new HttpRequestException($"Review API returned {(int)response.StatusCode}. Native tools/tool_calls and tool_choice=auto are required. " +
-                        "For vLLM enable --enable-auto-tool-choice and --tool-call-parser appropriate to the model. Check authentication and server logs. No diff-prompt fallback is available.", null, response.StatusCode);
-                using var document = await ModelResponseReader.ReadAsync(response.Content, log, cancellationToken, usage, parameters, RecordResponse);
-                RecordResponse();
+                using var document = await SendReviewRequestAsync(request, profile, cancellationToken, log, usage, beforeRequest);
                 progress?.Invoke(ReviewStage.Response);
                 var choice = document.RootElement.GetProperty("choices")[0];
                 var finish = choice.GetProperty("finish_reason").GetString();
                 var message = choice.GetProperty("message");
                 log?.Invoke($"Review round {round + 1}/{parameters.MaxRounds}; empty recovery attempts={emptyRecoveries}; " +
                     ModelResponseReader.DescribeResponse(document.RootElement));
-                if (response.Headers.TryGetValues("x-request-id", out var requestIds))
-                    log?.Invoke("API request ID: " + JsonSerializer.Serialize(requestIds));
                 if (message.TryGetProperty("tool_calls", out var toolCalls) && toolCalls.ValueKind != JsonValueKind.Null && toolCalls.GetArrayLength() > 0)
                 {
                     if (finish != "tool_calls") throw new InvalidDataException("Incomplete tool-call response; review not saved.");
@@ -343,7 +336,7 @@ public sealed class ModelClient
                         if (round + 1 >= parameters.MaxRounds)
                             throw new ReviewFormatException("Model request budget exhausted before format repair.");
                         var repaired = await RepairReportAsync(profile, originalContent, formatErrors,
-                            cancellationToken, log, usage, RecordResponse, beforeRequest);
+                            cancellationToken, log, usage, beforeRequest);
                         var repairedErrors = GetReportFormatErrors(repaired);
                         if (repairedErrors.Count > 0)
                             throw new ReviewFormatException("Invalid repaired report: " + string.Join(" ", repairedErrors));
@@ -353,6 +346,7 @@ public sealed class ModelClient
                     }
                     catch (OperationCanceledException) { throw; }
                     catch (ModelSchedulePauseException) { throw; }
+                    catch (ReviewApiException) { throw; }
                     catch (Exception error)
                     {
                         throw new ReviewFormatException($"Report format repair failed: {error.Message} Review not saved. Diagnostic: {diagnosticPath}", error);
@@ -366,19 +360,9 @@ public sealed class ModelClient
         }
         catch (OperationCanceledException exception) when (!callerToken.IsCancellationRequested && deadline.IsCancellationRequested)
         {
-            var silence = _timeProvider.GetElapsedTime(lastResponse);
-            if (!receivedResponse || silence > TimeSpan.FromMinutes(parameters.ResponseInactivityMinutes))
-            {
-                var timeout = Localization.Format(
-                    "Review time limit ({0} minutes) reached; no model response for {1:F1} minutes. Checking model availability.",
-                    "Лимит проверки ({0} мин.) исчерпан; ответов модели нет {1:F1} мин. Проверяем доступность модели.",
-                    parameters.ReviewMinutes, silence.TotalMinutes);
-                log?.Invoke("Git agent: " + timeout);
-                throw new ModelResponseTimeoutException(timeout, exception);
-            }
             var message = Localization.Format(
-                "Review time limit ({0} minutes) reached while the model was still responding. The commit is probably too complex for the model to process within this limit; review is incomplete.",
-                "Лимит проверки ({0} мин.) исчерпан, хотя модель продолжала отвечать. Вероятно, коммит слишком сложный и модель не может обработать его за отведённое время; проверка не завершена.",
+                "Review time limit ({0} minutes) exhausted; review is incomplete.",
+                "Лимит проверки ({0} мин.) исчерпан; проверка не завершена.",
                 parameters.ReviewMinutes);
             log?.Invoke("Git agent: " + message);
             throw new ReviewComplexityException(message, exception);
@@ -418,7 +402,7 @@ public sealed class ModelClient
     }
 
     private async Task<string> RepairReportAsync(ModelProfile profile, string original, List<string> errors,
-        CancellationToken token, Action<string>? log, Action<TokenUsage?>? usage, Action responseActivity, Action? beforeRequest)
+        CancellationToken token, Action<string>? log, Action<TokenUsage?>? usage, Action? beforeRequest)
     {
         if (string.IsNullOrWhiteSpace(original))
             throw new ArgumentException("Format repair requires a nonempty report.", nameof(original));
@@ -456,11 +440,7 @@ public sealed class ModelClient
         request.Content = JsonContent.Create(payload);
         var apiKey = ResolveApiKey(profile);
         if (apiKey.Length > 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-        beforeRequest?.Invoke();
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
-        response.EnsureSuccessStatusCode();
-        using var document = await ModelResponseReader.ReadAsync(response.Content, log, token, usage, profile.Parameters, responseActivity);
-        responseActivity();
+        using var document = await SendReviewRequestAsync(request, profile, token, log, usage, beforeRequest);
         var choice = document.RootElement.GetProperty("choices")[0];
         var message = choice.GetProperty("message");
         if (choice.GetProperty("finish_reason").GetString() != "stop" ||
@@ -636,20 +616,12 @@ public sealed class ModelClient
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
         progress?.Invoke(ReviewStage.Request);
-        var responseTask = _httpClient.SendAsync(request, cancellationToken);
+        var responseTask = _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         progress?.Invoke(ReviewStage.Waiting);
         using var response = await responseTask;
+        await EnsureSuccessAsync(response, profile, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         progress?.Invoke(ReviewStage.Response);
-        if (!response.IsSuccessStatusCode)
-        {
-            var detail = body.Length > 1000 ? body[..1000] : body;
-            throw new HttpRequestException(Localization.Format(
-                "API returned {0}: {1}",
-                "API вернул {0}: {1}",
-                (int)response.StatusCode, detail), null, response.StatusCode);
-        }
-
         try
         {
             using var document = JsonDocument.Parse(body);
@@ -682,12 +654,20 @@ public sealed class ModelClient
 
     private static void ValidateProfile(ModelProfile profile)
     {
-        profile.Parameters.Validate();
-        ResolveEndpoint(profile.Endpoint);
-        if (string.IsNullOrWhiteSpace(profile.Model))
-            throw new InvalidOperationException(Localization.Text(
-                "Enter a model name.",
-                "Укажите название модели."));
+        try
+        {
+            profile.Parameters.Validate();
+            ResolveEndpoint(profile.Endpoint);
+            if (string.IsNullOrWhiteSpace(profile.Model))
+                throw new InvalidOperationException(Localization.Text(
+                    "Enter a model name.",
+                    "Укажите название модели."));
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.DataAnnotations.ValidationException)
+        {
+            throw new ReviewApiException(ReviewApiErrorKind.Configuration,
+                ReviewApiException.Sanitize(error.Message, ResolveApiKey(profile)), inner: error);
+        }
     }
 
     public static Uri ResolveEndpoint(string text, bool models = false)
@@ -733,8 +713,6 @@ public sealed class ModelClient
         return profile.ApiKey;
     }
 }
-
-public sealed class ModelResponseTimeoutException(string message, Exception inner) : TimeoutException(message, inner);
 
 public sealed class ReviewComplexityException(string message, Exception inner) : TimeoutException(message, inner);
 

@@ -7,8 +7,8 @@ contains two applications sharing the same review engine:
 
 | Application | Interface | Windows x64 distribution |
 | --- | --- | --- |
-| Desktop 3.5.8 | WPF desktop app with a system tray icon | Self-contained EXE |
-| Service 3.5.8 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+| Desktop 3.6.0 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Service 3.6.0 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
 
 Both support multiple repositories, review reports and mail notifications.
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
@@ -78,9 +78,9 @@ Run from the repository root:
 
 Outputs in `artifacts/`:
 
-- `KommitEye-Desktop-3.5.8-win-x64.exe`
-- `KommitEye-Service-3.5.8-win-x64.zip`
-- `KommitEye-Service-3.5.8-win-x64.msi`
+- `KommitEye-Desktop-3.6.0-win-x64.exe`
+- `KommitEye-Service-3.6.0-win-x64.zip`
+- `KommitEye-Service-3.6.0-win-x64.msi`
 - `SHA256SUMS-<product>.txt`
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds
@@ -145,10 +145,14 @@ and its mail authentication flows, see [Service documentation](docs/server-web.m
 - Local-only repositories, linked worktrees, submodules, and private remotes
   are supported. Configure SSH/HTTPS authentication in **Project**.
 
-When the model is unavailable, the app keeps the commit pending and probes until
-recovery. Configure the probe interval and response inactivity threshold in model
-settings. At the review deadline, a silent model triggers availability checking;
-recent responses instead produce an incomplete-review report. **Stop** cancels waiting.
+Temporary API/network failures use bounded exponential retries (the model's **Max retries**),
+respecting `Retry-After`. Retries preserve the current conversation and share the original
+review deadline. Authentication, endpoint/model configuration and context-overflow errors
+are reported directly; configuration errors stop automatic review. Exhausting the deadline
+always produces an incomplete-review report, including when the model is silent.
+Optional model metadata times out after 5 seconds and falls back to manual model entry.
+**Stop** cancels the operation. HTTP errors retain status, request ID and a bounded,
+sanitized response excerpt even if reading the error body times out (3 seconds).
 
 The main window shows the project dashboard. Sidebar buttons open Project, Models,
 Mail, System prompt, Journal, and Reports in separate windows. **Apply changes** saves and

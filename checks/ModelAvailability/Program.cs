@@ -32,42 +32,7 @@ if (args.Contains("--deadlines"))
     await DeadlineChecks.RunAsync(repo, git, config);
     return;
 }
-var handler = new FixtureHandler();
-using var http = new HttpClient(handler);
-var runner = new ReviewRunner(git, new ModelClient(http), config, state, new ReportWriter());
-var settings = new AppSettings { RepositoryPath = repo, BranchRef = "refs/heads/main", PullEnabled = false, PollIntervalSeconds = 60 };
-var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-DateTimeOffset? next = null;
-runner.Progress += p => { if (p.Stage == ReviewStage.ModelUnavailable) waiting.TrySetResult(); };
-runner.NextRunChanged += value => next = value;
-Check(runner.Start(settings, profile), "start");
-await waiting.Task.WaitAsync(TimeSpan.FromSeconds(15));
-await Task.Delay(100);
-Check(next > DateTimeOffset.Now.AddSeconds(50), "configured delay");
-await runner.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
-Check(await state.GetCursorAsync(identity.CommonGitDirectory, settings.BranchRef, default) is null, "no cursor advance during outage");
-Check(new ReportWriter().List().Count == 0, "no failed report during outage");
-Check(handler.Requests == 1, "no early probe");
-Console.WriteLine("PASS: outage preserves commit; Stop cancels waiting; interval persists.");
-
-// Keep the real one-minute delay to exercise the production scheduling path.
-waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-var completed = new TaskCompletionSource<CommitReviewed>(TaskCreationOptions.RunContinuationsAsynchronously);
-runner.Reviewed += item => completed.TrySetResult(item);
-Check(runner.Start(settings, profile), "restart");
-await waiting.Task.WaitAsync(TimeSpan.FromSeconds(15));
-handler.Available = true;
-try
-{
-    var review = await completed.Task.WaitAsync(TimeSpan.FromSeconds(90));
-    Check(review.Sha == sha, "same commit resumed");
-    Check(handler.Probes == 1, "selected model probed once");
-    Check(await state.GetCursorAsync(identity.CommonGitDirectory, settings.BranchRef, default) == sha, "cursor saved after recovery");
-    var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
-    Check(!report.Contains("review failed; skipped:"), "outage never recorded as skip");
-}
-finally { await runner.StopAsync(); }
-Console.WriteLine("PASS: model recovers, same commit completes with MaxRetries=0.");
+await ApiErrorChecks.RunAsync(repo, git, config);
 
 async Task<string> Git(params string[] args)
 {
@@ -81,28 +46,3 @@ async Task<string> Git(params string[] args)
     return (await output).Trim();
 }
 static void Check(bool value, string name) { if (!value) throw new Exception(name); }
-
-sealed class FixtureHandler : HttpMessageHandler
-{
-    public volatile bool Available;
-    public int Requests;
-    public int Probes;
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
-    {
-        Interlocked.Increment(ref Requests);
-        if (!Available) return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
-        using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
-        if (body.RootElement.GetProperty("model").GetString() != "fixture") throw new Exception("Wrong model");
-        string json;
-        if (!body.RootElement.TryGetProperty("tools", out _))
-        {
-            Interlocked.Increment(ref Probes);
-            json = """{"choices":[{"message":{"content":"OK"},"finish_reason":"stop"}]}""";
-        }
-        else if (body.RootElement.GetProperty("messages").EnumerateArray().Any(m => m.GetProperty("role").GetString() == "tool"))
-            json = """{"choices":[{"message":{"content":"NO_BUGS"},"finish_reason":"stop"}]}""";
-        else
-            json = """{"choices":[{"message":{"content":null,"tool_calls":[{"id":"diff","type":"function","function":{"name":"git_diff","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}""";
-        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) };
-    }
-}

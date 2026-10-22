@@ -33,6 +33,8 @@ try {
     Assert ($session.EvaluateCondition($frameworkCondition) -eq 1) 'installed Framework satisfies the actual MSI detection condition'
     Assert ($session.DoAction('SetWIX_IS_NETFRAMEWORK_472_OR_LATER_INSTALLED') -eq 1) 'WiX sets the Framework prerequisite property'
     Assert ($session.DoAction('LaunchConditions') -eq 1) 'actual MSI launch conditions pass on this computer'
+    # Keep the user's server.json out of synthetic port/config validation.
+    Set-Property 'CONFIGDIR' (Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-preflight-config-' + [guid]::NewGuid().ToString('N')))
     Assert ($session.DoAction('InitializeSettings') -eq 1) 'native DTF custom-action DLL loads and initializes'
     Set-Property 'FIREWALLCHOICE' ''
     Set-Property 'AUTOCHOICE' ''

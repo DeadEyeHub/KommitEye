@@ -11,8 +11,13 @@ export function Modal({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    ref.current?.showModal();
-    return () => ref.current?.close();
+    const dialog = ref.current;
+    const opener = document.activeElement;
+    dialog?.showModal();
+    return () => {
+      dialog?.close();
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
   }, []);
   return (
     <dialog
@@ -82,6 +87,7 @@ const labels: Record<string, [string, string]> = {
     "Интервал проверки, секунд",
     "Polling interval, seconds",
   ],
+  autoStart: ["Запускать проект при старте сервера", "Start this project when the server starts"],
   pullEnabled: ["Получать изменения из remote", "Fetch remote changes"],
   fetchSubmodules: ["Получать сабмодули", "Fetch submodules"],
   updateSubmodulesAfterAdvance: [

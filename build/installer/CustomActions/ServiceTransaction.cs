@@ -28,7 +28,7 @@ public static partial class Actions
             var values = new CustomActionData {
                 { "stage", stage }, { "exe", Path.Combine(session["INSTALLFOLDER"], "KommitEye.Server.exe") },
                 { "config", Path.Combine(session["CONFIGDIR"], "server.json") },
-                { "account", session["SERVICEACCOUNT"] }, { "password", session["SERVICEPASSWORD"] },
+                { "account", session["SERVICEACCOUNT"] },
                 { "automatic", session["AUTOSTART"] == "1" ? "automatic" : "manual" },
                 { "start", session["STARTNOW"] }, { "remove", session["REMOVE"] == "ALL" ? "1" : "0" }
             };
@@ -65,7 +65,7 @@ public static partial class Actions
     {
         RunServiceTool(session, values, "--install-service --update-service --service-executable " + Quote(values["exe"]) +
             " --config " + Quote(values["config"]) + " --service-account " + Quote(values["account"]) +
-            " --service-start " + values["automatic"] + (values["password"] == "" ? "" : " --service-password-stdin"));
+            " --service-start " + values["automatic"]);
         if (values["start"] == "1") RunServiceTool(session, values, "--start-service");
     });
 
@@ -82,8 +82,7 @@ public static partial class Actions
     public static ActionResult RollbackServiceTransaction(Session session) => ServiceAction(session, values =>
     {
         var path = Path.Combine(values["stage"], "snapshot.json");
-        if (File.Exists(path)) RunServiceTool(session, values, "--restore-service " + Quote(path) +
-            (values["password"] == "" ? "" : " --service-password-stdin"));
+        if (File.Exists(path)) RunServiceTool(session, values, "--restore-service " + Quote(path));
         CleanupTools(values);
     });
 
@@ -116,7 +115,6 @@ public static partial class Actions
         {
             var output = child.StandardOutput.ReadToEndAsync();
             var error = child.StandardError.ReadToEndAsync();
-            if (arguments.Contains("--service-password-stdin")) child.StandardInput.WriteLine(values["password"]);
             child.StandardInput.Close();
             if (!child.WaitForExit(90000)) { child.Kill(); throw new IOException("Service operation timed out."); }
             session.Log(output.GetAwaiter().GetResult());

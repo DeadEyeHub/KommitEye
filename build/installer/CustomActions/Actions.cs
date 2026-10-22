@@ -32,8 +32,6 @@ public static partial class Actions
                 Default("PORT", "5080"); Default("ACCESSMODE", "local"); Default("FIREWALL", "0");
                 var installedAccount = InstalledServiceAccount();
                 session["SERVICEACCOUNT"] = SetupValidation.InstallationAccount(installedAccount);
-                session["LEGACYSERVICE"] = SetupValidation.IsLegacyService(installedAccount) ? "1" : "";
-                if (session["LEGACYSERVICE"] != "1") session["SERVICEPASSWORD"] = "";
                 if (session["AUTOSTART"] == "")
                 {
                     using (var service = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\KommitEye"))
@@ -179,15 +177,9 @@ public static partial class Actions
         foreach (var property in new[] { "AUTOSTART", "STARTNOW", "FIREWALL" })
             if (session[property] != "0" && session[property] != "1" && session[property] != "") throw new ArgumentException("Invalid installation option: " + property);
         var fullAccount = SetupValidation.InstallationAccount(session["SERVICEACCOUNT"]);
-        var virtualAccount = SetupValidation.IsPasswordlessAccount(fullAccount);
-        if (virtualAccount) session["SERVICEPASSWORD"] = "";
-        if (!virtualAccount && session["SERVICEPASSWORD"].Length == 0) throw new ArgumentException("Enter the Windows account password. A Windows Hello PIN cannot be used for a service.");
         using (var saved = Saved())
         {
-            var previousData = saved?.GetValue("DATADIR") as string;
             var previousAccount = InstalledServiceAccount();
-            if (!File.Exists(configPath) && previousData != null && !string.Equals(previousData.TrimEnd('\\'), data, StringComparison.OrdinalIgnoreCase))
-                throw new ArgumentException("Keep the existing data folder during upgrade or repair. Data migration must be performed separately.");
             if (previousAccount != null && !string.Equals(previousAccount, fullAccount, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Keep the existing service account during upgrade or repair so encrypted credentials remain readable.");
             if (saved == null && !File.Exists(configPath) && Directory.Exists(data) && Directory.EnumerateFileSystemEntries(data).Any())
@@ -224,14 +216,14 @@ public static partial class Actions
             var expectedUrl = urls;
             if (!string.Equals(config.DataDirectory.TrimEnd('\\'), data, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(config.GitExecutable, gitExe, StringComparison.OrdinalIgnoreCase) || config.Urls != expectedUrl ||
-                config.CredentialProtection != (virtualAccount ? "LocalMachine" : "CurrentUser"))
+                config.CredentialProtection != "LocalMachine")
                 throw new ArgumentException("Existing server.json is preserved. Change DataDirectory, Urls and GitExecutable in that file before running maintenance.");
         }
         session["CONFIGDIR"] = configDirectory + "\\";
         session["CONFIGFILE"] = configPath;
         session["WriteServiceConfig"] = new CustomActionData { { "exe", Path.Combine(install, "KommitEye.Server.exe") }, { "path", configPath }, { "data", data },
             { "urls", urls },
-            { "git", gitExe }, { "protection", virtualAccount ? "LocalMachine" : "CurrentUser" } }.ToString();
+            { "git", gitExe }, { "protection", "LocalMachine" } }.ToString();
         session["DATADIR"] = data + "\\";
         session["DATAPATH"] = data;
         session["SERVICEACCOUNT"] = fullAccount;

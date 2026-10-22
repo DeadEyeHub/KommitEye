@@ -13,7 +13,7 @@ public static class HtmlReport
         value = Regex.Replace(value, @"\\([\\`*_{}\[\]()#+\-.!>])", "$1");
         return Regex.Replace(WebUtility.HtmlEncode(value), "`([^`]+)`", "<code>$1</code>");
     }
-    public static string Render(string title, string markdown)
+    public static string Render(string title, string markdown, bool fragment = false)
     {
         var body = new StringBuilder();
         var code = false; var list = false;
@@ -43,6 +43,7 @@ public static class HtmlReport
         }
         if (code) body.AppendLine("</code></pre>");
         if (list) body.AppendLine("</ul>");
+        if (fragment) return body.ToString();
         return "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
             "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\">" +
             "<title>" + WebUtility.HtmlEncode(title) + "</title><style>" +

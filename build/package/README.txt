@@ -63,3 +63,6 @@ Executable service commands (elevated terminal):
   KommitEye.Server.exe --uninstall-service
 Registration defaults to automatic startup and does not start HTTP.
 Use --service-start manual for manual startup. Existing accounts are preserved.
+
+Manual access to existing reports (Russian): docs/service-permissions/README.md.
+The ZIP includes the docs directory so the guide's related documentation is available offline.

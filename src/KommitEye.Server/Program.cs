@@ -58,7 +58,7 @@ builder.Services.AddSingleton<OAuthOperations>();
 builder.Services.AddSingleton(sp => sp.GetRequiredService<OAuthOperations>().CreateMail());
 builder.Services.AddSingleton<ProjectCoordinator>();
 builder.Services.AddSingleton<SettingsApi>();
-var app = builder.Build();
+await using var app = builder.Build();
 app.Use(async (context, next) =>
 {
     context.Response.Headers.XContentTypeOptions = "nosniff";
@@ -141,6 +141,7 @@ api.MapGet("/report-entries/{id:long}", (long id, string? format, bool? download
     var markdown = reports.ReadReview(id);
     if (markdown is null) return Results.NotFound();
     var name = $"review-{id}";
+    if (format == "fragment") return Results.Text(HtmlReport.Render(name, markdown, fragment: true), "text/html; charset=utf-8");
     if (format == "html") return Results.File(System.Text.Encoding.UTF8.GetBytes(HtmlReport.Render(name, markdown)),
         "text/html; charset=utf-8", download == true ? name + ".html" : null);
     return Results.File(System.Text.Encoding.UTF8.GetBytes(markdown), "text/plain; charset=utf-8",
@@ -151,6 +152,7 @@ api.MapGet("/reports/{name}", (string name, string? format, bool? download, Repo
     if (name != Path.GetFileName(name) || !name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) return Results.BadRequest();
     var markdown = reports.Read(name);
     if (markdown is null) return Results.NotFound();
+    if (format == "fragment") return Results.Text(HtmlReport.Render(name, markdown, fragment: true), "text/html; charset=utf-8");
     if (format == "html") return Results.File(System.Text.Encoding.UTF8.GetBytes(HtmlReport.Render(name, markdown)), "text/html; charset=utf-8", download == true ? Path.ChangeExtension(name, ".html") : null);
     return Results.File(System.Text.Encoding.UTF8.GetBytes(markdown), "text/plain; charset=utf-8", download == true ? name : null);
 });
@@ -176,7 +178,9 @@ async Task Broadcast(ServerEvent value) { try { await hub.Clients.All.SendAsync(
 app.MapHub<EventsHub>("/hubs/events").RequireAuthorization();
 app.UseDefaultFiles(); app.UseStaticFiles();
 app.MapFallbackToFile("index.html");
-await app.RunAsync();
+await app.StartAsync();
+await coordinator.StartConfiguredProjectsAsync(app.Lifetime.ApplicationStopping);
+await app.WaitForShutdownAsync();
 }
 
 public sealed class EventsHub : Hub;

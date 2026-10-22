@@ -22,9 +22,6 @@ try {
     Assert ($properties['ProductName'] -eq 'KommitEye Service') 'MSI product identity'
     Assert ($properties['MSIRESTARTMANAGERCONTROL'] -eq 'DisableShutdown') 'Restart Manager detects locked files without automatically shutting down applications'
     Assert ($properties['MsiLogging'] -eq 'voicewarmup') 'installation and removal generate diagnostic logs'
-    Assert ($properties['MsiHiddenProperties'].Split(';') -contains 'SERVICEPASSWORD') 'service password is hidden in MSI logging'
-    Assert ($properties['SecureCustomProperties'].Split(';') -contains 'SERVICEPASSWORD') 'service password crosses elevation securely'
-    Assert (!$properties.ContainsKey('SERVICEPASSWORD')) 'no account password is embedded in the MSI'
     $tables = @(Read-Rows 'SELECT `Name` FROM `_Tables`') | ForEach-Object { $_[0] }
     Assert ($tables -notcontains 'ServiceInstall' -and $tables -notcontains 'ServiceControl') 'service registration and lifecycle delegated to executable'
     foreach ($table in @('MsiLockPermissionsEx','LockPermissions','Wix4SecureObject','Wix4User')) {
@@ -36,14 +33,13 @@ try {
     Assert ($files -contains 'index.html' -and @($files | Where-Object { $_ -like '*.js' }).Count -gt 0) 'compiled React UI included'
     Assert (@($files | Where-Object { $_ -like 'client_secret*' -or $_ -in @('admin.json','server.db','models.conf','settings.conf') }).Count -eq 0) 'no user data or OAuth secrets included'
     $controls = @(Read-Rows 'SELECT `Dialog_`, `Control`, `Type`, `Property`, `Attributes` FROM `Control`' 5)
-    Assert (@($controls | Where-Object { $_[0] -eq 'ServiceAccountDlg' -and $_[3] -eq 'SERVICEPASSWORD' -and ([int]$_[4] -band 2097152) }).Count -eq 1) 'password field is masked'
-    foreach ($dialog in @('ServerOptionsDlg','NetworkOptionsDlg','ServiceOptionsDlg','ServiceAccountDlg','ServerReadyDlg')) {
+    Assert (@($controls | Where-Object { $_[0] -eq 'ServiceAccountDlg' -or $_[3] -eq 'SERVICEPASSWORD' }).Count -eq 0) 'no legacy account or password dialog'
+    foreach ($dialog in @('ServerOptionsDlg','NetworkOptionsDlg','ServiceOptionsDlg','ServerReadyDlg')) {
         Assert (@($controls | Where-Object { $_[0] -eq $dialog }).Count -gt 0) "wizard includes $dialog"
     }
-    Assert (@($controls | Where-Object { $_[0] -eq 'ServiceOptionsDlg' -and $_[3] -eq 'AUTOCHOICE' }).Count -eq 1) 'automatic Windows startup is available outside the legacy account screen'
+    Assert (@($controls | Where-Object { $_[0] -eq 'ServiceOptionsDlg' -and $_[3] -eq 'AUTOCHOICE' }).Count -eq 1) 'automatic Windows startup is available'
     $routes = @(Read-Rows 'SELECT `Dialog_`, `Control_`, `Event`, `Argument`, `Condition` FROM `ControlEvent`' 5)
-    Assert (@($routes | Where-Object { $_[2] -eq 'NewDialog' -and $_[3] -eq 'ServiceAccountDlg' -and $_[4] -ne 'LEGACYSERVICE = "1"' }).Count -eq 0) 'account dialog is reachable only for existing legacy services, including Back'
-    Assert (@($routes | Where-Object { $_[0] -eq 'ServiceOptionsDlg' -and $_[2] -eq 'NewDialog' -and $_[3] -eq 'ServerReadyDlg' -and $_[4] -eq 'LEGACYSERVICE <> "1" AND SETUPVALID = "1"' }).Count -eq 1) 'new installation validates settings and skips password dialog'
+    Assert (@($routes | Where-Object { $_[0] -eq 'ServiceOptionsDlg' -and $_[2] -eq 'NewDialog' -and $_[3] -eq 'ServerReadyDlg' -and $_[4] -eq 'SETUPVALID = "1"' }).Count -eq 1) 'new installation validates settings and skips password dialog'
     Assert (@($controls | Where-Object { $_[0] -eq 'NetworkOptionsDlg' -and $_[3] -eq 'BINDIP' -and $_[2] -eq 'ComboBox' }).Count -eq 1) 'separate network page contains an IP selector'
     $networkText = @(Read-Rows 'SELECT `Text` FROM `Control` WHERE `Dialog_` = ''ServerReadyDlg'' AND `Control` = ''Network''')
     Assert ($networkText[0][0] -eq '[LANADDRESS]') 'ready page displays the resolved IP URL instead of computer name'

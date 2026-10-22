@@ -1,11 +1,11 @@
 # Доступ службы KommitEye к существующим отчётам
 
 Эта инструкция предназначена для службы `KommitEye`, работающей под
-`NT SERVICE\KommitEye`, и старого каталога данных
-`C:\ProgramData\KommitEye.Server`. Она помогает устранить ошибку вида:
+`NT SERVICE\KommitEye`, и стандартного каталога данных
+`C:\ProgramData\KommitEye\Server\data`. Она помогает устранить ошибку вида:
 
 ```text
-Access to the path 'C:\ProgramData\KommitEye.Server\server.lock' is denied.
+Access to the path 'C:\ProgramData\KommitEye\Server\data\server.lock' is denied.
 ```
 
 Установщик и сервер не исправляют права автоматически. Следующие команды
@@ -36,7 +36,7 @@ Get-Service KommitEye
 ## 2. Выдать доступ к каталогу и существующим файлам
 
 ```powershell
-icacls "C:\ProgramData\KommitEye.Server" /grant "NT SERVICE\KommitEye:(OI)(CI)M" /T
+icacls "C:\ProgramData\KommitEye\Server\data" /grant "NT SERVICE\KommitEye:(OI)(CI)M" /T
 if ($LASTEXITCODE -ne 0) {
     throw "Не удалось выдать все права. Проверь сообщения icacls перед запуском службы."
 }
@@ -65,19 +65,18 @@ if ($LASTEXITCODE -ne 0) {
 C:\ProgramData\KommitEye\Server\server.json
 ```
 
-Убедись, что поле `DataDirectory` указывает на существующий старый каталог:
+Убедись, что поле `DataDirectory` указывает на каталог с твоими данными:
 
 ```json
-"DataDirectory": "C:\\ProgramData\\KommitEye.Server"
+"DataDirectory": "C:\\ProgramData\\KommitEye\\Server\\data"
 ```
 
 Это одна строка существующего JSON, а не замена всего файла. Сохрани остальные
 настройки, включая `CredentialProtection`. Выдача файловых прав не переносит
 credentials между учётными записями и не меняет способ их шифрования.
 
-Не путай старый каталог `C:\ProgramData\KommitEye.Server` с новым значением
-по умолчанию `C:\ProgramData\KommitEye\Server\data`: чтобы увидеть старые отчёты,
-сервер должен открыть именно каталог, где они уже находятся.
+Если используется другой каталог, укажи его также в команде выдачи прав выше.
+Сервер должен открыть именно каталог, где находятся твои отчёты.
 
 ## 4. Запустить и проверить
 

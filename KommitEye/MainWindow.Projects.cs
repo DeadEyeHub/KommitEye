@@ -89,7 +89,8 @@ public partial class MainWindow
             throw new InvalidOperationException(Localization.Text("The interval must be between 5 and 86400 seconds.", "Интервал должен быть от 5 до 86400 секунд."));
         _configuration.SaveSettings(new AppSettings {
             RepositoryPath = RepositoryPathTextBox.Text.Trim(), BranchRef = _selectedBranch,
-            PollIntervalSeconds = interval, PullEnabled = PullEnabledCheckBox.IsChecked == true,
+            PollIntervalSeconds = interval, AutoStart = AutoStartCheckBox.IsChecked == true,
+            PullEnabled = PullEnabledCheckBox.IsChecked == true,
             FetchSubmodules = FetchSubmodulesCheckBox.IsChecked == true,
             UpdateSubmodulesAfterAdvance = UpdateSubmodulesCheckBox.IsChecked == true,
             QuietHoursEnabled = QuietHoursCheckBox.IsChecked == true,

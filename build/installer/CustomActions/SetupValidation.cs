@@ -8,18 +8,12 @@ namespace KommitEye.Setup;
 public static class SetupValidation
 {
     public const string VirtualServiceAccount = @"NT SERVICE\KommitEye";
-    public static bool IsPasswordlessAccount(string account) =>
-        string.Equals(account, VirtualServiceAccount, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(account, "LocalSystem", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(account, @"NT AUTHORITY\SYSTEM", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(account, @"NT AUTHORITY\LocalService", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(account, @"NT AUTHORITY\NetworkService", StringComparison.OrdinalIgnoreCase);
-    public static string InstallationAccount(string installedAccount) => string.IsNullOrEmpty(installedAccount)
-        ? VirtualServiceAccount : string.Equals(installedAccount, "LocalSystem", StringComparison.OrdinalIgnoreCase) ||
-          string.Equals(installedAccount, @"NT AUTHORITY\SYSTEM", StringComparison.OrdinalIgnoreCase)
-          ? "LocalSystem" : string.Join("\\", Account(installedAccount));
-    public static bool IsLegacyService(string installedAccount) => !string.IsNullOrEmpty(installedAccount) &&
-        !IsPasswordlessAccount(InstallationAccount(installedAccount));
+    public static string InstallationAccount(string installedAccount)
+    {
+        if (!string.IsNullOrEmpty(installedAccount) && !string.Equals(installedAccount, VirtualServiceAccount, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("MSI supports only NT SERVICE\\KommitEye. Remove the differently configured service explicitly before installation; its data must be retained.");
+        return VirtualServiceAccount;
+    }
 
     public static string ListenUrls(string mode, string ip, int port, string[] localAddresses)
     {
@@ -46,7 +40,7 @@ public static class SetupValidation
     {
         if (string.IsNullOrWhiteSpace(value) || value.Length < 3 || !char.IsLetter(value[0]) || value[1] != ':' || value[2] != '\\' ||
             value.IndexOfAny(new[] { '"', '\r', '\n', ';' }) >= 0 || value.Substring(2).Contains(':'))
-            throw new ArgumentException("Use an absolute local folder path, for example C:\\ProgramData\\KommitEye.Server.");
+            throw new ArgumentException("Use an absolute local folder path, for example C:\\ProgramData\\KommitEye\\Server\\data.");
         var full = Path.GetFullPath(value).TrimEnd('\\');
         if (full.Length <= 2) throw new ArgumentException("Choose a subfolder, not the root of a drive.");
         if (new DriveInfo(Path.GetPathRoot(full)!).DriveType != DriveType.Fixed)
@@ -59,17 +53,4 @@ public static class SetupValidation
         left.StartsWith(right.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase) ||
         right.StartsWith(left.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase);
 
-    public static string[] Account(string value)
-    {
-        if (string.Equals(value, VirtualServiceAccount, StringComparison.OrdinalIgnoreCase)) return new[] { "NT SERVICE", "KommitEye" };
-        if (string.Equals(value, "LocalSystem", StringComparison.OrdinalIgnoreCase)) return new[] { "NT AUTHORITY", "SYSTEM" };
-        if (IsPasswordlessAccount(value)) return value.Split('\\');
-        var parts = (value ?? "").Trim().Split('\\');
-        if (parts.Length != 2 || parts.Any(string.IsNullOrWhiteSpace) || parts.Any(p => p.IndexOfAny(new[] { '"', ';', '\r', '\n' }) >= 0))
-            throw new ArgumentException("Enter an existing Windows account as COMPUTER\\user or DOMAIN\\user.");
-        if (parts[0] == ".") parts[0] = Environment.MachineName;
-        if (parts[0].Equals("NT AUTHORITY", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("NT SERVICE", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Choose a regular Windows service account with a password.");
-        return parts;
-    }
 }

@@ -220,6 +220,7 @@ public partial class MainWindow : Window
 
         InitializeSettingsWindows();
         _configuration.WritesEnabled = false;
+        Loaded += async (_, _) => await StartConfiguredProjectsAsync();
         Closing += MainWindow_Closing;
         StateChanged += (_, _) =>
         {
@@ -245,6 +246,7 @@ public partial class MainWindow : Window
         _selectedBranch = settings.BranchRef;
         RepositoryPathTextBox.Text = settings.RepositoryPath;
         IntervalTextBox.Text = settings.PollIntervalSeconds.ToString(CultureInfo.InvariantCulture);
+        AutoStartCheckBox.IsChecked = settings.AutoStart;
         PullEnabledCheckBox.IsChecked = settings.PullEnabled;
         FetchSubmodulesCheckBox.IsChecked = settings.FetchSubmodules;
         UpdateSubmodulesCheckBox.IsChecked = settings.UpdateSubmodulesAfterAdvance;
@@ -307,6 +309,7 @@ public partial class MainWindow : Window
         QuietHoursCheckBox.ToolTip = Localization.Text("Daily interval, HH:mm; overnight intervals are supported. In-flight requests may finish. Interrupted reviews restart after the pause, without marking the commit failed. Applies to the next Start.", "Ежедневный интервал ЧЧ:мм, в том числе через полночь. Отправленный запрос может завершиться. Прерванное ревью начнётся заново после паузы, без отметки об ошибке. Применяется при следующем запуске проверки.");
         FetchSubmodulesCheckBox.Content = Localization.Text("Fetch initialized submodules on demand", "Получать изменения инициализированных сабмодулей при необходимости");
         FetchSubmodulesCheckBox.ToolTip = Localization.Text("Requires fetch above. Uses configured submodule remotes; may connect to other servers using the selected credentials. Enable only for trusted repositories. Does not clone uninitialized modules.", "Требует включённого fetch. Использует настроенные remote сабмодулей: возможны подключения к другим серверам с выбранными учётными данными. Только для доверенных репозиториев. Не клонирует неинициализированные сабмодули.");
+        AutoStartCheckBox.Content = Localization.Text("Start this project when the application starts", "Запускать проект при старте приложения");
         PullEnabledCheckBox.Content = Localization.Text(
             "Run git fetch before each check",
             "Выполнять git fetch перед каждой проверкой");
@@ -1077,6 +1080,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
+            _mail.EnqueueOperational(_activeRuntime.Label, "Project start failed", exception.Message);
             SetRunningControls(_runner.IsRunning);
             ShowError(exception.Message);
         }
@@ -1107,6 +1111,7 @@ public partial class MainWindow : Window
             RepositoryPath = path,
             BranchRef = _selectedBranch,
             PollIntervalSeconds = seconds,
+            AutoStart = AutoStartCheckBox.IsChecked == true,
             PullEnabled = PullEnabledCheckBox.IsChecked == true,
             FetchSubmodules = FetchSubmodulesCheckBox.IsChecked == true,
             UpdateSubmodulesAfterAdvance = UpdateSubmodulesCheckBox.IsChecked == true,

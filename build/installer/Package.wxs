@@ -29,8 +29,6 @@
     <Property Id="AUTOCHOICE" Value="1" />
     <Property Id="FIREWALLCHOICE" Value="1" />
     <Property Id="SERVICEACCOUNT" Secure="yes" />
-    <Property Id="LEGACYSERVICE" Secure="yes" />
-    <Property Id="SERVICEPASSWORD" Secure="yes" Hidden="yes" />
     <Property Id="GITEXE" Secure="yes" />
     <Property Id="LISTENHOST" Secure="yes" />
     <Property Id="BINDIP" Secure="yes" />

@@ -28,7 +28,7 @@ jobs:
       - name: Run fixture checks
         shell: pwsh
         run: |
-          foreach ($check in @('Gmail','Outlook','CommitPaging','ReportRepair','ApplyChanges','Server')) {
+          foreach ($check in @('Gmail','Outlook','CommitPaging','ProjectLifecycle','ReportRepair','ApplyChanges','Server')) {
             dotnet run --project "checks/$check/$check.csproj" -c Release
             if ($LASTEXITCODE -ne 0) { throw "$check failed" }
           }

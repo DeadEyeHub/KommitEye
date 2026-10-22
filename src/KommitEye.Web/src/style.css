@@ -586,3 +586,12 @@ dialog.modal:has(.project-log) {
 .countdown {
   font-variant-numeric: tabular-nums;
 }
+
+/* Report preview uses the same dialog shell as mail settings. */
+.report-preview { min-width: 0; overflow-wrap: anywhere; }
+.report-preview-header { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
+.report-preview-header h2 { margin-top: 0; min-width: 0; }
+.report-preview-header button { flex-shrink: 0; }
+.report-preview-body { line-height: 1.6; }
+.report-preview-body pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: #f3f5f2; }
+.report-preview-body h2 { margin-top: 28px; }

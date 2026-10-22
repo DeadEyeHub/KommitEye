@@ -62,6 +62,7 @@ export function Projects({ tick }: { tick: number }) {
   }, [selected, details, tick]);
   const fields = [
     "pollIntervalSeconds",
+    "autoStart",
     "pullEnabled",
     "fetchSubmodules",
     "updateSubmodulesAfterAdvance",
@@ -77,6 +78,7 @@ export function Projects({ tick }: { tick: number }) {
       repositoryPath: "",
       branchRef: "",
       pollIntervalSeconds: 60,
+      autoStart: false,
       pullEnabled: true,
       fetchSubmodules: false,
       updateSubmodulesAfterAdvance: true,

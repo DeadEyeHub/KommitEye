@@ -82,8 +82,50 @@ public partial class MainWindow
         };
         runner.Progress += progress => AppendProgress(runtime, progress);
         runner.Reviewed += reviewed => Dispatch(() => NotifyReviewed(reviewed));
+        runner.OperationalEvent += notice => _mail.EnqueueOperational(runtime.DisplayName + " | " + runtime.Label, notice.Kind, notice.Detail);
         runner.Reviewed += _mail.Enqueue;
         return runtime;
+    }
+
+    private bool _startupAttempted;
+    private async Task StartConfiguredProjectsAsync()
+    {
+        if (_startupAttempted) return;
+        _startupAttempted = true;
+        IsEnabled = false;
+        try
+        {
+            var projects = _configuration.LoadProjects().Projects;
+            var models = _configuration.LoadModels();
+            for (var i = 0; i < projects.Count; i++)
+            {
+                var settings = projects[i];
+                if (!settings.AutoStart || _exitRequested) continue;
+                var runtime = _projectRuntimes[i];
+                try
+                {
+                    var profile = models.Profiles.FirstOrDefault(p => p.Name == models.ActiveProfile)
+                        ?? throw new InvalidOperationException("Select an active model profile first.");
+                    var identity = await runtime.Git.GetRepositoryIdentityAsync(settings.RepositoryPath, CancellationToken.None);
+                    var branch = await runtime.Git.ResolveBranchAsync(settings.RepositoryPath, settings.BranchRef, CancellationToken.None);
+                    if (_exitRequested) break;
+                    if (_projectRuntimes.Any(p => p != runtime && p.Runner.IsRunning &&
+                        (p.WorkTree.Equals(identity.WorkTreeRoot, StringComparison.OrdinalIgnoreCase) ||
+                         p.Identity.Equals(identity.CommonGitDirectory, StringComparison.OrdinalIgnoreCase) && p.Branch == branch)))
+                        throw new InvalidOperationException("This repository/worktree is already running in another project.");
+                    runtime.WorkTree = identity.WorkTreeRoot; runtime.Identity = identity.CommonGitDirectory; runtime.Branch = branch;
+                    if (!runtime.Runner.Start(settings, profile)) throw new InvalidOperationException("Project is already running.");
+                }
+                catch (Exception e)
+                {
+                    runtime.Journal.Append("Autostart failed: " + GitService.SanitizeDiagnostic(e.Message));
+                    _mail.EnqueueOperational(runtime.Label, "Project start failed", e.Message);
+                }
+            }
+            SetRunningControls(_runner.IsRunning);
+            ShowRuntimeDashboard();
+        }
+        finally { if (!_exitRequested) IsEnabled = true; }
     }
 
     private async Task ReserveProjectScopeAsync(AppSettings settings)

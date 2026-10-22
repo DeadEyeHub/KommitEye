@@ -38,6 +38,7 @@ foreach ($item in $products) {
         dotnet publish (Join-Path $repo 'src/KommitEye.Server/KommitEye.Server.csproj') -c Release -r win-x64 --self-contained true -p:DebugType=None -o $destination
         if ($LASTEXITCODE -ne 0) { throw 'Server publish failed.' }
         Copy-Item -Path (Join-Path $repo 'build/package/*') -Destination $destination
+        Copy-Item -LiteralPath (Join-Path $repo 'docs') -Destination (Join-Path $destination 'docs') -Recurse
         if ($item -eq 'Service') {
             New-Item -ItemType Directory -Force (Join-Path $destination 'wwwroot') | Out-Null
             Copy-Item -Path (Join-Path $repo 'src/KommitEye.Web/dist/*') -Destination (Join-Path $destination 'wwwroot') -Recurse

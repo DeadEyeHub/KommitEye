@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { t, Heading } from "../ui";
+import { t, Heading, Modal } from "../ui";
 
 type Entry = {
   id: number; reportName: string; repository: string; branch: string; sha: string;
@@ -16,6 +16,7 @@ const outcomeLabel = (value: string) => ({
 }[value] || t("Не определено", "Unknown"));
 
 export function Reports({ tick }: { tick: number }) {
+  const [preview, setPreview] = useState<{ url: string; title: string } | null>(null);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("saved");
@@ -53,6 +54,7 @@ export function Reports({ tick }: { tick: number }) {
   const changeSort = (value: string) => { setSort(value); setOffset(0); };
   const branchUrl = "/api/v1/reports/" + encodeURIComponent(report);
   return <>
+    {preview && <ReportPreview key={preview.url} {...preview} close={() => setPreview(null)} />}
     <Heading title={t("Отчёты", "Reports")} description={t("Одна запись на коммит. Найдите проверку по автору, SHA или тексту замечания.", "One entry per commit. Find a review by author, SHA or finding text.")} />
     <div className="report-controls">
       <label className="report-search">{t("Поиск по отчётам", "Search reports")}
@@ -92,7 +94,7 @@ export function Reports({ tick }: { tick: number }) {
     </div>
     {report && <div className="report-downloads">
       <span>{t("Полный отчёт по ветке:", "Full branch report:")}</span>
-      <a href={branchUrl + "?format=html"} target="_blank" rel="noopener noreferrer">{t("Открыть", "Open")}</a>
+      <a href={branchUrl + "?format=html"} onClick={e => { e.preventDefault(); setPreview({ url: branchUrl, title: report }); }}>{t("Открыть", "Open")}</a>
       <a href={branchUrl + "?download=true"}>Markdown</a>
       <a href={branchUrl + "?format=html&download=true"}>HTML</a>
     </div>}
@@ -109,13 +111,13 @@ export function Reports({ tick }: { tick: number }) {
           </div>
           <div className="review-content">
           <div className="review-entry-heading">
-            <h2><a href={url + "?format=html"} target="_blank" rel="noopener noreferrer"><code>{entry.shortSha}</code> {entry.subject || t("Без темы", "No subject")}</a></h2>
+            <h2><a href={url + "?format=html"} onClick={e => { e.preventDefault(); setPreview({ url, title: entry.shortSha + " " + entry.subject }); }}><code>{entry.shortSha}</code> {entry.subject || t("Без темы", "No subject")}</a></h2>
             <time dateTime={entry.savedAt} title={entry.legacy ? t("Дата изменения исходного файла", "Original file modified date") : t("Дата сохранения проверки", "Review saved date")}>{new Date(entry.savedAt).toLocaleString()}</time>
           </div>
           <p className="review-location" title={entry.repository}>{entry.repository}</p>
           <p className="review-meta">{entry.branch || t("Ветка неизвестна", "Unknown branch")} · {entry.author || t("Автор неизвестен", "Unknown author")}{entry.commitDate && <> · {t("Коммит: ", "Commit: ")}{new Date(entry.commitDate).toLocaleString()}</>}{entry.legacy && <> · {t("Импортирован", "Imported")}</>}</p>
           <div className="report-downloads">
-            <a href={url + "?format=html"} target="_blank" rel="noopener noreferrer">{t("Открыть проверку", "Open review")}</a>
+            <a href={url + "?format=html"} onClick={e => { e.preventDefault(); setPreview({ url, title: entry.shortSha + " " + entry.subject }); }}>{t("Открыть проверку", "Open review")}</a>
             <a href={url + "?download=true"}>{t("Скачать Markdown", "Download Markdown")}</a>
             <a href={url + "?format=html&download=true"}>{t("Скачать HTML", "Download HTML")}</a>
             <button onClick={() => { setReport(entry.reportName); setOffset(0); }}>{t("Все коммиты ветки", "All branch commits")}</button>
@@ -130,4 +132,36 @@ export function Reports({ tick }: { tick: number }) {
       <button disabled={loading || offset + pageSize >= page.total} onClick={() => setOffset(offset + pageSize)}>{t("Далее", "Next")}</button>
     </nav>}
   </>;
+}
+
+function ReportPreview({ url, title, close }: { url: string; title: string; close: () => void }) {
+  const [html, setHtml] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let current = true;
+    setLoading(true); setError("");
+    api<string>(url.replace("/api/v1", "") + "?format=fragment")
+      .then(value => { if (current) setHtml(value); })
+      .catch(e => { if (current) setError(e.message); })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
+  }, [url, attempt]);
+  return <Modal titleId="report-preview-title" onClose={close}>
+    <div className="report-preview">
+      <div className="report-preview-header">
+        <h2 id="report-preview-title">{title || t("Отчёт", "Report")}</h2>
+        <button autoFocus onClick={close}>{t("Закрыть", "Close")}</button>
+      </div>
+      {loading && <p role="status">{t("Загрузка отчёта…", "Loading report…")}</p>}
+      {error && <p className="error" role="alert">{error} <button onClick={() => setAttempt(v => v + 1)}>{t("Повторить", "Retry")}</button></p>}
+      {/* Only the server's escaping HtmlReport renderer produces this fragment. */}
+      {!loading && !error && <div className="report-preview-body" dangerouslySetInnerHTML={{ __html: html }} />}
+      <div className="report-downloads">
+        <a href={url + "?download=true"}>{t("Скачать Markdown", "Download Markdown")}</a>
+        <a href={url + "?format=html&download=true"}>{t("Скачать HTML", "Download HTML")}</a>
+      </div>
+    </div>
+  </Modal>;
 }

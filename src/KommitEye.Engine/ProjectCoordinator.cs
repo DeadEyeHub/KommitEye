@@ -55,10 +55,31 @@ public sealed class ProjectCoordinator : IAsyncDisposable
         runner.NextRunChanged += next => Update(s => s with { NextRun = next });
         runner.Progress += progress => Update(s => s with { Stage = progress.Stage.ToString(), Commit = progress.Commit });
         runner.UsageReceived += item => _usage.Record(item.Repository, item.Sha, item.Usage, DateTimeOffset.UtcNow);
+        runner.OperationalEvent += notice => _mail.EnqueueOperational(project.DisplayName + " | " + project.RepositoryPath + " | " + project.BranchRef, notice.Kind, notice.Detail);
         runner.Reviewed += _mail.Enqueue;
         runner.Reviewed += result => Changed?.Invoke(new(project.ProjectId, "report", result.Sha, DateTimeOffset.UtcNow));
         return runtime;
     }
+    public async Task StartConfiguredProjectsAsync(CancellationToken token = default)
+    {
+        foreach (var project in _configuration.LoadProjects().Projects.Where(p => p.AutoStart))
+        {
+            if (token.IsCancellationRequested) break;
+            try { await StartAsync(project.ProjectId, null, Guid.NewGuid().ToString(), token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { break; }
+            catch (Exception e)
+            {
+                var error = GitService.SanitizeDiagnostic(e.Message);
+                lock (_stateGate)
+                    if (_runtimes.TryGetValue(project.ProjectId, out var runtime))
+                    {
+                        runtime.Journal.Append("Autostart failed: " + error);
+                        if (!runtime.Status.Running) runtime.Status = runtime.Status with { Status = "failed" };
+                    }
+            }
+        }
+    }
+
     public async Task<ProjectSnapshot> SnapshotAsync()
     {
         await _commands.WaitAsync();
@@ -93,7 +114,7 @@ public sealed class ProjectCoordinator : IAsyncDisposable
         }
         finally { _commands.Release(); }
     }
-    public async Task<ReviewJob> StartAsync(string id, string? sha, string requestKey)
+    public async Task<ReviewJob> StartAsync(string id, string? sha, string requestKey, CancellationToken token = default)
     {
         if (!Guid.TryParse(requestKey, out _)) throw new ArgumentException("A UUID request key is required.");
         await _commands.WaitAsync();
@@ -114,8 +135,8 @@ public sealed class ProjectCoordinator : IAsyncDisposable
             profile.Parameters.Validate();
             if (string.IsNullOrWhiteSpace(profile.Model) || !Uri.TryCreate(profile.Endpoint, UriKind.Absolute, out var endpoint) || endpoint.Scheme is not ("http" or "https"))
                 throw new ArgumentException("Configure the model name and HTTP endpoint first.");
-            var identity = await runtime.Git.GetRepositoryIdentityAsync(project.RepositoryPath, default);
-            var branch = await runtime.Git.ResolveBranchAsync(project.RepositoryPath, project.BranchRef, default);
+            var identity = await runtime.Git.GetRepositoryIdentityAsync(project.RepositoryPath, token);
+            var branch = await runtime.Git.ResolveBranchAsync(project.RepositoryPath, project.BranchRef, token);
             if (_runtimes.Values.Any(r => r != runtime && r.Status.Running &&
                 (r.WorkTree.Equals(identity.WorkTreeRoot, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) ||
                 r.Identity.Equals(identity.CommonGitDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) && r.Branch == branch)))
@@ -149,6 +170,13 @@ public sealed class ProjectCoordinator : IAsyncDisposable
                 }
             });
             return job;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (Exception e)
+        {
+            var project = _configuration.LoadProjects().Projects.FirstOrDefault(p => p.ProjectId == id);
+            if (project is not null) _mail.EnqueueOperational(project.DisplayName + " | " + project.RepositoryPath, "Project start failed", e.Message);
+            throw;
         }
         finally { _commands.Release(); }
     }

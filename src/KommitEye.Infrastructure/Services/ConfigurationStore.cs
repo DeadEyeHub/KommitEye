@@ -88,6 +88,7 @@ public sealed class ConfigurationStore
                 case "poll_interval_seconds" when int.TryParse(value, out var seconds):
                     settings.PollIntervalSeconds = Math.Clamp(seconds, 5, 86_400);
                     break;
+                case "auto_start" when bool.TryParse(value, out var autoStart): settings.AutoStart = autoStart; break;
                 case "pull_enabled" when bool.TryParse(value, out var enabled):
                     settings.PullEnabled = enabled;
                     break;
@@ -137,6 +138,7 @@ public sealed class ConfigurationStore
             .AppendLine($"repository_path={settings.RepositoryPath}")
             .AppendLine($"branch_ref={settings.BranchRef}")
             .AppendLine($"poll_interval_seconds={settings.PollIntervalSeconds.ToString(CultureInfo.InvariantCulture)}")
+            .AppendLine($"auto_start={settings.AutoStart.ToString().ToLowerInvariant()}")
             .AppendLine($"pull_enabled={settings.PullEnabled.ToString().ToLowerInvariant()}")
             .AppendLine($"fetch_submodules={settings.FetchSubmodules.ToString().ToLowerInvariant()}")
             .AppendLine($"update_submodules_after_advance={settings.UpdateSubmodulesAfterAdvance.ToString().ToLowerInvariant()}")

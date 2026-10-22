@@ -43,6 +43,7 @@ public sealed class ReviewRunner
     public event Action<(string Repository, string Sha, TokenUsage? Usage)>? UsageReceived;
     private void SetRemaining(int count) { _remaining = count; Publish(RemainingChanged, (int?)count); }
 
+    public event Action<(string Kind, string Detail)>? OperationalEvent;
     public event Action<string>? Log;
     public event Action<string>? ModelLog;
     public event Action<string>? StatusChanged;
@@ -90,7 +91,7 @@ public sealed class ReviewRunner
             _cancellation?.Dispose();
             _cancellation = new CancellationTokenSource();
             _retryDelaySeconds = settings.PollIntervalSeconds;
-            _runTask = RunLoopAsync(settings, profile.Clone(), _cancellation.Token);
+            _runTask = RunMonitoredAsync(settings, profile.Clone(), _cancellation.Token);
             return true;
         }
     }
@@ -157,11 +158,12 @@ public sealed class ReviewRunner
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             Emit(ReviewStage.Canceled, profile, _activeCommit);
+            Publish(OperationalEvent, ("Review stopped", "Manual review canceled by user or application shutdown."));
             throw;
         }
-        catch
+        catch (Exception exception)
         {
-            Emit(ReviewStage.Failed, profile, _activeCommit);
+            Emit(ReviewStage.Failed, profile, _activeCommit, exception.Message);
             throw;
         }
         finally
@@ -204,6 +206,12 @@ public sealed class ReviewRunner
             Publish(RemainingChanged, (int?)null);
             completion.SetResult();
         }
+    }
+
+    private async Task RunMonitoredAsync(AppSettings settings, ModelProfile profile, CancellationToken token)
+    {
+        try { await RunLoopAsync(settings, profile, token); }
+        finally { Publish(OperationalEvent, ("Project stopped", token.IsCancellationRequested ? "Monitoring stopped by user or application shutdown." : "Monitoring stopped after errors. See the project journal.")); }
     }
 
     private async Task RunLoopAsync(AppSettings settings, ModelProfile profile, CancellationToken cancellationToken)
@@ -554,8 +562,12 @@ public sealed class ReviewRunner
 
     private static string Short(string sha) => sha[..Math.Min(8, sha.Length)];
 
-    private void Emit(ReviewStage stage, ModelProfile profile, string sha, string detail = "") =>
+    private void Emit(ReviewStage stage, ModelProfile profile, string sha, string detail = "")
+    {
         Publish(Progress, new ReviewProgress(stage, profile.Model, sha, detail));
+        if (stage is ReviewStage.Failed or ReviewStage.ModelUnavailable)
+            Publish(OperationalEvent, ("Project error", GitService.SanitizeDiagnostic(detail)));
+    }
 
     private void Complete(string path, string branch, string sha, ModelProfile profile,
         ReviewResult result, bool manual, CancellationToken cancellationToken)

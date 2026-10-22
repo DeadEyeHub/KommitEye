@@ -51,7 +51,7 @@ credential protection. Existing files are preserved. Use
 Existing files and folder permissions are preserved. See the
 [configuration fields, defaults and precedence](docs/server-web.md#configuration-initialization-and-location).
 On the server computer, open `http://localhost:5080` (or your selected port) and
-create the web administrator password. Legacy service accounts are preserved on upgrade. Repository paths and Git credentials refer
+create the web administrator password. MSI uses only the managed service identity; it has no legacy account/password screen or automatic data migration. Repository paths and Git credentials refer
 to the server computer, not the browser computer.
 
 The MSI delegates registration to `KommitEye.Server.exe --install-service`.
@@ -307,10 +307,11 @@ the browser. Queued messages stay tied to their original provider and account.
 
 Desktop settings, review positions, reports, queues, and logs live in
 `%LOCALAPPDATA%\KommitEye`. Set `KOMMITEYE_DATA_DIR` for an isolated data directory.
-Service uses `%PROGRAMDATA%\KommitEye.Server` by default when installed by MSI,
-the extracted package's `data/` folder with the portable startup script, or
-`%LOCALAPPDATA%\KommitEye.Server` when launched directly. Do not share a data
-directory between Desktop and Server.
+Server uses `%PROGRAMDATA%\KommitEye\Server\server.json` in both console and
+Windows service modes, with data in `%PROGRAMDATA%\KommitEye\Server\data` by
+default. Use `--config` to select another configuration file and `DataDirectory`
+to select another data directory. Do not share a data directory between Desktop
+and Server.
 Model profiles may contain API keys; detailed logs can contain repository content.
 Inspect logs and crash reports before sharing them.
 
@@ -339,3 +340,23 @@ dotnet run --project checks/ModelAvailability/ModelAvailability.csproj
 dotnet run --project checks/Server/Server.csproj
 dotnet run --project checks/Installer/Installer.csproj
 ```
+
+### Project autostart and operational email
+
+In Project settings, enable **Start this project when the application/server starts** and Apply/Save.
+The setting is per project (`AutoStart` in `projects.json`, API field `autoStart`), disabled by default,
+and works in Desktop and all Server deployments (console, Windows service, Docker/Linux).
+On the next application/server startup, selected projects resume monitoring with the saved model,
+repository settings and review cursor. An invalid project does not prevent other projects from starting.
+This setting does not register a Windows service or change its Windows startup type.
+
+When email notifications are enabled, repository/model/review failures, failed project starts,
+manual review cancellation and monitoring stops also queue operational email. These alerts use the
+explicit **Recipients** list, never the commit author, and are independent of the clean-review filter.
+Configure at least one explicit recipient to receive them. The existing delivery queue and bounded
+retries apply. At normal application/service shutdown, workers stop first and mail gets up to ten
+seconds to flush; unsent messages remain on disk for the next startup. Power loss or forced process
+termination cannot send a notification at the moment of interruption.
+
+In the web Reports page, **Open review** and **Open** for a full branch report open an inline dialog.
+Close it with **Close** or Escape; Markdown and HTML downloads remain available.

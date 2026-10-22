@@ -34,12 +34,13 @@ class Program
         var projectFile = Path.Combine(root, "projects.json");
         var original = File.ReadAllText(projectFile);
         var interval = Field<TextBox>("IntervalTextBox");
+        Field<CheckBox>("AutoStartCheckBox").IsChecked = true;
         interval.Text = "90";
         Field<CheckBox>("PullEnabledCheckBox").IsChecked = false;
         Call("SaveAuthenticationPreferences");
         Check(File.ReadAllText(projectFile) == original, "editing does not persist preferences");
         Apply("project");
-        Check(store.LoadSettings().PollIntervalSeconds == 90 && !store.LoadSettings().PullEnabled, "Apply saves fields and checkboxes");
+        Check(store.LoadSettings().AutoStart && store.LoadSettings().PollIntervalSeconds == 90 && !store.LoadSettings().PullEnabled, "Apply saves fields and checkboxes");
         interval.Text = "invalid";
         try { Apply("project"); throw new Exception("invalid accepted"); } catch (InvalidOperationException) { }
         Check(store.LoadSettings().PollIntervalSeconds == 90, "failed validation preserves committed settings");

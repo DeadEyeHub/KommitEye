@@ -273,6 +273,33 @@ public sealed class MailNotifications : IAsyncDisposable
             catch (Exception e) { _log("Mail: cannot queue report (" + e.GetType().Name + "). Review is saved."); }
         }
     }
+    // Operational alerts go to configured recipients, never to commit authors.
+    public void EnqueueOperational(string project, string kind, string detail)
+    {
+        lock (_gate)
+        {
+            if (LoadError is not null || !_settings.Enabled) return;
+            try
+            {
+                _settings.Validate(_protector);
+                var recipients = _settings.Addresses();
+                if (recipients.Count == 0) { _log("Mail: configure explicit recipients for project alerts."); return; }
+                var job = new MailJob {
+                    Key = Guid.NewGuid().ToString("N"), MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(),
+                    Provider = _settings.Provider, AccountId = _settings.AccountId,
+                    AttachmentFormat = _settings.AttachmentFormat,
+                    Subject = Clean($"[KommitEye] {kind}: {GitService.SanitizeDiagnostic(project)}"),
+                    Report = $"{kind}\n\nProject: {GitService.SanitizeDiagnostic(project)}\nTime: {_now():O}\n\n{GitService.SanitizeDiagnostic(detail)}",
+                    From = _settings.From, Recipients = string.Join(";", recipients.Select(r => r.ToString())), NextAttempt = _now()
+                };
+                _jobs.Add(job);
+                try { Save(_queuePath, _jobs); } catch { _jobs.Remove(job); throw; }
+                _log("Mail: project alert queued; " + Describe(job));
+            }
+            catch (Exception e) { _log("Mail: cannot queue project alert (" + e.GetType().Name + ")."); }
+        }
+    }
+
     private static string Clean(string text) => new(text.Where(c => !char.IsControl(c)).Take(250).ToArray());
     private static string Describe(MailJob job) => $"id={Clean(job.MessageId)}; from={Clean(job.From)}; to={string.Join("; ", job.Recipients.Split(';').Select(Clean))}; subject={Clean(job.Subject)}";
     private static string FailureDetails(Exception exception) => exception is SmtpCommandException smtp
@@ -452,6 +479,20 @@ public sealed class MailNotifications : IAsyncDisposable
     }
     public async ValueTask DisposeAsync()
     {
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+        {
+            try
+            {
+                while (!timeout.IsCancellationRequested)
+                {
+                    lock (_gate)
+                        if (!_settings.Enabled || _settings.AuthorizationRequired || !_jobs.Any(j => !j.Sent && MatchesAccount(j, _settings) && j.Attempts < 4 && j.NextAttempt <= _now())) break;
+                    await ProcessOnceAsync(timeout.Token);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { _log("Mail shutdown flush failed (" + e.GetType().Name + "). Queue preserved."); }
+        }
         _stop.Cancel();
         await _worker;
         await _sending.WaitAsync();

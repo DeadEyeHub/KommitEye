@@ -14,6 +14,7 @@ public sealed class AppSettings
     public string RepositoryPath { get; set; } = string.Empty;
     public string BranchRef { get; set; } = string.Empty;
     public int PollIntervalSeconds { get; set; } = 60;
+    public bool AutoStart { get; set; }
     public bool PullEnabled { get; set; } = true;
     public bool FetchSubmodules { get; set; }
     public bool UpdateSubmodulesAfterAdvance { get; set; } = true;

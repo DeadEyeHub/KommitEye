@@ -49,24 +49,19 @@ try {
     $listener.Stop()
     Set-Property 'PORT' ([string]$port)
     Set-Property 'NETWORKCHOICE' 'local'
-    # Preserve persisted identity after a real uninstall: migration safeguards
-    # intentionally reject a different data folder or service account.
-    $saved = Get-ItemProperty 'HKLM:\SOFTWARE\KommitEye\Server' -ErrorAction SilentlyContinue
-    $dataPath = if ($saved.DATADIR) { $saved.DATADIR } else { Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-preflight-' + [guid]::NewGuid().ToString('N')) }
+    # Synthetic checks must never inspect or create the real data directory.
+    $dataPath = Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-preflight-' + [guid]::NewGuid().ToString('N'))
     $account = Get-Property 'SERVICEACCOUNT'
     $installedService = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\KommitEye' -ErrorAction SilentlyContinue
     if (!$installedService) {
-        Assert ($account -eq 'NT SERVICE\KommitEye' -and (Get-Property 'LEGACYSERVICE') -ne '1') 'new installation ignores stale account registry values and skips password screen'
+        Assert ($account -eq 'NT SERVICE\KommitEye') 'new installation ignores stale account registry values and skips password screen'
     }
     $dataExisted = Test-Path -LiteralPath $dataPath
     Set-Property 'DATADIR' $dataPath
     Set-Property 'SERVICEACCOUNT' $account
-    # A fixture string is never used to log on or install a service by these immediate actions.
-    Set-Property 'SERVICEPASSWORD' $(if ($account -eq 'NT SERVICE\KommitEye') { '' } else { 'installer-preflight-fixture' })
     Set-Property 'GITEXE' (Get-Command git.exe).Source
     Assert ($session.DoAction('ValidateDialog') -eq 1 -and (Get-Property 'SETUPVALID') -eq '1') 'valid settings pass the actual MSI action'
     Assert ((Get-Property 'CONFIGFILE').EndsWith('\server.json')) 'service receives an absolute config path'
-    if ($account -eq 'NT SERVICE\KommitEye') { Assert ((Get-Property 'SERVICEPASSWORD') -eq '') 'virtual service validates without a password' }
     Assert ((Get-Property 'LISTENHOST') -eq '127.0.0.1') 'local access maps to loopback'
     Assert (!(Get-Property 'DATAPATH').EndsWith('\')) 'quoted service data argument has no trailing backslash'
     Assert ((Get-Property 'AUTOSTART') -eq '0') 'unchecked auto-start prepares demand startup'

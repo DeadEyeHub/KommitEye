@@ -15,7 +15,7 @@ must already be installed. Setup requires an administrator and .NET Framework
 4. New installations use the Windows-managed identity `NT SERVICE\KommitEye` without
    a username/password prompt. Select the Git executable if auto-detection did not
    find it. Grant repository access to this identity and configure Git authentication
-   for the service. Existing installations retain their original service account.
+   for the service. MSI supports this identity only; a service configured under another account must be explicitly removed before installation.
 5. Choose automatic startup and whether to start immediately. Review the local
    and LAN addresses, then install.
 6. Open `http://localhost:<port>` on the server computer to create the **web**
@@ -105,18 +105,14 @@ Increase `Version` in `Directory.Build.props` for a new MSI release.
 Use the new MSI to upgrade. The previous service is stopped and replaced inside
 the Windows Installer transaction; installation failure rolls the upgrade back.
 Setup reloads the previous folder, port, network options, Git path and account.
-New virtual-account installations require no password during maintenance. Legacy
-installations retain their data path, original account and `CurrentUser` protection;
-re-enter that account password during maintenance. No automatic secret conversion
-or move into the new default directory is performed. Existing server.json survives
+All MSI installations use the managed identity and `LocalMachine` protection; no Windows account/password screen or legacy account conversion is provided. There is no automatic migration from old data folders. Existing server.json survives
 repair, upgrade and uninstall; a failed installation can also leave this persistent
 configuration for a retry.
 
 Uninstall stops and removes the service, installed program files and firewall
 rules. It preserves reports, settings, credentials and the data directory, plus
 the non-secret setup settings at `HKLM\SOFTWARE\KommitEye\Server`, so reinstall
-can reconnect to those data. The existing Windows user and its service-logon
-right are preserved. Setup never removes repositories.
+can reconnect to those data. Setup never removes repositories.
 
 An existing service created by the old PowerShell script must first be removed
 using that script, keeping its data. A fresh MSI installation requires an empty
@@ -150,8 +146,7 @@ These operations are not performed on the development computer by the build.
 
 For unattended deployments, public MSI properties are `INSTALLFOLDER`, `DATADIR`,
 `PORT`, `ACCESSMODE` (`lan` or `local`), `FIREWALL`, `AUTOSTART`, `STARTNOW` (`1` or
-`0`), `CONFIGDIR` and `GITEXE`. `SERVICEACCOUNT` and `SERVICEPASSWORD` remain
-available for legacy account maintenance; use protected deployment inputs for them. Removing the MSI needs no password.
+`0`), `CONFIGDIR` and `GITEXE`. MSI uses `NT SERVICE\KommitEye` and never accepts a Windows user password. Removing the MSI needs no password.
 Unattended installation runs the same validation as the wizard.
 
 The local build is unsigned unless a signing step is configured separately.
@@ -201,11 +196,10 @@ Windows service automatic startup, without requiring a user to sign in. Clear it
 for manual startup. **Start the server after installation** is a separate option.
 Both options are available on new installation, upgrade and repair.
 
-New installations and upgrades of `NT SERVICE\KommitEye` skip the account/password
-screen. Only an actually installed service using a legacy Windows account shows
-**Existing service account**. Registry settings left after uninstall no longer
-cause the password screen to appear. Existing encrypted data is not automatically
-migrated between service identities.
+MSI always uses `NT SERVICE\KommitEye`. There is no Windows account/password
+screen. A differently configured service must be removed explicitly before MSI
+installation; it is never silently converted. Configuration and data use the
+current directory structure, with no legacy-folder migration in setup.
 
 ### Network access (3.6.3)
 
@@ -226,9 +220,7 @@ state, then stops the service before replacing files. The previous MSI is remove
 the first file-install script; registration/start runs in the second script after
 old-product removal and configuration initialization. Failed installation removes a newly created
 service; repair/upgrade rollback restores the old registration and running state
-after file restoration. The snapshot contains no password. Legacy user-account
-upgrades from older MSI releases may require the password shown in the wizard,
-because those old packages delete the SCM registration during removal.
+after file restoration. The managed identity needs no password, and the snapshot contains none.
 Uninstall stops the service inside the transaction but delays deletion until
 commit, retaining SCM credentials if uninstall rolls back. Staged tools are then
 removed. Upgrade-triggered removal by new packages leaves service ownership to

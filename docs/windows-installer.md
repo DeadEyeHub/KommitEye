@@ -31,7 +31,7 @@ password; MSI hides it from logging and does not store it in configuration.
 
 ## Service configuration
 
-The installer creates `%ProgramData%\KommitEye\Server\server.json` once:
+The installer invokes `KommitEye.Server.exe --initialize-config` to create `%ProgramData%\KommitEye\Server\server.json` once:
 
 ```json
 {
@@ -44,8 +44,9 @@ The installer creates `%ProgramData%\KommitEye\Server\server.json` once:
 
 SCM starts the executable with `--config "<absolute path to server.json>"`.
 Administrators can edit the configuration; the service has read-only access to
-its directory and write access to the separate data directory. Missing/invalid
-configuration or inaccessible data causes startup failure, not a profile fallback.
+its directory and write access to the separate data directory. Missing configuration is initialized by the executable using the same rules as
+console startup; invalid/unreadable configuration or inaccessible data causes
+startup failure. Initialization never changes folder ACLs.
 Changes take effect after service restart. MSI maintenance accepts one HTTP URL
 with host `127.0.0.1` or `0.0.0.0`; it reads existing values and never overwrites the
 file. For LAN access select it during first setup or change `Urls` and maintain the

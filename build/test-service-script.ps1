@@ -1,4 +1,5 @@
 # Exercise the ZIP installer with SCM and ACL mutations replaced by recording stubs.
+param([string]$ServerExecutable)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-service-script-' + [guid]::NewGuid().ToString('N'))
@@ -15,7 +16,9 @@ function icacls.exe { $global:LASTEXITCODE = 0 }
 try {
     [void][IO.Directory]::CreateDirectory($program)
     Copy-Item (Join-Path $repo 'build/package/Install-Service.ps1') $program
-    [IO.File]::WriteAllText((Join-Path $program 'KommitEye.Server.exe'), 'fixture; never executed')
+    if (!$ServerExecutable) { $ServerExecutable = Join-Path $repo 'src/KommitEye.Server/bin/Release/net10.0/KommitEye.Server.exe' }
+    if (!(Test-Path -LiteralPath $ServerExecutable)) { throw "Build the server first or pass -ServerExecutable: $ServerExecutable" }
+    Copy-Item -Path (Join-Path (Split-Path $ServerExecutable -Parent) '*') -Destination $program -Recurse -Force
     & (Join-Path $program 'Install-Service.ps1') -ConfigPath $configPath -DataDirectory (Join-Path $fixture 'data') -GitExecutable $git
     $original = [IO.File]::ReadAllText($configPath)
     $config = $original | ConvertFrom-Json

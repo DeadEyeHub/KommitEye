@@ -50,6 +50,7 @@ var gitExecutable = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Pat
     .Select(path => Path.Combine(Environment.ExpandEnvironmentVariables(path.Trim().Trim('"')), OperatingSystem.IsWindows() ? "git.exe" : "git"))
     .First(File.Exists);
 HostConfigurationChecks.Run(root, gitExecutable);
+await StartupConfigurationChecks.RunAsync(root, serverPath);
 var configurationPath = Path.Combine(root, "service.json");
 File.WriteAllText(configurationPath, JsonSerializer.Serialize(new {
     DataDirectory = Path.Combine(root, "data"), Urls = $"http://127.0.0.1:{port}", GitExecutable = gitExecutable,
@@ -64,6 +65,7 @@ void Start()
     if (serviceConfig) { start.ArgumentList.Add("--config"); start.ArgumentList.Add(configurationPath); }
     else
     {
+        start.ArgumentList.Add("--config"); start.ArgumentList.Add(Path.Combine(root, "console", "server.json"));
         start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
         start.ArgumentList.Add("--git-path"); start.ArgumentList.Add(gitExecutable);
     }

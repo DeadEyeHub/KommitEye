@@ -28,14 +28,9 @@ Directory.CreateDirectory(fixture);
 try
 {
     var path = Path.Combine(fixture, "server.json");
-    var config = new ServiceConfiguration { DataDirectory = basePath, Urls = "http://127.0.0.1:5080", GitExecutable = @"C:\Program Files\Git\cmd\git.exe", CredentialProtection = "LocalMachine" };
-    Check(config.CreateIfMissing(path), "first install creates configuration");
-    Check(ServiceConfiguration.Read(path).DataDirectory == basePath, "configuration round trips Windows paths");
+    File.WriteAllText(path, System.Text.Json.JsonSerializer.Serialize(new { DataDirectory = basePath, Urls = "http://127.0.0.1:5080", GitExecutable = @"C:\Program Files\Git\cmd\git.exe", CredentialProtection = "LocalMachine" }));
     var original = File.ReadAllBytes(path);
-    config.DataDirectory = @"D:\Changed";
-    Check(!config.CreateIfMissing(path) && original.SequenceEqual(File.ReadAllBytes(path)), "repair and upgrade preserve administrator configuration byte for byte");
-    File.WriteAllText(path, "invalid administrator config");
-    Check(!config.CreateIfMissing(path) && File.ReadAllText(path) == "invalid administrator config", "installer never silently replaces invalid configuration");
-    Check(Directory.GetFiles(fixture).Length == 1, "configuration creation leaves no temporary files");
+    Check(ServiceConfiguration.Read(path).DataDirectory == basePath, "installer reads executable-owned configuration");
+    Check(original.SequenceEqual(File.ReadAllBytes(path)), "installer reader preserves configuration byte for byte");
 }
 finally { Directory.Delete(fixture, true); }

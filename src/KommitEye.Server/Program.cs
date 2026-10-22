@@ -9,7 +9,15 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.SignalR;
 
-var hostOptions = ServerHostOptions.Load(args);
+ServerHostOptions hostOptions;
+try { hostOptions = ServerHostOptions.Load(args); }
+catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException)
+{
+    Console.Error.WriteLine(error.Message);
+    Environment.ExitCode = 1;
+    return;
+}
+if (args.Contains("--initialize-config")) return;
 Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", hostOptions.DataDirectory);
 if (hostOptions.GitExecutable is { } gitPath)
     Environment.SetEnvironmentVariable("PATH", Path.GetDirectoryName(gitPath) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"));

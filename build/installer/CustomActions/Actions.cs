@@ -155,7 +155,7 @@ public static class Actions
         }
         session["CONFIGDIR"] = configDirectory + "\\";
         session["CONFIGFILE"] = configPath;
-        session["WriteServiceConfig"] = new CustomActionData { { "path", configPath }, { "data", data },
+        session["WriteServiceConfig"] = new CustomActionData { { "exe", Path.Combine(install, "KommitEye.Server.exe") }, { "path", configPath }, { "data", data },
             { "urls", "http://" + (session["ACCESSMODE"] == "local" ? "127.0.0.1" : "0.0.0.0") + ":" + port },
             { "git", gitExe }, { "protection", virtualAccount ? "LocalMachine" : "CurrentUser" } }.ToString();
         session["DATADIR"] = data + "\\";
@@ -196,12 +196,25 @@ public static class Actions
         try
         {
             var values = session.CustomActionData;
-            new ServiceConfiguration { DataDirectory = values["data"], Urls = values["urls"],
-                GitExecutable = values["git"], CredentialProtection = values["protection"] }.CreateIfMissing(values["path"]);
+            // The installed executable owns initialization in every hosting mode.
+            var arguments = "--initialize-config --config " + Quote(values["path"]) +
+                " --data-dir " + Quote(values["data"]) + " --urls " + Quote(values["urls"]) +
+                " --git-path " + Quote(values["git"]) + " --credential-protection " + Quote(values["protection"]);
+            using (var child = Process.Start(new ProcessStartInfo(values["exe"], arguments)
+            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true }))
+            {
+                var output = child.StandardOutput.ReadToEndAsync();
+                var error = child.StandardError.ReadToEndAsync();
+                if (!child.WaitForExit(30000)) { child.Kill(); throw new IOException("Configuration initialization timed out: " + values["path"]); }
+                session.Log(output.GetAwaiter().GetResult());
+                if (child.ExitCode != 0) throw new IOException(error.GetAwaiter().GetResult());
+            }
             return ActionResult.Success;
         }
-        catch { return Error(session, "Unable to create server.json in the configuration directory."); }
+        catch (Exception error) { return Error(session, "Unable to initialize server configuration: " + error.Message); }
     }
+
+    private static string Quote(string value) => "\"" + value.Replace("\"", "\\\"").TrimEnd('\\') + "\"";
 
     [CustomAction]
     public static ActionResult OpenBrowser(Session session)

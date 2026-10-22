@@ -15,14 +15,14 @@ foreach ($path in @($ConfigPath)) {
 }
 $ConfigPath = [IO.Path]::GetFullPath($ConfigPath)
 $configDirectory = Split-Path $ConfigPath -Parent
-$config = if (Test-Path -LiteralPath $ConfigPath) {
-    Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
-} else {
+if (!(Test-Path -LiteralPath $ConfigPath)) {
     foreach ($path in @($DataDirectory, $GitExecutable)) {
         if (!$path -or ![IO.Path]::IsPathRooted($path) -or $path.Contains('"')) { throw 'Use absolute data and Git paths without quotes.' }
     }
-    [pscustomobject]@{ DataDirectory = [IO.Path]::GetFullPath($DataDirectory); Urls = "http://127.0.0.1:$Port"; GitExecutable = $GitExecutable; CredentialProtection = 'LocalMachine' }
+    & $exe --initialize-config --config $ConfigPath --data-dir $DataDirectory --urls "http://127.0.0.1:$Port" --git-path $GitExecutable --credential-protection LocalMachine
+    if ($LASTEXITCODE -ne 0) { throw "Server configuration initialization failed: $ConfigPath" }
 }
+$config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 if ($config.CredentialProtection -ne 'LocalMachine') { throw 'New virtual services require LocalMachine protection. Existing CurrentUser data requires a separate credential migration.' }
 if (!$config.DataDirectory -or ![IO.Path]::IsPathRooted($config.DataDirectory) -or $config.DataDirectory.Contains('"')) { throw 'DataDirectory must be absolute.' }
 $data = [IO.Path]::GetFullPath($config.DataDirectory).TrimEnd('\')
@@ -47,13 +47,6 @@ function Set-ServiceDirectoryAcl([string]$Path, [Security.AccessControl.FileSyst
 }
 Set-ServiceDirectoryAcl $configDirectory ReadAndExecute
 Set-ServiceDirectoryAcl $data FullControl
-if (!(Test-Path -LiteralPath $ConfigPath)) {
-    $stream = [IO.File]::Open($ConfigPath, 'CreateNew', 'Write', 'None')
-    try {
-        $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($config | ConvertTo-Json))
-        $stream.Write($bytes, 0, $bytes.Length)
-    } finally { $stream.Dispose() }
-}
 # Give the service read/execute access to the extracted program, preserving other program ACLs.
 & icacls.exe $PSScriptRoot /grant ('*{0}:(OI)(CI)(RX)' -f $serviceSid.Value)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot grant access to the program directory.' }

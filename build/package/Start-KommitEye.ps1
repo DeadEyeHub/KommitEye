@@ -1,9 +1,8 @@
-param([string]$ConfigPath, [int]$Port = 5080, [string]$DataDirectory = (Join-Path $PSScriptRoot 'data'))
+param([string]$ConfigPath, [int]$Port, [string]$DataDirectory)
 $ErrorActionPreference = 'Stop'
-if ($ConfigPath) {
-    & (Join-Path $PSScriptRoot 'KommitEye.Server.exe') --config ([IO.Path]::GetFullPath($ConfigPath))
-    exit $LASTEXITCODE
-}
-$env:KOMMITEYE_DATA_DIR = [System.IO.Path]::GetFullPath($DataDirectory)
-Write-Host "Open http://localhost:$Port on this computer, or http://<server-address>:$Port from the LAN."
-& (Join-Path $PSScriptRoot 'KommitEye.Server.exe') --urls "http://0.0.0.0:$Port"
+$arguments = @()
+if ($ConfigPath) { $arguments += @('--config', [IO.Path]::GetFullPath($ConfigPath)) }
+if ($PSBoundParameters.ContainsKey('Port')) { $arguments += @('--urls', "http://127.0.0.1:$Port") }
+if ($DataDirectory) { $arguments += @('--data-dir', [IO.Path]::GetFullPath($DataDirectory)) }
+& (Join-Path $PSScriptRoot 'KommitEye.Server.exe') @arguments
+exit $LASTEXITCODE

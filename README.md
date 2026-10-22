@@ -7,8 +7,8 @@ contains two applications sharing the same review engine:
 
 | Application | Interface | Windows x64 distribution |
 | --- | --- | --- |
-| Desktop 3.6.0 | WPF desktop app with a system tray icon | Self-contained EXE |
-| Service 3.6.0 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+| Desktop 3.6.1 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Service 3.6.1 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
 
 Both support multiple repositories, review reports and mail notifications.
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
@@ -42,7 +42,12 @@ use `NT SERVICE\KommitEye` without a user password. The persistent configuration
 `%ProgramData%\KommitEye\Server\server.json`, with data in its `data` subdirectory. Setup requires .NET Framework
 4.7.2 or newer for installer actions, in addition to the bundled server runtime.
 
-Alternatively, extract the portable ZIP and run `Start-KommitEye.ps1`.
+Alternatively, extract the portable ZIP and run `KommitEye.Server.exe` directly
+(or `Start-KommitEye.ps1`); service installation is optional. On first startup the
+executable creates the same default `server.json` in both modes. Use
+`--config "D:\KommitEye\server.json"` for another location, including a missing file.
+Existing files and folder permissions are preserved. See the
+[configuration fields, defaults and precedence](docs/server-web.md#configuration-initialization-and-location).
 On the server computer, open `http://localhost:5080` (or your selected port) and
 create the web administrator password. Legacy service accounts are preserved on upgrade. Repository paths and Git credentials refer
 to the server computer, not the browser computer.
@@ -78,9 +83,9 @@ Run from the repository root:
 
 Outputs in `artifacts/`:
 
-- `KommitEye-Desktop-3.6.0-win-x64.exe`
-- `KommitEye-Service-3.6.0-win-x64.zip`
-- `KommitEye-Service-3.6.0-win-x64.msi`
+- `KommitEye-Desktop-3.6.1-win-x64.exe`
+- `KommitEye-Service-3.6.1-win-x64.zip`
+- `KommitEye-Service-3.6.1-win-x64.msi`
 - `SHA256SUMS-<product>.txt`
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds

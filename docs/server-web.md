@@ -1,6 +1,6 @@
 # Server and web refactor
 
-KommitEye Service and Desktop are currently version 3.6.0. Both use the single
+KommitEye Service and Desktop are currently version 3.6.1. Both use the single
 `Version` in `Directory.Build.props` and ship together in release `v<version>`.
 The existing WPF application remains a compatibility host. Service is now the LAN
 server plus the browser UI, not the WPF executable.
@@ -71,14 +71,114 @@ Output archives/executable and SHA256 lists are in `artifacts/`. Each invocation
 uses a new staging directory so stale application files cannot enter the package.
 Packages contain the .NET runtime. Git remains an external prerequisite.
 
-Extract Service, run `Start-KommitEye.ps1`, then open `http://<server-address>:5080`.
-The startup script keeps data in the extracted package's `data` folder; supply
-`-DataDirectory` to retain data independently of package updates. Direct server
-launch defaults to `%ProgramData%/KommitEye/Server/data` on Windows or
-`/var/lib/kommiteye/server` on POSIX. Service installations explicitly use
-`--config <absolute-path-to-server.json>`. CLI path/URL options override JSON,
-which overrides environment variables, followed by built-in defaults.
-See [Windows configuration and migration](windows-installer.md#service-configuration).
+## Running without service installation
+
+Extract the Service ZIP into a permanent folder. From PowerShell in that folder:
+
+```powershell
+.\KommitEye.Server.exe
+```
+
+This starts the server interactively; no Windows service registration is needed.
+Open `http://localhost:5080` and stop the server with Ctrl+C.
+`Start-KommitEye.ps1` is an optional wrapper using the same configuration rules.
+For LAN access, explicitly set `Urls` to `http://0.0.0.0:5080` and restart.
+
+### Configuration initialization and location
+
+Console and Windows service startup run the same initializer before starting HTTP:
+
+- Windows default: `%ProgramData%\KommitEye\Server\server.json` (normally
+  `C:\ProgramData\KommitEye\Server\server.json`).
+- Linux/macOS default: `/etc/kommiteye/server.json`.
+- `--config <absolute-path>` selects another location; it does not need to exist.
+  `--config=<absolute-path>` is also supported. The working directory and service
+  account do not change the default location.
+
+```powershell
+.\KommitEye.Server.exe --config "D:\KommitEye\config\server.json"
+# Example for an ordinary account with its own writable configuration/data folder:
+.\KommitEye.Server.exe --config "$env:LOCALAPPDATA\KommitEyeServer\server.json" --data-dir "$env:LOCALAPPDATA\KommitEyeServer\data"
+```
+
+A missing parent directory is created. A missing file is written to a temporary
+file in the same directory, flushed, then renamed without replacing an existing
+file. Concurrent starts cannot overwrite each other's configuration. Startup logs
+show the absolute path and whether the file was **created** or **loaded**.
+Existing files are preserved byte for byte, including invalid JSON. Invalid JSON,
+unknown fields, invalid field values and access errors stop startup with the full
+configuration path and a diagnostic. The initializer never changes ACLs or
+inheritance; the running account must already have permission to create/read the
+configuration and write the data directory. Choose a writable `--config` and
+`--data-dir` if the system defaults are inaccessible. MSI/service-account permission
+provisioning is separate from configuration initialization.
+
+### Supported settings
+
+Only these four JSON fields are supported (names are case-insensitive):
+
+| Field | Generated value | Effective default / meaning |
+| --- | --- | --- |
+| `DataDirectory` | `null` | `KOMMITEYE_DATA_DIR`, otherwise `%ProgramData%\KommitEye\Server\data` on Windows or `/var/lib/kommiteye/server` on POSIX. A non-null value must be absolute. |
+| `Urls` | `null` | `ASPNETCORE_URLS`, otherwise `http://127.0.0.1:5080`. HTTP/HTTPS listen addresses separated by semicolons; no credentials, paths, queries or fragments. HTTPS also needs a configured certificate. |
+| `GitExecutable` | `null` | Find `git.exe` (Windows) or `git` on PATH. A non-null value must be an absolute path to an existing executable with that name. |
+| `CredentialProtection` | `"CurrentUser"` | Windows DPAPI under the running identity. `"LocalMachine"` is available only on Windows and is selected by new service installations. Changing it does not migrate existing encrypted secrets. |
+
+The complete default file generated without initialization arguments is:
+
+```json
+{
+  "DataDirectory": null,
+  "Urls": null,
+  "GitExecutable": null,
+  "CredentialProtection": "CurrentUser"
+}
+```
+
+`null` for the first three fields means use environment/built-in defaults. Empty
+strings are invalid. Omitting those fields has the same meaning as `null`;
+omitting `CredentialProtection` selects `CurrentUser` (explicit `null` is invalid).
+No passwords, API keys, certificate passwords or environment secrets are written.
+Set the administrator password through the first-run web form; model/mail secrets
+remain in the application's separate protected storage.
+
+A complete customized Windows configuration:
+
+```json
+{
+  "DataDirectory": "D:\\KommitEye\\data",
+  "Urls": "http://127.0.0.1:5080",
+  "GitExecutable": "C:\\Program Files\\Git\\cmd\\git.exe",
+  "CredentialProtection": "CurrentUser"
+}
+```
+
+### Precedence and restarts
+
+Highest to lowest: command-line arguments, non-null file fields, environment
+variables, built-in defaults. Arguments are `--data-dir`, `--urls`, `--git-path`,
+`--credential-protection`; each accepts a separate value or `--name=value`.
+`KOMMITEYE_DATA_DIR` and `ASPNETCORE_URLS` are the only environment fallbacks for
+these JSON fields. Git discovery also uses PATH. Certificate settings
+`KOMMITEYE_KEY_CERTIFICATE` and `KOMMITEYE_KEY_CERTIFICATE_PASSWORD_FILE` remain
+separate environment-only settings, required for non-Windows credential protection.
+
+When creating a missing file, explicit CLI field values are saved as initial
+settings. Environment values are never saved. With an existing file, CLI values
+only override the current process and do not edit the file. The same applies to
+service SCM arguments. Review existing files before moving between accounts.
+
+Every `server.json`, hosting CLI or hosting environment change requires a process
+restart (Ctrl+C and relaunch, or `Restart-Service KommitEye`). Configuration is not
+hot-reloaded. Changing the data directory does not copy existing data; changing
+credential protection requires a separate migration of encrypted credentials.
+
+MSI and `Install-Service.ps1` invoke the executable with `--initialize-config`
+and their chosen non-secret settings. This uses exactly the same initializer but
+exits after validation, without HTTP, data-store initialization or service
+registration. Administrators may also use this flag to prepare/validate a file.
+They do not implement a separate JSON writer. See
+[Windows configuration and migration](windows-installer.md#service-configuration).
 
 On first launch, open `http://localhost:5080` on the server computer and choose
 your administrator password in the setup form. No password is generated. Any
@@ -143,7 +243,7 @@ Google supports two setups:
    once with a bounded lifetime. A bare LAN HTTP IP is not a valid Google Web OAuth
    deployment. Do not replace provider redirect validation with a permissive proxy.
 
-`Install-Service.ps1` uses `NT SERVICE\KommitEye` without a password and creates
+`Install-Service.ps1` uses `NT SERVICE\KommitEye` without a password and invokes the server to create
 `%ProgramData%\KommitEye\Server\server.json` if absent. It secures the data/config
 folders and uses machine-scoped DPAPI. Grant repository access to that identity
 and set its OAuth environment before starting the service. The ZIP script does

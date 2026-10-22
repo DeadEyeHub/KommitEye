@@ -370,18 +370,26 @@ export function Projects({ tick }: { tick: number }) {
                 </Action>
               </div>
               {commits.length > 0 && (
-                <select
+                <div
                   className="commit-list"
-                  size={6}
-                  aria-label="Commits"
-                  onChange={(e) => setSha(e.target.value)}
+                  role="radiogroup"
+                  aria-label={t("Коммиты", "Commits")}
                 >
-                  {commits.map((c) => (
-                    <option key={c.sha} value={c.sha}>
-                      {c.sha?.slice(0, 10)} {c.subject}
-                    </option>
-                  ))}
-                </select>
+                  {commits.map((c) => {
+                    const author = c.author || t("Автор неизвестен", "Unknown author");
+                    const date = c.date ? new Date(c.date).toLocaleString(language === "ru" ? "ru-RU" : "en-GB") : "";
+                    const description = c.message || c.subject;
+                    return (
+                      <label className="commit-row" key={c.sha} title={`${c.sha}\n${author} · ${date}\n\n${description}`}>
+                        <input type="radio" name="selected-commit" value={c.sha} checked={sha === c.sha} onChange={() => setSha(c.sha)} />
+                        <code>{c.sha?.slice(0, 10)}</code>
+                        <span className="commit-author">{author}</span>
+                        <time dateTime={c.date}>{date}</time>
+                        <span className="commit-description">{c.subject}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               )}
               <div className="section-heading">
                 <h2>{t("Журнал", "Journal")}</h2>

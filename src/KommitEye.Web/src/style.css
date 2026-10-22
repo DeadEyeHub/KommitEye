@@ -442,6 +442,29 @@ summary {
 .commit-list {
   width: 100%;
   margin-top: 16px;
+  max-height: 270px;
+  overflow: auto;
+  border: 1px solid #c4cdca;
+  border-radius: 6px;
+}
+.commit-row {
+  display: grid;
+  grid-template-columns: 18px 11ch minmax(80px, 140px) max-content minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.commit-row:hover { background: #e9efeb; }
+.commit-row:has(input:checked) { background: #dcece6; }
+.commit-row:focus-within { outline: 2px solid #147367; outline-offset: -2px; }
+.commit-row input { margin: 0; padding: 0; width: 16px; height: 16px; accent-color: #155c50; }
+.commit-author, .commit-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.commit-row time { font-size: .9rem; font-variant-numeric: tabular-nums; color: #52665f; }
+@media (max-width: 850px) {
+  .commit-row { grid-template-columns: 18px 11ch minmax(0, 1fr); gap: 4px 10px; }
+  .commit-row time { grid-column: 2 / -1; }
+  .commit-description { grid-column: 2 / -1; }
 }
 .oauth {
   margin: 20px 0;

@@ -7,7 +7,7 @@ public sealed record CommitInfo(
     string Subject,
     string AuthorEmail = "");
 
-public sealed record CommitChoice(string Sha, string Subject)
+public sealed record CommitChoice(string Sha, string Subject, string Author = "", DateTimeOffset? Date = null, string Message = "")
 {
     public string Display => $"{Sha[..8]} — {Subject}";
 }

@@ -9,14 +9,17 @@ var input = new StringBuilder();
 for (var i = 1; i <= 205; i++)
 {
     var subject = $"Commit {i}";
+    var message = subject + "\n\nDescription with a tab\tand another line\n" + new string('x', 400);
     var content = $"Value {i}\n";
-    input.Append($"commit refs/heads/main\ncommitter Fixture <fixture@example.invalid> 1000000000 +0000\ndata {subject.Length}\n{subject}\nM 100644 inline file.txt\ndata {content.Length}\n{content}\n");
+    input.Append($"commit refs/heads/main\ncommitter Fixture <fixture@example.invalid> 1000000000 +0000\ndata {message.Length}\n{message}\nM 100644 inline file.txt\ndata {content.Length}\n{content}\n");
 }
 await Git(input.ToString(), "fast-import", "--quiet");
 var git = new GitService();
 var head = await git.GetBranchHeadAsync(repo, "refs/heads/main", default);
 var first = await git.GetCommitPageAsync(repo, head, 0, 101, default);
 Check(first.Count == 101 && first[0].Subject == "Commit 205", "first page and lookahead");
+Check(first.All(c => c.Author == "Fixture" && c.Date == DateTimeOffset.FromUnixTimeSeconds(1000000000)), "author and commit timestamp preserved");
+Check(first[0].Message == "Commit 205\n\nDescription with a tab\tand another line\n" + new string('x', 400), "full multiline description preserved without truncation");
 // Move the branch while paging the pinned history.
 await Git(null, "update-ref", "refs/heads/main", first[10].Sha);
 var second = await git.GetCommitPageAsync(repo, head, 100, 101, default);

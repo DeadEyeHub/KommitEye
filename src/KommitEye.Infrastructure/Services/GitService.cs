@@ -125,16 +125,21 @@ public sealed class GitService
         if (count is < 1 or > 101) throw new ArgumentOutOfRangeException(nameof(count));
         // Paging always uses a fixed SHA so fetches cannot shift page boundaries.
         head = await ResolveCommitAsync(repositoryPath, head, cancellationToken);
-        var result = await ReadPageAsync(repositoryPath, 0, 256_000, cancellationToken,
+        var result = await ReadPageAsync(repositoryPath, 0, 2_000_000, cancellationToken,
             "log", "--no-show-signature", "-n", count.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--skip=" + skip.ToString(System.Globalization.CultureInfo.InvariantCulture), "--format=%H%x09%s", head, "--");
+            "--skip=" + skip.ToString(System.Globalization.CultureInfo.InvariantCulture), "--format=%H%x00%an%x00%aI%x00%s%x00%B%x00", head, "--");
         if (result.ExitCode != 0 || result.HasMore)
             throw new GitException(Localization.Text("Cannot load the recent commit list.", "Не удалось загрузить список последних коммитов."));
-        return result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-            .Select(line => line.TrimEnd('\r').Split('\t', 2))
-            .Where(parts => parts.Length == 2 && parts[0].Length == 40 && parts[0].All(Uri.IsHexDigit))
-            .Select(parts => new CommitChoice(parts[0], new string(parts[1].Select(c => char.IsControl(c) ? ' ' : c).Take(300).ToArray())))
-            .ToArray();
+        var fields = result.Output.Split('\0');
+        var commits = new List<CommitChoice>();
+        for (var i = 0; i + 4 < fields.Length; i += 5)
+        {
+            var sha = fields[i].Trim();
+            if (sha.Length != 40 || !sha.All(Uri.IsHexDigit)) continue;
+            var date = DateTimeOffset.Parse(fields[i + 2], System.Globalization.CultureInfo.InvariantCulture);
+            commits.Add(new CommitChoice(sha, fields[i + 3], fields[i + 1], date, fields[i + 4].TrimEnd('\r', '\n')));
+        }
+        return commits;
     }
 
     public async Task<string> ResolveCommitAsync(

@@ -60,6 +60,8 @@ terminal, then use `--start-service`. `--uninstall-service` stops and removes on
 the service. All installation methods preserve folder ACLs and inheritance;
 administrators must provide the service account with access to existing data.
 See [service commands and permissions](docs/windows-installer.md#executable-service-commands).
+For an existing data folder that denies service access, follow the
+[manual permissions guide (Russian)](docs/service-permissions/README.md).
 The MSI installs the `KommitEye` service. Uninstall through Windows Installed apps
 or the MSI's **Remove** option. Application files, the service and installer-created
 firewall rules are removed; data and saved installation settings are retained.

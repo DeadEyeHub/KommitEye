@@ -1,20 +1,17 @@
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.NetworkInformation;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
 using System.ServiceProcess;
 using Microsoft.Win32;
 using WixToolset.Dtf.WindowsInstaller;
 
 namespace KommitEye.Setup;
 
-public static class Actions
+public static partial class Actions
 {
     private const string RegistryPath = @"SOFTWARE\KommitEye\Server";
     private static RegistryKey Saved() => RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64).OpenSubKey(RegistryPath);
@@ -69,7 +66,7 @@ public static class Actions
             session["SETUP_INITIALIZED"] = "1";
             return ActionResult.Success;
         }
-        catch { return Error(session, "Unable to read previous installation settings."); }
+        catch (Exception error) { return Error(session, "Unable to read previous installation settings: " + error.Message); }
     }
 
     private static string[] LocalAddresses() => NetworkInterface.GetAllNetworkInterfaces()
@@ -181,10 +178,8 @@ public static class Actions
         var urls = ConfigureNetwork(session);
         foreach (var property in new[] { "AUTOSTART", "STARTNOW", "FIREWALL" })
             if (session[property] != "0" && session[property] != "1" && session[property] != "") throw new ArgumentException("Invalid installation option: " + property);
-        var account = SetupValidation.Account(session["SERVICEACCOUNT"]);
-        var fullAccount = account[0] + "\\" + account[1];
-        var virtualAccount = fullAccount.Equals(SetupValidation.VirtualServiceAccount, StringComparison.OrdinalIgnoreCase);
-        var sid = virtualAccount ? new SecurityIdentifier(SetupValidation.VirtualServiceSid) : (SecurityIdentifier)new NTAccount(fullAccount).Translate(typeof(SecurityIdentifier));
+        var fullAccount = SetupValidation.InstallationAccount(session["SERVICEACCOUNT"]);
+        var virtualAccount = SetupValidation.IsPasswordlessAccount(fullAccount);
         if (virtualAccount) session["SERVICEPASSWORD"] = "";
         if (!virtualAccount && session["SERVICEPASSWORD"].Length == 0) throw new ArgumentException("Enter the Windows account password. A Windows Hello PIN cannot be used for a service.");
         using (var saved = Saved())
@@ -213,7 +208,6 @@ public static class Actions
                     finally { foreach (var listener in listeners) listener.Stop(); }
                 }
             }
-            session["RollbackStartMode"] = new CustomActionData { { "mode", saved == null || saved.GetValue("AUTOSTART") as string == "1" ? "2" : "3" } }.ToString();
         }
         var gitExe = session["GITEXE"];
         if (string.IsNullOrWhiteSpace(gitExe) || !Path.IsPathRooted(gitExe) || gitExe.IndexOf('"') >= 0 || !File.Exists(gitExe) || !Path.GetFileName(gitExe).Equals("git.exe", StringComparison.OrdinalIgnoreCase))
@@ -240,33 +234,13 @@ public static class Actions
             { "git", gitExe }, { "protection", virtualAccount ? "LocalMachine" : "CurrentUser" } }.ToString();
         session["DATADIR"] = data + "\\";
         session["DATAPATH"] = data;
-        session["SERVICEACCOUNT"] = fullAccount; session["SERVICEUSER"] = account[1]; session["SERVICEDOMAIN"] = account[0]; session["SERVICESID"] = sid.Value;
-        session["ConfigureStartMode"] = new CustomActionData { { "mode", session["AUTOSTART"] == "1" ? "2" : "3" } }.ToString();
+        session["SERVICEACCOUNT"] = fullAccount;
     }
 
     private static ActionResult Error(Session session, string message)
     {
         using (var record = new Record(1)) { record.FormatString = "[1]"; record[1] = message; session.Message(InstallMessage.Error, record); }
         return ActionResult.Failure;
-    }
-
-    [CustomAction]
-    public static ActionResult ConfigureStartMode(Session session) => SetStartMode(session, false);
-    [CustomAction]
-    public static ActionResult RollbackStartMode(Session session) => SetStartMode(session, true);
-    private static ActionResult SetStartMode(Session session, bool rollback)
-    {
-        IntPtr manager = IntPtr.Zero, service = IntPtr.Zero;
-        try
-        {
-            manager = OpenSCManager(null, null, 1);
-            service = OpenService(manager, "KommitEye", 2);
-            if (service == IntPtr.Zero || !ChangeServiceConfig(service, 0xffffffff, uint.Parse(session.CustomActionData["mode"]), 0xffffffff, null, null, IntPtr.Zero, null, null, null, null))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
-            return ActionResult.Success;
-        }
-        catch { return rollback ? ActionResult.Success : Error(session, "Unable to configure automatic service startup."); }
-        finally { if (service != IntPtr.Zero) CloseServiceHandle(service); if (manager != IntPtr.Zero) CloseServiceHandle(manager); }
     }
 
     [CustomAction]
@@ -303,8 +277,4 @@ public static class Actions
         return ActionResult.Success;
     }
 
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr OpenSCManager(string machine, string database, uint access);
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr OpenService(IntPtr manager, string name, uint access);
-    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern bool ChangeServiceConfig(IntPtr service, uint type, uint start, uint error, string path, string group, IntPtr tag, string dependencies, string account, string password, string display);
-    [DllImport("advapi32.dll")] private static extern bool CloseServiceHandle(IntPtr handle);
 }

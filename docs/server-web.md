@@ -110,8 +110,8 @@ unknown fields, invalid field values and access errors stop startup with the ful
 configuration path and a diagnostic. The initializer never changes ACLs or
 inheritance; the running account must already have permission to create/read the
 configuration and write the data directory. Choose a writable `--config` and
-`--data-dir` if the system defaults are inaccessible. MSI/service-account permission
-provisioning is separate from configuration initialization.
+`--data-dir` if the system defaults are inaccessible. MSI, wrapper scripts and service commands also preserve existing permissions.
+Administrators must arrange the service account's access before starting it.
 
 ### Supported settings
 
@@ -178,8 +178,8 @@ restart (Ctrl+C and relaunch, or `Restart-Service KommitEye`). Configuration is 
 hot-reloaded. Changing the data directory does not copy existing data; changing
 credential protection requires a separate migration of encrypted credentials.
 
-MSI and `Install-Service.ps1` invoke the executable with `--initialize-config`
-and their chosen non-secret settings. This uses exactly the same initializer but
+MSI invokes `--initialize-config` with its chosen non-secret settings, then
+`--install-service`. `Install-Service.ps1` delegates directly to `--install-service`. This uses exactly the same initializer but
 exits after validation, without HTTP, data-store initialization or service
 registration. Administrators may also use this flag to prepare/validate a file.
 They do not implement a separate JSON writer. See
@@ -249,8 +249,9 @@ Google supports two setups:
    deployment. Do not replace provider redirect validation with a permissive proxy.
 
 `Install-Service.ps1` uses `NT SERVICE\KommitEye` without a password and invokes the server to create
-`%ProgramData%\KommitEye\Server\server.json` if absent. It secures the data/config
-folders and uses machine-scoped DPAPI. Grant repository access to that identity
+`%ProgramData%\KommitEye\Server\server.json` if absent. It preserves all folder permissions and uses machine-scoped DPAPI for new service
+configurations. Administrators must arrange program/config read access and data
+modify access, including existing files. Grant repository access to that identity
 and set its OAuth environment before starting the service. The ZIP script does
 not start the service or add firewall rules; the MSI offers both options.
 

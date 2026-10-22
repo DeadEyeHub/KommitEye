@@ -68,6 +68,15 @@ jobs:
           [xml]$props = Get-Content Directory.Build.props
           ./build/verify-service-package.ps1 -Path "artifacts/KommitEye-Service-$($props.Project.PropertyGroup.Version)-win-x64.zip"
           if ($LASTEXITCODE -ne 0) { throw 'Packaged server verification failed' }
+      - name: Real MSI lifecycle, rollback and unchanged ACLs
+        if: matrix.product == 'Service'
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $version = $props.Project.PropertyGroup.Version
+          $payload = Join-Path $env:RUNNER_TEMP 'kommiteye-msi-payload'
+          Expand-Archive "artifacts/KommitEye-Service-$version-win-x64.zip" $payload
+          ./build/test-windows-installer.ps1 -Msi (Resolve-Path "artifacts/KommitEye-Service-$version-win-x64.msi") -Payload $payload -Result (Join-Path $env:RUNNER_TEMP 'kommiteye-msi-check.log')
       - uses: actions/upload-artifact@v6
         with:
           name: KommitEye-${{ matrix.product }}

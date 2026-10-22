@@ -9,14 +9,25 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.SignalR;
 
-ServerHostOptions hostOptions;
-try { hostOptions = ServerHostOptions.Load(args); }
-catch (Exception error) when (error is InvalidDataException or IOException or UnauthorizedAccessException or ArgumentException)
+if (WindowsServiceCommands.Run(args) is { } serviceExitCode)
+{ Environment.ExitCode = serviceExitCode; return; }
+
+try
 {
-    Console.Error.WriteLine(error.Message);
-    Environment.ExitCode = 1;
-    return;
+    await RunServerAsync(args);
 }
+catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or InvalidDataException)
+{
+    var message = "Server startup/access failure: " + error.Message + " Verify the running account can read configuration and modify data; permissions were not changed.";
+    Console.Error.WriteLine(message);
+    if (OperatingSystem.IsWindows())
+        try { System.Diagnostics.EventLog.WriteEntry(".NET Runtime", message, System.Diagnostics.EventLogEntryType.Error); } catch { }
+    Environment.ExitCode = 1;
+}
+
+static async Task RunServerAsync(string[] args)
+{
+var hostOptions = ServerHostOptions.Load(args);
 if (args.Contains("--initialize-config")) return;
 Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", hostOptions.DataDirectory);
 if (hostOptions.GitExecutable is { } gitPath)
@@ -166,6 +177,7 @@ app.MapHub<EventsHub>("/hubs/events").RequireAuthorization();
 app.UseDefaultFiles(); app.UseStaticFiles();
 app.MapFallbackToFile("index.html");
 await app.RunAsync();
+}
 
 public sealed class EventsHub : Hub;
 public sealed record LoginRequest(string Password);

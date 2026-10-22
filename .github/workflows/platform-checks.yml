@@ -33,7 +33,7 @@ jobs:
         run: dotnet run --project checks/Server/Server.csproj -c Release -- --certificate-protection
       - name: Service JSON configuration and credential persistence
         run: dotnet run --project checks/Server/Server.csproj -c Release -- --service-config
-      - name: ZIP service installation contract without machine changes
+      - name: Real Windows service lifecycle and unchanged permissions
         if: runner.os == 'Windows'
         run: ./build/test-service-script.ps1
   docker:

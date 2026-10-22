@@ -8,12 +8,18 @@ namespace KommitEye.Setup;
 public static class SetupValidation
 {
     public const string VirtualServiceAccount = @"NT SERVICE\KommitEye";
-    // Deterministic service SID for the fixed SCM name KommitEye (sc.exe showsid KommitEye).
-    public const string VirtualServiceSid = "S-1-5-80-3680015686-339733092-3489414343-1427611537-2043285906";
+    public static bool IsPasswordlessAccount(string account) =>
+        string.Equals(account, VirtualServiceAccount, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(account, "LocalSystem", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(account, @"NT AUTHORITY\SYSTEM", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(account, @"NT AUTHORITY\LocalService", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(account, @"NT AUTHORITY\NetworkService", StringComparison.OrdinalIgnoreCase);
     public static string InstallationAccount(string installedAccount) => string.IsNullOrEmpty(installedAccount)
-        ? VirtualServiceAccount : string.Join("\\", Account(installedAccount));
+        ? VirtualServiceAccount : string.Equals(installedAccount, "LocalSystem", StringComparison.OrdinalIgnoreCase) ||
+          string.Equals(installedAccount, @"NT AUTHORITY\SYSTEM", StringComparison.OrdinalIgnoreCase)
+          ? "LocalSystem" : string.Join("\\", Account(installedAccount));
     public static bool IsLegacyService(string installedAccount) => !string.IsNullOrEmpty(installedAccount) &&
-        !InstallationAccount(installedAccount).Equals(VirtualServiceAccount, StringComparison.OrdinalIgnoreCase);
+        !IsPasswordlessAccount(InstallationAccount(installedAccount));
 
     public static string ListenUrls(string mode, string ip, int port, string[] localAddresses)
     {
@@ -56,6 +62,8 @@ public static class SetupValidation
     public static string[] Account(string value)
     {
         if (string.Equals(value, VirtualServiceAccount, StringComparison.OrdinalIgnoreCase)) return new[] { "NT SERVICE", "KommitEye" };
+        if (string.Equals(value, "LocalSystem", StringComparison.OrdinalIgnoreCase)) return new[] { "NT AUTHORITY", "SYSTEM" };
+        if (IsPasswordlessAccount(value)) return value.Split('\\');
         var parts = (value ?? "").Trim().Split('\\');
         if (parts.Length != 2 || parts.Any(string.IsNullOrWhiteSpace) || parts.Any(p => p.IndexOfAny(new[] { '"', ';', '\r', '\n' }) >= 0))
             throw new ArgumentException("Enter an existing Windows account as COMPUTER\\user or DOMAIN\\user.");

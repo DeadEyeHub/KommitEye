@@ -28,10 +28,11 @@ tokens and send without a browser. SMTP works without OAuth.
 
 Service installation is optional: run Install-Service.ps1 as administrator and
 use the Windows-managed NT SERVICE\KommitEye identity without a user password.
-The script invokes the EXE initializer to create %ProgramData%\KommitEye\Server\server.json only if absent,
+The script delegates to EXE --install-service to create %ProgramData%\KommitEye\Server\server.json only if absent,
 with DataDirectory defaulting to %ProgramData%\KommitEye\Server\data.
 Edit that file as administrator and restart the service to apply changes.
-The service can read the config and write data. Credentials use machine DPAPI;
+No folder permissions or inheritance are changed. Administrators must ensure
+the service can read the program/config and modify existing data files. Credentials use machine DPAPI;
 keep the data ACL restricted. Existing interactive CurrentUser secrets require
 separate migration; do not copy them into the new service unchanged.
 Grant the service identity access to its repositories, then start the service.
@@ -54,3 +55,11 @@ permission failures report the full path. Initialization does not modify folder 
 All hosting configuration changes require a restart. --initialize-config prepares or
 validates the file and exits without starting HTTP or registering a Windows service.
 Complete documentation: docs/server-web.md in the source repository.
+
+Executable service commands (elevated terminal):
+  KommitEye.Server.exe --install-service --config "C:\ProgramData\KommitEye\Server\server.json"
+  KommitEye.Server.exe --start-service
+  KommitEye.Server.exe --stop-service
+  KommitEye.Server.exe --uninstall-service
+Registration defaults to automatic startup and does not start HTTP.
+Use --service-start manual for manual startup. Existing accounts are preserved.

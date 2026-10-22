@@ -8,6 +8,7 @@ void Reject(Action action, string message)
     throw new Exception(message);
 }
 Check(SetupValidation.InstallationAccount(null!) == SetupValidation.VirtualServiceAccount && !SetupValidation.IsLegacyService(null!), "new installation uses managed identity and skips account dialog");
+Check(SetupValidation.InstallationAccount("LocalSystem") == "LocalSystem" && !SetupValidation.IsLegacyService("LocalSystem"), "preserve explicitly configured built-in account without password");
 Check(!SetupValidation.IsLegacyService(@"nt service\kommiteye"), "managed service upgrade skips account dialog");
 Check(SetupValidation.IsLegacyService(@"DOMAIN\existing") && SetupValidation.InstallationAccount(@"DOMAIN\existing") == @"DOMAIN\existing", "legacy service upgrade preserves identity and requests password");
 Check(SetupValidation.ListenUrls("local", "", 5080, []) == "http://127.0.0.1:5080", "local access uses numeric loopback");
@@ -26,7 +27,7 @@ Check(SetupValidation.Overlaps(basePath, basePath + @"\data"), "reject data insi
 Check(SetupValidation.Overlaps(basePath + @"\data", basePath), "reject program inside data folder");
 Check(!SetupValidation.Overlaps(basePath, basePath + "Other"), "similar folder prefixes remain separate");
 Check(SetupValidation.Account(@".\svc")[0] == Environment.MachineName, "expand local account domain");
-foreach (var value in new[] { "user", @"DOMAIN\", @"\user", @"NT AUTHORITY\SYSTEM", "DOMAIN\\user;injection" })
+foreach (var value in new[] { "user", @"DOMAIN\", @"\user", "DOMAIN\\user;injection" })
     Reject(() => SetupValidation.Account(value), "reject invalid or built-in service account");
 Console.WriteLine($"{count} installer validation checks passed.");
 

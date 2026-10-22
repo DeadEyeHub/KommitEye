@@ -54,6 +54,12 @@ On the server computer, open `http://localhost:5080` (or your selected port) and
 create the web administrator password. Legacy service accounts are preserved on upgrade. Repository paths and Git credentials refer
 to the server computer, not the browser computer.
 
+The MSI delegates registration to `KommitEye.Server.exe --install-service`.
+ZIP users can run that command with `--config "<absolute path>"` from an elevated
+terminal, then use `--start-service`. `--uninstall-service` stops and removes only
+the service. All installation methods preserve folder ACLs and inheritance;
+administrators must provide the service account with access to existing data.
+See [service commands and permissions](docs/windows-installer.md#executable-service-commands).
 The MSI installs the `KommitEye` service. Uninstall through Windows Installed apps
 or the MSI's **Remove** option. Application files, the service and installer-created
 firewall rules are removed; data and saved installation settings are retained.

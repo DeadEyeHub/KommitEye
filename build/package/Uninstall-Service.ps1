@@ -1,5 +1,4 @@
+# Run from an elevated terminal. Data and configuration are preserved.
 $ErrorActionPreference = 'Stop'
-Stop-Service -Name KommitEye -ErrorAction SilentlyContinue
-sc.exe delete KommitEye
-if ($LASTEXITCODE -ne 0) { throw 'Service removal failed.' }
-Write-Host 'Service removed. Repository and application data were preserved.'
+& (Join-Path $PSScriptRoot 'KommitEye.Server.exe') --uninstall-service
+if ($LASTEXITCODE -ne 0) { throw 'Service removal failed. See the executable diagnostic above.' }

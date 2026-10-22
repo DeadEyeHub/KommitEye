@@ -1,6 +1,6 @@
 # Windows Service installer
 
-`artifacts/KommitEye-Service-3.5.6-win-x64.msi` installs the server and its
+`artifacts/KommitEye-Service-3.6.3-win-x64.msi` installs the server and its
 compiled React UI for all users. The .NET 10 runtime is included. Git for Windows
 must already be installed. Setup requires an administrator and .NET Framework
 4.7.2 or newer, which is included in supported Windows 10/11 installations.
@@ -23,11 +23,46 @@ must already be installed. Setup requires an administrator and .NET Framework
    Configure repositories, model endpoints and mail in the browser.
 
 The service is named `KommitEye` and displayed as **KommitEye Review Server**.
-The data folder's ACL grants full access only to SYSTEM, administrators and the
-service identity. New service credentials use DPAPI `LocalMachine`; restricting
-access to ciphertext in the data folder is essential. Desktop and legacy services
-retain `CurrentUser` encryption. Legacy-account maintenance still requires its
-password; MSI hides it from logging and does not store it in configuration.
+MSI, ZIP scripts and the executable **never change folder ACLs or inheritance**.
+Existing program, configuration, data and repository permissions are preserved;
+new folders inherit their parent's permissions. The administrator must provide
+read/execute access to the program and Git, read access to configuration and
+modify access to data, including existing files such as `server.lock` and SQLite
+files. Repository access depends on the operations used. An old protected ACL
+can prevent startup; setup reports the error rather than granting access.
+Do not delete reports to work around an access error.
+
+New service configurations use DPAPI `LocalMachine`. Administrators must keep
+credential storage suitably restricted; setup no longer enforces this policy.
+Existing encrypted credentials and their protection mode are not migrated.
+
+## Executable service commands
+
+Run from an elevated Administrator terminal, using an absolute EXE path:
+
+```powershell
+& "C:\Program Files\KommitEye Server\KommitEye.Server.exe" --install-service --config "C:\ProgramData\KommitEye\Server\server.json"
+& "C:\Program Files\KommitEye Server\KommitEye.Server.exe" --start-service
+& "C:\Program Files\KommitEye Server\KommitEye.Server.exe" --stop-service
+& "C:\Program Files\KommitEye Server\KommitEye.Server.exe" --uninstall-service
+```
+
+Registration uses Windows SCM, defaults to automatic startup, and exits without
+starting HTTP. Use `--service-start manual` to opt out of automatic startup.
+New services use `NT SERVICE\KommitEye`, without a password. Administrators can
+explicitly choose `--service-account` when creating a service; a regular account
+also needs the Windows **Log on as a service** right and a password supplied using
+`--service-password-stdin`. Passwords are never command-line arguments or JSON
+settings. Registration refuses to change an existing account, preserving its
+SCM credentials. A different executable/configuration requires `--update-service`.
+Repeated registration with the same paths is supported; removing a missing service
+succeeds. Removal stops the service first and never deletes configuration, data,
+credentials or repositories. Errors return a nonzero exit code.
+
+`Install-Service.ps1` and `Uninstall-Service.ps1` are thin wrappers around these
+commands. They no longer implement SCM registration or permissions themselves.
+An access failure includes a path in the Windows Application log; check the
+service account's existing access rather than reinstalling or deleting data.
 
 ## Service configuration
 
@@ -43,8 +78,7 @@ The installer invokes `KommitEye.Server.exe --initialize-config` to create `%Pro
 ```
 
 SCM starts the executable with `--config "<absolute path to server.json>"`.
-Administrators can edit the configuration; the service has read-only access to
-its directory and write access to the separate data directory. Missing configuration is initialized by the executable using the same rules as
+Administrators must arrange configuration read access and data modify access for the service. Missing configuration is initialized by the executable using the same rules as
 console startup; invalid/unreadable configuration or inaccessible data causes
 startup failure. Initialization never changes folder ACLs.
 Changes take effect after service restart. MSI maintenance accepts one HTTP URL
@@ -103,7 +137,7 @@ To rebuild just the MSI from an already published server directory:
 ```powershell
 ./build/publish-installer.ps1 -PayloadDirectory '<absolute path to published Service>'
 dotnet run --project checks/Installer -c Release
-./build/verify-installer.ps1 -Path artifacts/KommitEye-Service-3.5.6-win-x64.msi
+./build/verify-installer.ps1 -Path artifacts/KommitEye-Service-3.6.3-win-x64.msi
 ```
 
 The checks validate inputs, inspect the real MSI tables and invoke only the
@@ -134,7 +168,7 @@ Existing releases are kept; bump the shared version if its tag is already publis
 
 Service replaces the former Web Server distribution. The MSI upgrade code and
 Windows service identity remain unchanged so existing Web Server 1.x installations
-can upgrade to Service 3.5.6 while retaining their data and settings.
+can upgrade to Service 3.6.3 while retaining their data and settings.
 
 For a standalone server build, open **Actions → Build Service Installer → Run workflow**.
 This manual workflow builds the web UI, self-contained server and WiX MSI, runs
@@ -145,8 +179,7 @@ unsigned installers and do not perform a full service installation on the runner
 
 File-use detection uses Restart Manager (`MSIRESTARTMANAGERCONTROL=DisableShutdown`).
 Do not set this to `Disable`: that selects the legacy file-use scanner, which can
-spend minutes in `InstallValidate`. ServiceControl stops and removes the server
-inside the MSI transaction; Restart Manager does not automatically close other apps.
+spend minutes in `InstallValidate`. Executable commands stop the server inside the MSI transaction; Restart Manager does not automatically close other apps.
 See https://learn.microsoft.com/en-us/windows/win32/msi/msirestartmanagercontrol.
 
 MSI verbose logging is enabled for installation and removal. Windows places its
@@ -184,3 +217,32 @@ IP, loopback remains enabled so initial administrator setup works locally.
 Firewall rules remain limited to private/domain profiles and the local subnet.
 Reserve the selected address in DHCP or use a static address. Changing an existing
 server.json remains an explicit administrator action before MSI maintenance.
+
+### Transaction and Windows verification
+
+MSI stages a private copy of the new EXE/runtime below Program Files, using normal
+inherited permissions. It snapshots SCM paths, account, startup mode and running
+state, then stops the service before replacing files. The previous MSI is removed after
+the first file-install script; registration/start runs in the second script after
+old-product removal and configuration initialization. Failed installation removes a newly created
+service; repair/upgrade rollback restores the old registration and running state
+after file restoration. The snapshot contains no password. Legacy user-account
+upgrades from older MSI releases may require the password shown in the wizard,
+because those old packages delete the SCM registration during removal.
+Uninstall stops the service inside the transaction but delays deletion until
+commit, retaining SCM credentials if uninstall rolls back. Staged tools are then
+removed. Upgrade-triggered removal by new packages leaves service ownership to
+the incoming package. Data/configuration remain persistent, including on failure.
+
+Run `build/test-windows-service.ps1 -Payload <published-directory> -Result <log>`
+from an elevated terminal on Windows with no existing KommitEye service. It uses
+a real virtual-account service and paths containing spaces, checks HTTP startup,
+stop/removal, rollback, denied access and unchanged ACLs. It refuses to replace an
+existing service. `build/test-service-script.ps1` runs this check on Windows CI.
+
+`build/test-windows-installer.ps1 -Msi <msi> -Payload <published-directory> -Result <log>`
+performs actual installation, repair, synthetic-version upgrade and uninstall,
+including injected transaction failures. It compares ACLs/inheritance and checks
+preserved configuration, a report, the reports database and repository contents.
+Test MSI copies are modified only inside the fixture directory; the release version
+is unchanged. Both packaging workflows run it on their disposable Windows runner.

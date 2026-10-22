@@ -69,11 +69,11 @@ try {
     if ($account -eq 'NT SERVICE\KommitEye') { Assert ((Get-Property 'SERVICEPASSWORD') -eq '') 'virtual service validates without a password' }
     Assert ((Get-Property 'LISTENHOST') -eq '127.0.0.1') 'local access maps to loopback'
     Assert (!(Get-Property 'DATAPATH').EndsWith('\')) 'quoted service data argument has no trailing backslash'
-    Assert ((Get-Property 'ConfigureStartMode') -eq 'mode=3') 'unchecked auto-start prepares demand startup'
+    Assert ((Get-Property 'AUTOSTART') -eq '0') 'unchecked auto-start prepares demand startup'
     Assert ((Get-Property 'STARTNOW') -eq '0' -and (Get-Property 'FIREWALL') -eq '0') 'unchecked options become explicit zero values for elevation'
     Assert ((Test-Path -LiteralPath (Get-Property 'DATAPATH')) -eq $dataExisted) 'preflight does not create or remove the data directory'
     Set-Property 'AUTOCHOICE' '1'
-    Assert ($session.DoAction('ValidateDialog') -eq 1 -and (Get-Property 'SETUPVALID') -eq '1' -and (Get-Property 'ConfigureStartMode') -eq 'mode=2') 'checked auto-start prepares automatic Windows startup'
+    Assert ($session.DoAction('ValidateDialog') -eq 1 -and (Get-Property 'SETUPVALID') -eq '1' -and (Get-Property 'AUTOSTART') -eq '1') 'checked auto-start prepares automatic Windows startup'
     Set-Property 'NETWORKCHOICE' 'local'
     Assert ($session.DoAction('ValidateNetwork') -eq 1 -and (Get-Property 'LANADDRESS') -eq 'LAN access is disabled.') 'local access does not advertise a LAN URL'
     Set-Property 'NETWORKCHOICE' 'ip'

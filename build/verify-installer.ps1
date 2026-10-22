@@ -35,13 +35,16 @@ try {
     Assert (@($files | Where-Object { $_ -like 'client_secret*' -or $_ -in @('admin.json','server.db','models.conf','settings.conf') }).Count -eq 0) 'no user data or OAuth secrets included'
     $controls = @(Read-Rows 'SELECT `Dialog_`, `Control`, `Type`, `Property`, `Attributes` FROM `Control`' 5)
     Assert (@($controls | Where-Object { $_[0] -eq 'ServiceAccountDlg' -and $_[3] -eq 'SERVICEPASSWORD' -and ([int]$_[4] -band 2097152) }).Count -eq 1) 'password field is masked'
-    foreach ($dialog in @('ServerOptionsDlg','ServiceOptionsDlg','ServiceAccountDlg','ServerReadyDlg')) {
+    foreach ($dialog in @('ServerOptionsDlg','NetworkOptionsDlg','ServiceOptionsDlg','ServiceAccountDlg','ServerReadyDlg')) {
         Assert (@($controls | Where-Object { $_[0] -eq $dialog }).Count -gt 0) "wizard includes $dialog"
     }
     Assert (@($controls | Where-Object { $_[0] -eq 'ServiceOptionsDlg' -and $_[3] -eq 'AUTOCHOICE' }).Count -eq 1) 'automatic Windows startup is available outside the legacy account screen'
     $routes = @(Read-Rows 'SELECT `Dialog_`, `Control_`, `Event`, `Argument`, `Condition` FROM `ControlEvent`' 5)
     Assert (@($routes | Where-Object { $_[2] -eq 'NewDialog' -and $_[3] -eq 'ServiceAccountDlg' -and $_[4] -ne 'LEGACYSERVICE = "1"' }).Count -eq 0) 'account dialog is reachable only for existing legacy services, including Back'
     Assert (@($routes | Where-Object { $_[0] -eq 'ServiceOptionsDlg' -and $_[2] -eq 'NewDialog' -and $_[3] -eq 'ServerReadyDlg' -and $_[4] -eq 'LEGACYSERVICE <> "1" AND SETUPVALID = "1"' }).Count -eq 1) 'new installation validates settings and skips password dialog'
+    Assert (@($controls | Where-Object { $_[0] -eq 'NetworkOptionsDlg' -and $_[3] -eq 'BINDIP' -and $_[2] -eq 'ComboBox' }).Count -eq 1) 'separate network page contains an IP selector'
+    $networkText = @(Read-Rows 'SELECT `Text` FROM `Control` WHERE `Dialog_` = ''ServerReadyDlg'' AND `Control` = ''Network''')
+    Assert ($networkText[0][0] -eq '[LANADDRESS]') 'ready page displays the resolved IP URL instead of computer name'
     $components = @{}
     foreach ($row in (Read-Rows 'SELECT `Component`, `Attributes` FROM `Component`' 2)) { $components[$row[0]] = [int]$row[1] }
     Assert (($components['PersistentDataFolder'] -band 16) -ne 0) 'data directory survives uninstall'

@@ -10,6 +10,11 @@ void Reject(Action action, string message)
 Check(SetupValidation.InstallationAccount(null!) == SetupValidation.VirtualServiceAccount && !SetupValidation.IsLegacyService(null!), "new installation uses managed identity and skips account dialog");
 Check(!SetupValidation.IsLegacyService(@"nt service\kommiteye"), "managed service upgrade skips account dialog");
 Check(SetupValidation.IsLegacyService(@"DOMAIN\existing") && SetupValidation.InstallationAccount(@"DOMAIN\existing") == @"DOMAIN\existing", "legacy service upgrade preserves identity and requests password");
+Check(SetupValidation.ListenUrls("local", "", 5080, []) == "http://127.0.0.1:5080", "local access uses numeric loopback");
+Check(SetupValidation.ListenUrls("lan", "", 5080, []) == "http://0.0.0.0:5080", "all-interface LAN binding");
+Check(SetupValidation.ListenUrls("ip", "192.168.1.10", 5080, ["192.168.1.10"]) == "http://127.0.0.1:5080;http://192.168.1.10:5080", "selected IP preserves loopback for first setup");
+Reject(() => SetupValidation.ListenUrls("ip", "192.168.1.99", 5080, ["192.168.1.10"]), "reject foreign or disconnected IP");
+Reject(() => SetupValidation.ListenUrls("ip", "hostname", 5080, []), "reject host names as IP choices");
 Check(SetupValidation.Port("5080") == 5080, "default port");
 Check(SetupValidation.Port("65535") == 65535, "highest TCP port");
 foreach (var value in new[] { "0", "65536", "-1", "abc", "80 --urls", "" }) Reject(() => SetupValidation.Port(value), "reject port " + value);

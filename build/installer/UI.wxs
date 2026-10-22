@@ -29,7 +29,7 @@
       <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
 
       <Dialog Id="ServerOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
-        <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Data and network" />
+        <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Data folder" />
         <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="Settings are stored in server.json under ProgramData. Existing configuration and data are preserved." />
         <Control Id="DataLabel" Type="Text" X="15" Y="68" Width="340" Height="14" Text="Data folder (settings, reports, credentials and logs):" />
         <Control Id="DataPath" Type="PathEdit" X="15" Y="86" Width="270" Height="18" Property="DATADIR" />
@@ -37,16 +37,6 @@
           <Publish Property="_BrowseProperty" Value="DATADIR" Order="1" />
           <Publish Event="SpawnDialog" Value="BrowseDlg" Order="2" />
         </Control>
-        <Control Id="PortLabel" Type="Text" X="15" Y="115" Width="55" Height="15" Text="TCP port:" />
-        <Control Id="Port" Type="Edit" X="75" Y="112" Width="65" Height="18" Property="PORT" Integer="yes" />
-        <Control Id="Access" Type="RadioButtonGroup" X="15" Y="140" Width="340" Height="40" Property="NETWORKCHOICE">
-          <RadioButtonGroup Property="NETWORKCHOICE">
-            <RadioButton Value="lan" X="0" Y="0" Width="335" Height="17" Text="Local network (LAN)" />
-            <RadioButton Value="local" X="0" Y="21" Width="335" Height="17" Text="This computer only (also for a local reverse proxy)" />
-          </RadioButtonGroup>
-        </Control>
-        <Control Id="Firewall" Type="CheckBox" X="15" Y="187" Width="340" Height="17" Property="FIREWALLCHOICE" CheckBoxValue="1" Text="Allow LAN connections through Windows Firewall" />
-        <Control Id="FirewallHint" Type="Text" X="28" Y="208" Width="327" Height="24" Text="LAN only: private/domain profiles and local subnet. Public networks stay closed." />
         <Control Id="Line" Type="Line" X="0" Y="237" Width="370" Height="0" />
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back">
           <Publish Event="NewDialog" Value="InstallDirDlg" Condition="NOT Installed" />
@@ -55,7 +45,34 @@
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
           <Publish Event="CheckTargetPath" Value="DATADIR" Order="1" />
           <Publish Event="SetTargetPath" Value="DATADIR" Order="2" />
-          <Publish Event="NewDialog" Value="ServiceOptionsDlg" Order="3" />
+          <Publish Event="NewDialog" Value="NetworkOptionsDlg" Order="3" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel"><Publish Event="SpawnDialog" Value="CancelDlg" /></Control>
+      </Dialog>
+
+      <Dialog Id="NetworkOptionsDlg" Width="370" Height="270" Title="[ProductName] Setup">
+        <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Network access" />
+        <Control Id="Description" Type="Text" X="15" Y="36" Width="340" Height="28" Text="Choose where clients can connect. LAN links use an IP address, not the computer name." />
+        <Control Id="Access" Type="RadioButtonGroup" X="15" Y="67" Width="340" Height="60" Property="NETWORKCHOICE">
+          <RadioButtonGroup Property="NETWORKCHOICE">
+            <RadioButton Value="local" X="0" Y="0" Width="335" Height="17" Text="This computer only (127.0.0.1)" />
+            <RadioButton Value="lan" X="0" Y="20" Width="335" Height="17" Text="LAN: all network interfaces" />
+            <RadioButton Value="ip" X="0" Y="40" Width="335" Height="17" Text="LAN: only the selected IPv4 address" />
+          </RadioButtonGroup>
+        </Control>
+        <Control Id="IpLabel" Type="Text" X="15" Y="135" Width="70" Height="15" Text="LAN IPv4:" />
+        <Control Id="Ip" Type="ComboBox" X="85" Y="132" Width="185" Height="65" Property="BINDIP" ComboList="yes" Sorted="no" DisableCondition="NETWORKCHOICE = &quot;local&quot;">
+          <ComboBox Property="BINDIP"><ListItem Value="none" Text="Select an IPv4 address" /></ComboBox>
+        </Control>
+        <Control Id="PortLabel" Type="Text" X="15" Y="161" Width="70" Height="15" Text="TCP port:" />
+        <Control Id="Port" Type="Edit" X="85" Y="158" Width="65" Height="18" Property="PORT" Integer="yes" />
+        <Control Id="Firewall" Type="CheckBox" X="15" Y="183" Width="340" Height="17" Property="FIREWALLCHOICE" CheckBoxValue="1" Text="Allow LAN connections through Windows Firewall" DisableCondition="NETWORKCHOICE = &quot;local&quot;" />
+        <Control Id="Hint" Type="Text" X="15" Y="206" Width="340" Height="28" Text="Firewall: private/domain networks and local subnet only. Keep the selected IP stable (DHCP reservation or static IP)." />
+        <Control Id="Line" Type="Line" X="0" Y="237" Width="370" Height="0" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back"><Publish Event="NewDialog" Value="ServerOptionsDlg" /></Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
+          <Publish Event="DoAction" Value="ValidateNetwork" Order="1" />
+          <Publish Event="NewDialog" Value="ServiceOptionsDlg" Order="2" Condition="NETWORKVALID = &quot;1&quot;" />
         </Control>
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel"><Publish Event="SpawnDialog" Value="CancelDlg" /></Control>
       </Dialog>
@@ -68,7 +85,7 @@
         <Control Id="Automatic" Type="CheckBox" X="15" Y="115" Width="340" Height="17" Property="AUTOCHOICE" CheckBoxValue="1" Text="Start the server when Windows starts" />
         <Control Id="Start" Type="CheckBox" X="15" Y="141" Width="340" Height="17" Property="STARTCHOICE" CheckBoxValue="1" Text="Start the server after installation" />
         <Control Id="Line" Type="Line" X="0" Y="237" Width="370" Height="0" />
-        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back"><Publish Event="NewDialog" Value="ServerOptionsDlg" /></Control>
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back"><Publish Event="NewDialog" Value="NetworkOptionsDlg" /></Control>
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next">
           <Publish Event="DoAction" Value="ValidateDialog" Order="1" Condition="LEGACYSERVICE &lt;&gt; &quot;1&quot;" />
           <Publish Event="NewDialog" Value="ServiceAccountDlg" Order="2" Condition="LEGACYSERVICE = &quot;1&quot;" />
@@ -97,7 +114,7 @@
       <Dialog Id="ServerReadyDlg" Width="370" Height="270" Title="[ProductName] Setup">
         <Control Id="Title" Type="Text" X="15" Y="12" Width="340" Height="20" Text="{\WixUI_Font_Title}Ready to install" />
         <Control Id="Summary" Type="Text" X="15" Y="42" Width="340" Height="110" Text="Program: [INSTALLFOLDER]&#13;&#10;&#13;&#10;Data: [DATAPATH]&#13;&#10;&#13;&#10;Service account: [SERVICEACCOUNT]&#13;&#10;&#13;&#10;Local address: http://localhost:[PORT]" />
-        <Control Id="Network" Type="Text" X="15" Y="158" Width="340" Height="25" Text="LAN address (when enabled): http://[ComputerName]:[PORT]" />
+        <Control Id="Network" Type="Text" X="15" Y="158" Width="340" Height="25" Text="[LANADDRESS]" />
         <Control Id="FirstRun" Type="Text" X="15" Y="191" Width="340" Height="36" Text="First open localhost on this computer to create the administrator password. Configure repositories, models and mail in the browser." />
         <Control Id="Line" Type="Line" X="0" Y="237" Width="370" Height="0" />
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back"><Publish Event="NewDialog" Value="ServiceAccountDlg" Order="1" Condition="LEGACYSERVICE = &quot;1&quot;" /><Publish Event="NewDialog" Value="ServiceOptionsDlg" Order="2" Condition="LEGACYSERVICE &lt;&gt; &quot;1&quot;" /></Control>

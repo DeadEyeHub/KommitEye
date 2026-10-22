@@ -15,6 +15,20 @@ public static class SetupValidation
     public static bool IsLegacyService(string installedAccount) => !string.IsNullOrEmpty(installedAccount) &&
         !InstallationAccount(installedAccount).Equals(VirtualServiceAccount, StringComparison.OrdinalIgnoreCase);
 
+    public static string ListenUrls(string mode, string ip, int port, string[] localAddresses)
+    {
+        Port(port.ToString());
+        var loopback = "http://127.0.0.1:" + port;
+        if (mode == "local") return loopback;
+        if (mode == "lan") return "http://0.0.0.0:" + port;
+        if (mode != "ip" || !localAddresses.Contains(ip) ||
+            !System.Net.IPAddress.TryParse(ip, out var address) ||
+            address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork || System.Net.IPAddress.IsLoopback(address))
+            throw new ArgumentException("Select an IPv4 address assigned to an active network adapter on this computer.");
+        // Loopback remains available for the first administrator setup.
+        return loopback + ";http://" + ip + ":" + port;
+    }
+
     public static int Port(string value)
     {
         if (!int.TryParse(value, out var port) || port < 1 || port > 65535)

@@ -72,6 +72,17 @@ try {
     Assert ((Test-Path -LiteralPath (Get-Property 'DATAPATH')) -eq $dataExisted) 'preflight does not create or remove the data directory'
     Set-Property 'AUTOCHOICE' '1'
     Assert ($session.DoAction('ValidateDialog') -eq 1 -and (Get-Property 'SETUPVALID') -eq '1' -and (Get-Property 'ConfigureStartMode') -eq 'mode=2') 'checked auto-start prepares automatic Windows startup'
+    Set-Property 'NETWORKCHOICE' 'local'
+    Assert ($session.DoAction('ValidateNetwork') -eq 1 -and (Get-Property 'LANADDRESS') -eq 'LAN access is disabled.') 'local access does not advertise a LAN URL'
+    Set-Property 'NETWORKCHOICE' 'ip'
+    Set-Property 'BINDIP' '203.0.113.254'
+    Assert ($session.DoAction('ValidateNetwork') -eq 1 -and (Get-Property 'NETWORKVALID') -eq '') 'network page rejects an unassigned address'
+    $localIp = [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() | Where-Object { $_.OperationalStatus -eq 'Up' } | ForEach-Object { $_.GetIPProperties().UnicastAddresses } | Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' -and ![Net.IPAddress]::IsLoopback($_.Address) -and !$_.Address.ToString().StartsWith('169.254.') } | Select-Object -First 1
+    if ($localIp) {
+        Set-Property 'BINDIP' $localIp.Address.ToString()
+        Assert ($session.DoAction('ValidateNetwork') -eq 1 -and (Get-Property 'NETWORKVALID') -eq '1' -and (Get-Property 'LISTENHOST') -eq $localIp.Address.ToString()) 'network page accepts an active adapter IP'
+        Assert ((Get-Property 'LANADDRESS') -eq ('LAN address: http://' + $localIp.Address + ':' + $port)) 'summary shows the selected numeric IP URL'
+    }
     Write-Host 'Immediate preflight checks passed. No service, firewall, account or installation changes were made.'
 } finally {
     if ($null -ne $session) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($session) }

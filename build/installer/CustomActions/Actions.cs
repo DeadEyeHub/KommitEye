@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.ServiceProcess;
@@ -30,6 +31,7 @@ public static class Actions
                 Default("INSTALLFOLDER", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "KommitEye Server"));
                 Default("CONFIGDIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye", "Server"));
                 Default("DATADIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye", "Server", "data"));
+                Default("BINDIP", "");
                 Default("PORT", "5080"); Default("ACCESSMODE", "local"); Default("FIREWALL", "0");
                 var installedAccount = InstalledServiceAccount();
                 session["SERVICEACCOUNT"] = SetupValidation.InstallationAccount(installedAccount);
@@ -48,13 +50,18 @@ public static class Actions
                     var config = ServiceConfiguration.Read(configPath);
                     session["DATADIR"] = config.DataDirectory;
                     session["GITEXE"] = config.GitExecutable;
-                    if (!Uri.TryCreate(config.Urls, UriKind.Absolute, out var address) || address.Scheme != "http" ||
-                        (address.Host != "127.0.0.1" && address.Host != "0.0.0.0"))
-                        throw new ArgumentException("MSI maintenance supports a single http://127.0.0.1 or http://0.0.0.0 address in server.json.");
+                    var addresses = (config.Urls ?? "http://127.0.0.1:5080").Split(';');
+                    var endpoint = addresses.Last();
+                    if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var address) || address.Scheme != "http" ||
+                        !IPAddress.TryParse(address.Host, out var parsed) || parsed.AddressFamily != AddressFamily.InterNetwork ||
+                        addresses.Length > 2 || (addresses.Length == 2 && addresses[0] != "http://127.0.0.1:" + address.Port))
+                        throw new ArgumentException("MSI maintenance requires HTTP IPv4 addresses, optionally preceded by the loopback address on the same port.");
                     session["PORT"] = address.Port.ToString();
-                    session["ACCESSMODE"] = address.Host == "127.0.0.1" ? "local" : "lan";
+                    session["ACCESSMODE"] = address.Host == "127.0.0.1" ? "local" : address.Host == "0.0.0.0" ? "lan" : "ip";
+                    if (session["ACCESSMODE"] == "ip") session["BINDIP"] = address.Host;
                 }
             }
+            PopulateAddresses(session);
             session["AUTOCHOICE"] = session["AUTOSTART"] == "1" ? "1" : "";
             session["STARTCHOICE"] = session["STARTNOW"] == "1" ? "1" : "";
             session["FIREWALLCHOICE"] = session["FIREWALL"] == "1" ? "1" : "";
@@ -63,6 +70,57 @@ public static class Actions
             return ActionResult.Success;
         }
         catch { return Error(session, "Unable to read previous installation settings."); }
+    }
+
+    private static string[] LocalAddresses() => NetworkInterface.GetAllNetworkInterfaces()
+        .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+        .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+        .Select(a => a.Address).Where(a => a.AddressFamily == AddressFamily.InterNetwork &&
+            !IPAddress.IsLoopback(a) && !a.ToString().StartsWith("169.254."))
+        .Select(a => a.ToString()).Distinct().OrderBy(a => a).ToArray();
+
+    private static void PopulateAddresses(Session session)
+    {
+        var addresses = LocalAddresses().ToList();
+        if (session["BINDIP"] != "" && !addresses.Contains(session["BINDIP"])) addresses.Add(session["BINDIP"]);
+        if (session["BINDIP"] == "" && addresses.Count > 0) session["BINDIP"] = addresses[0];
+        using (var view = session.Database.OpenView("SELECT `Property`, `Order`, `Value`, `Text` FROM `ComboBox`"))
+        {
+            view.Execute();
+            for (var i = 0; i < addresses.Count; i++)
+            {
+                using (var row = new Record(4))
+                {
+                    row.SetString(1, "BINDIP"); row.SetInteger(2, i + 100);
+                    row.SetString(3, addresses[i]); row.SetString(4, addresses[i]);
+                    view.Modify(ViewModifyMode.InsertTemporary, row);
+                }
+            }
+        }
+    }
+
+    private static string ConfigureNetwork(Session session)
+    {
+        var port = SetupValidation.Port(session["PORT"]);
+        var addresses = LocalAddresses();
+        if (session["ACCESSMODE"] == "lan" && !addresses.Contains(session["BINDIP"]))
+            session["BINDIP"] = addresses.FirstOrDefault() ?? "";
+        var urls = SetupValidation.ListenUrls(session["ACCESSMODE"], session["BINDIP"], port, addresses);
+        session["LISTENHOST"] = session["ACCESSMODE"] == "local" ? "127.0.0.1" : session["ACCESSMODE"] == "lan" ? "0.0.0.0" : session["BINDIP"];
+        session["LANADDRESS"] = session["ACCESSMODE"] == "local" ? "LAN access is disabled." :
+            addresses.Contains(session["BINDIP"]) ? "LAN address: http://" + session["BINDIP"] + ":" + port :
+            "No active LAN IPv4 address. Connect a network adapter before using LAN access.";
+        return urls;
+    }
+
+    [CustomAction]
+    public static ActionResult ValidateNetwork(Session session)
+    {
+        session["NETWORKVALID"] = "";
+        session["ACCESSMODE"] = session["NETWORKCHOICE"];
+        try { ConfigureNetwork(session); session["NETWORKVALID"] = "1"; }
+        catch (ArgumentException error) { Error(session, error.Message); }
+        return ActionResult.Success;
     }
 
     private static string InstalledServiceAccount()
@@ -120,7 +178,7 @@ public static class Actions
         if (SetupValidation.Overlaps(data, Environment.GetFolderPath(Environment.SpecialFolder.Windows)))
             throw new ArgumentException("The data folder cannot be inside the Windows folder.");
         var port = SetupValidation.Port(session["PORT"]);
-        if (session["ACCESSMODE"] != "lan" && session["ACCESSMODE"] != "local") throw new ArgumentException("Choose local-computer or local-network access.");
+        var urls = ConfigureNetwork(session);
         foreach (var property in new[] { "AUTOSTART", "STARTNOW", "FIREWALL" })
             if (session[property] != "0" && session[property] != "1" && session[property] != "") throw new ArgumentException("Invalid installation option: " + property);
         var account = SetupValidation.Account(session["SERVICEACCOUNT"]);
@@ -146,9 +204,13 @@ public static class Actions
                 var ownPort = service != null && service.Status == ServiceControllerStatus.Running && saved?.GetValue("PORT") as string == session["PORT"];
                 if (!ownPort)
                 {
-                    var listener = new TcpListener(session["ACCESSMODE"] == "local" ? IPAddress.Loopback : IPAddress.Any, port);
-                    listener.Server.ExclusiveAddressUse = true;
-                    try { listener.Start(); } catch (SocketException) { throw new ArgumentException("The selected TCP port is already in use or unavailable."); } finally { listener.Stop(); }
+                    var listeners = (session["ACCESSMODE"] == "ip"
+                        ? new[] { IPAddress.Loopback, IPAddress.Parse(session["LISTENHOST"]) }
+                        : new[] { IPAddress.Parse(session["LISTENHOST"]) })
+                        .Select(ip => new TcpListener(ip, port)).ToArray();
+                    try { foreach (var listener in listeners) { listener.Server.ExclusiveAddressUse = true; listener.Start(); } }
+                    catch (SocketException) { throw new ArgumentException("The selected TCP port is already in use or unavailable."); }
+                    finally { foreach (var listener in listeners) listener.Stop(); }
                 }
             }
             session["RollbackStartMode"] = new CustomActionData { { "mode", saved == null || saved.GetValue("AUTOSTART") as string == "1" ? "2" : "3" } }.ToString();
@@ -165,7 +227,7 @@ public static class Actions
         if (File.Exists(configPath))
         {
             var config = ServiceConfiguration.Read(configPath);
-            var expectedUrl = "http://" + (session["ACCESSMODE"] == "local" ? "127.0.0.1" : "0.0.0.0") + ":" + port;
+            var expectedUrl = urls;
             if (!string.Equals(config.DataDirectory.TrimEnd('\\'), data, StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(config.GitExecutable, gitExe, StringComparison.OrdinalIgnoreCase) || config.Urls != expectedUrl ||
                 config.CredentialProtection != (virtualAccount ? "LocalMachine" : "CurrentUser"))
@@ -174,12 +236,11 @@ public static class Actions
         session["CONFIGDIR"] = configDirectory + "\\";
         session["CONFIGFILE"] = configPath;
         session["WriteServiceConfig"] = new CustomActionData { { "exe", Path.Combine(install, "KommitEye.Server.exe") }, { "path", configPath }, { "data", data },
-            { "urls", "http://" + (session["ACCESSMODE"] == "local" ? "127.0.0.1" : "0.0.0.0") + ":" + port },
+            { "urls", urls },
             { "git", gitExe }, { "protection", virtualAccount ? "LocalMachine" : "CurrentUser" } }.ToString();
         session["DATADIR"] = data + "\\";
         session["DATAPATH"] = data;
         session["SERVICEACCOUNT"] = fullAccount; session["SERVICEUSER"] = account[1]; session["SERVICEDOMAIN"] = account[0]; session["SERVICESID"] = sid.Value;
-        session["LISTENHOST"] = session["ACCESSMODE"] == "local" ? "127.0.0.1" : "0.0.0.0";
         session["ConfigureStartMode"] = new CustomActionData { { "mode", session["AUTOSTART"] == "1" ? "2" : "3" } }.ToString();
     }
 

@@ -48,7 +48,7 @@ its directory and write access to the separate data directory. Missing configura
 console startup; invalid/unreadable configuration or inaccessible data causes
 startup failure. Initialization never changes folder ACLs.
 Changes take effect after service restart. MSI maintenance accepts one HTTP URL
-with host `127.0.0.1` or `0.0.0.0`; it reads existing values and never overwrites the
+with an IPv4 host (optionally preceded by a loopback URL on the same port); it reads existing values and never overwrites the
 file. For LAN access select it during first setup or change `Urls` and maintain the
 firewall rules accordingly.
 
@@ -173,3 +173,14 @@ screen. Only an actually installed service using a legacy Windows account shows
 **Existing service account**. Registry settings left after uninstall no longer
 cause the password screen to appear. Existing encrypted data is not automatically
 migrated between service identities.
+
+### Network access (3.6.3)
+
+The separate **Network access** page offers local-only, all LAN interfaces, or
+one IPv4 address selected from active adapters. The ready page displays a numeric
+LAN URL, never the computer name. In all-interface mode the selected IP is the
+example client URL; the server also listens on other interfaces. For a specific
+IP, loopback remains enabled so initial administrator setup works locally.
+Firewall rules remain limited to private/domain profiles and the local subnet.
+Reserve the selected address in DHCP or use a static address. Changing an existing
+server.json remains an explicit administrator action before MSI maintenance.

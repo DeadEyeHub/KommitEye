@@ -37,6 +37,8 @@
     <Property Id="SERVICEPASSWORD" Secure="yes" Hidden="yes" />
     <Property Id="GITEXE" Secure="yes" />
     <Property Id="LISTENHOST" Secure="yes" />
+    <Property Id="BINDIP" Secure="yes" />
+    <Property Id="LANADDRESS" Value="LAN access is disabled." />
     <Property Id="SETUP_INITIALIZED" Secure="yes" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open the web interface to create the administrator password" />
@@ -77,6 +79,7 @@
           <RegistryValue Name="DATADIR" Value="[DATAPATH]" Type="string" />
           <RegistryValue Name="CONFIGDIR" Value="[CONFIGDIR]" Type="string" />
           <RegistryValue Name="PORT" Value="[PORT]" Type="string" />
+          <RegistryValue Name="BINDIP" Value="[BINDIP]" Type="string" />
           <RegistryValue Name="ACCESSMODE" Value="[ACCESSMODE]" Type="string" />
           <RegistryValue Name="FIREWALL" Value="[FIREWALL]" Type="string" />
           <RegistryValue Name="AUTOSTART" Value="[AUTOSTART]" Type="string" />
@@ -84,7 +87,7 @@
           <RegistryValue Name="GITEXE" Value="[GITEXE]" Type="string" />
         </RegistryKey>
       </Component>
-      <Component Id="LanFirewall" Guid="BA50F5C6-32CE-41F4-ACCC-A8639C9B1319" Condition="FIREWALL = &quot;1&quot; AND ACCESSMODE = &quot;lan&quot;" Bitness="always64">
+      <Component Id="LanFirewall" Guid="BA50F5C6-32CE-41F4-ACCC-A8639C9B1319" Condition="FIREWALL = &quot;1&quot; AND (ACCESSMODE = &quot;lan&quot; OR ACCESSMODE = &quot;ip&quot;)" Bitness="always64">
         <RegistryValue Root="HKLM" Key="SOFTWARE\KommitEye\Server" Name="FirewallInstalled" Value="1" Type="integer" KeyPath="yes" />
         <firewall:FirewallException Id="PrivateLan" Name="KommitEye Service (private LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="private" Scope="localSubnet" />
         <firewall:FirewallException Id="DomainLan" Name="KommitEye Service (domain LAN)" Program="[#ServerExe]" Port="[PORT]" Protocol="tcp" Profile="domain" Scope="localSubnet" />
@@ -132,6 +135,7 @@
 
     <Binary Id="SetupActions" SourceFile="$(var.CustomActions.TargetDir)KommitEye.SetupActions.CA.dll" />
     <CustomAction Id="InitializeSettings" BinaryRef="SetupActions" DllEntry="InitializeSettings" Execute="immediate" Return="check" />
+    <CustomAction Id="ValidateNetwork" BinaryRef="SetupActions" DllEntry="ValidateNetwork" Execute="immediate" Return="check" />
     <CustomAction Id="ValidateDialog" BinaryRef="SetupActions" DllEntry="ValidateDialog" Execute="immediate" Return="check" HideTarget="yes" />
     <CustomAction Id="ValidateExecute" BinaryRef="SetupActions" DllEntry="ValidateExecute" Execute="immediate" Return="check" HideTarget="yes" />
     <CustomAction Id="RollbackStartMode" BinaryRef="SetupActions" DllEntry="RollbackStartMode" Execute="rollback" Impersonate="no" Return="ignore" />

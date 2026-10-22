@@ -44,7 +44,9 @@ use `NT SERVICE\KommitEye` without a user password. The persistent configuration
 
 Alternatively, extract the portable ZIP and run `KommitEye.Server.exe` directly
 (or `Start-KommitEye.ps1`); service installation is optional. On first startup the
-executable creates the same default `server.json` in both modes. Use
+executable creates the same default `server.json` in both modes, with an explicit
+data path, `http://127.0.0.1:5080`, `git.exe` for PATH discovery, and `CurrentUser`
+credential protection. Existing files are preserved. Use
 `--config "D:\KommitEye\server.json"` for another location, including a missing file.
 Existing files and folder permissions are preserved. See the
 [configuration fields, defaults and precedence](docs/server-web.md#configuration-initialization-and-location).

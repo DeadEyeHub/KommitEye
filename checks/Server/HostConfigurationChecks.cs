@@ -15,6 +15,7 @@ static class HostConfigurationChecks
         var missing = Path.Combine(root, "nested", "missing.json");
         var initialized = ServerHostOptions.Load(["--config", missing, "--data-dir", data]);
         Check(File.Exists(missing) && initialized.DataDirectory == data, "explicit missing config creates parents and valid JSON");
+        Check(initialized.GitExecutable is null, "explicit Git executable name retains PATH discovery");
         var original = File.ReadAllBytes(missing);
         ServerHostOptions.Load(["--config=" + missing, "--data-dir", root]);
         Check(original.SequenceEqual(File.ReadAllBytes(missing)), "subsequent starts preserve configuration byte for byte");
@@ -36,7 +37,11 @@ static class HostConfigurationChecks
         {
             Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", root);
             Environment.SetEnvironmentVariable("ASPNETCORE_URLS", "http://127.0.0.1:5099");
-            Check(ServerHostOptions.Load(["--config", concurrent]).DataDirectory == root, "null fields fall back to environment");
+            Check(ServerHostOptions.Load(["--config", concurrent]).DataDirectory == ServerHostOptions.DefaultDataDirectory, "generated explicit defaults override environment");
+            File.WriteAllText(concurrent, "{\"DataDirectory\":null,\"Urls\":null,\"GitExecutable\":null}");
+            var legacy = File.ReadAllBytes(concurrent);
+            var fallback = ServerHostOptions.Load(["--config", concurrent]);
+            Check(fallback.DataDirectory == root && fallback.Urls == "http://127.0.0.1:5099" && legacy.SequenceEqual(File.ReadAllBytes(concurrent)), "legacy null fields use environment without rewriting file");
             Check(ServerHostOptions.Load(["--config", path]).Urls == "http://127.0.0.1:5081", "file overrides environment");
             Check(ServerHostOptions.Load(["--config", path, "--urls", "http://127.0.0.1:5098"]).Urls!.EndsWith(":5098"), "CLI overrides file and environment");
         }

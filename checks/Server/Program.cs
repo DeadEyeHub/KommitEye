@@ -66,6 +66,7 @@ void Start()
     else
     {
         start.ArgumentList.Add("--config"); start.ArgumentList.Add(Path.Combine(root, "console", "server.json"));
+        start.ArgumentList.Add("--data-dir"); start.ArgumentList.Add(Path.Combine(root, "data"));
         start.ArgumentList.Add("--urls"); start.ArgumentList.Add($"http://127.0.0.1:{port}");
         start.ArgumentList.Add("--git-path"); start.ArgumentList.Add(gitExecutable);
     }

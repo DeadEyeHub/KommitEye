@@ -31,7 +31,10 @@ static class StartupConfigurationChecks
         var original = File.ReadAllBytes(config);
         using (var json = JsonDocument.Parse(original))
             Check(json.RootElement.EnumerateObject().Count() == 4 &&
-                json.RootElement.GetProperty("DataDirectory").ValueKind == JsonValueKind.Null,
+                json.RootElement.GetProperty("DataDirectory").GetString() == KommitEye.Server.Hosting.ServerHostOptions.DefaultDataDirectory &&
+                json.RootElement.GetProperty("Urls").GetString() == "http://127.0.0.1:5080" &&
+                json.RootElement.GetProperty("GitExecutable").GetString() == KommitEye.Platform.GitExecutables.Current.GitFileName &&
+                json.RootElement.GetProperty("CredentialProtection").GetString() == "CurrentUser",
                 "generated config contains supported defaults, not environment values or secrets");
         Check(!Directory.Exists(Path.Combine(directory, "environment-data")), "initialization-only mode does not start data stores");
         var loaded = await Run();

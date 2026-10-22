@@ -66,11 +66,12 @@ public sealed class ServerHostOptions
 
             ServerHostOptions Create()
             {
-                // Persist only explicit initialization choices, never environment variables or secrets.
+                // Persist explicit choices or built-in defaults, never environment variables or secrets.
                 var initial = new ServerHostOptions
                 {
-                    DataDirectory = Option(args, "--data-dir"), Urls = Option(args, "--urls"),
-                    GitExecutable = Option(args, "--git-path"),
+                    DataDirectory = Option(args, "--data-dir") ?? DefaultDataDirectory,
+                    Urls = Option(args, "--urls") ?? "http://127.0.0.1:5080",
+                    GitExecutable = Option(args, "--git-path") ?? GitExecutables.Current.GitFileName,
                     CredentialProtection = Option(args, "--credential-protection") ?? "CurrentUser"
                 };
                 _ = Resolve(initial, args); // Reject invalid options before creating any file.
@@ -112,6 +113,8 @@ public sealed class ServerHostOptions
                 throw new ArgumentException("Urls must contain HTTP/HTTPS listening addresses, separated by semicolons, without credentials, paths, query strings or fragments.");
         }
         var git = Option("--git-path") ?? config.GitExecutable;
+        if (string.Equals(git, GitExecutables.Current.GitFileName, OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) git = null; // Discover on PATH.
         if (git is not null)
         {
             git = AbsolutePath(git, "GitExecutable");

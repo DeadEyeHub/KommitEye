@@ -30,6 +30,7 @@
     <Property Id="AUTOCHOICE" Value="1" />
     <Property Id="FIREWALLCHOICE" Value="1" />
     <Property Id="SERVICEACCOUNT" Secure="yes" />
+    <Property Id="LEGACYSERVICE" Secure="yes" />
     <Property Id="SERVICEUSER" Secure="yes" />
     <Property Id="SERVICEDOMAIN" Secure="yes" />
     <Property Id="SERVICESID" Secure="yes" />

@@ -7,6 +7,9 @@ void Reject(Action action, string message)
     try { action(); } catch (ArgumentException) { Check(true, message); return; }
     throw new Exception(message);
 }
+Check(SetupValidation.InstallationAccount(null!) == SetupValidation.VirtualServiceAccount && !SetupValidation.IsLegacyService(null!), "new installation uses managed identity and skips account dialog");
+Check(!SetupValidation.IsLegacyService(@"nt service\kommiteye"), "managed service upgrade skips account dialog");
+Check(SetupValidation.IsLegacyService(@"DOMAIN\existing") && SetupValidation.InstallationAccount(@"DOMAIN\existing") == @"DOMAIN\existing", "legacy service upgrade preserves identity and requests password");
 Check(SetupValidation.Port("5080") == 5080, "default port");
 Check(SetupValidation.Port("65535") == 65535, "highest TCP port");
 foreach (var value in new[] { "0", "65536", "-1", "abc", "80 --urls", "" }) Reject(() => SetupValidation.Port(value), "reject port " + value);

@@ -10,6 +10,11 @@ public static class SetupValidation
     public const string VirtualServiceAccount = @"NT SERVICE\KommitEye";
     // Deterministic service SID for the fixed SCM name KommitEye (sc.exe showsid KommitEye).
     public const string VirtualServiceSid = "S-1-5-80-3680015686-339733092-3489414343-1427611537-2043285906";
+    public static string InstallationAccount(string installedAccount) => string.IsNullOrEmpty(installedAccount)
+        ? VirtualServiceAccount : string.Join("\\", Account(installedAccount));
+    public static bool IsLegacyService(string installedAccount) => !string.IsNullOrEmpty(installedAccount) &&
+        !InstallationAccount(installedAccount).Equals(VirtualServiceAccount, StringComparison.OrdinalIgnoreCase);
+
     public static int Port(string value)
     {
         if (!int.TryParse(value, out var port) || port < 1 || port > 65535)

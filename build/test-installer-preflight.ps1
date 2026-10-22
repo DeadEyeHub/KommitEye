@@ -51,7 +51,11 @@ try {
     # intentionally reject a different data folder or service account.
     $saved = Get-ItemProperty 'HKLM:\SOFTWARE\KommitEye\Server' -ErrorAction SilentlyContinue
     $dataPath = if ($saved.DATADIR) { $saved.DATADIR } else { Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-preflight-' + [guid]::NewGuid().ToString('N')) }
-    $account = if ($saved.SERVICEACCOUNT) { $saved.SERVICEACCOUNT } else { 'NT SERVICE\KommitEye' }
+    $account = Get-Property 'SERVICEACCOUNT'
+    $installedService = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\KommitEye' -ErrorAction SilentlyContinue
+    if (!$installedService) {
+        Assert ($account -eq 'NT SERVICE\KommitEye' -and (Get-Property 'LEGACYSERVICE') -ne '1') 'new installation ignores stale account registry values and skips password screen'
+    }
     $dataExisted = Test-Path -LiteralPath $dataPath
     Set-Property 'DATADIR' $dataPath
     Set-Property 'SERVICEACCOUNT' $account
@@ -66,6 +70,8 @@ try {
     Assert ((Get-Property 'ConfigureStartMode') -eq 'mode=3') 'unchecked auto-start prepares demand startup'
     Assert ((Get-Property 'STARTNOW') -eq '0' -and (Get-Property 'FIREWALL') -eq '0') 'unchecked options become explicit zero values for elevation'
     Assert ((Test-Path -LiteralPath (Get-Property 'DATAPATH')) -eq $dataExisted) 'preflight does not create or remove the data directory'
+    Set-Property 'AUTOCHOICE' '1'
+    Assert ($session.DoAction('ValidateDialog') -eq 1 -and (Get-Property 'SETUPVALID') -eq '1' -and (Get-Property 'ConfigureStartMode') -eq 'mode=2') 'checked auto-start prepares automatic Windows startup'
     Write-Host 'Immediate preflight checks passed. No service, firewall, account or installation changes were made.'
 } finally {
     if ($null -ne $session) { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($session) }

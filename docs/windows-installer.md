@@ -160,3 +160,16 @@ msiexec /x '<path to the installed version MSI>' /L*v "$env:TEMP\KommitEye-unins
 `build/measure-installer-validation.ps1 -Path <msi> -PayloadDirectory <published-server>`
 times costing and file-use validation without installing or removing anything.
 It is a diagnostic for the current file/process state, not a full uninstall benchmark.
+
+### Startup and service identity (3.6.2)
+
+On **Git and startup**, select **Start the server when Windows starts** to enable
+Windows service automatic startup, without requiring a user to sign in. Clear it
+for manual startup. **Start the server after installation** is a separate option.
+Both options are available on new installation, upgrade and repair.
+
+New installations and upgrades of `NT SERVICE\KommitEye` skip the account/password
+screen. Only an actually installed service using a legacy Windows account shows
+**Existing service account**. Registry settings left after uninstall no longer
+cause the password screen to appear. Existing encrypted data is not automatically
+migrated between service identities.

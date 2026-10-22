@@ -31,7 +31,15 @@ public static class Actions
                 Default("CONFIGDIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye", "Server"));
                 Default("DATADIR", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "KommitEye", "Server", "data"));
                 Default("PORT", "5080"); Default("ACCESSMODE", "local"); Default("FIREWALL", "0");
-                Default("AUTOSTART", "1"); Default("SERVICEACCOUNT", SetupValidation.VirtualServiceAccount);
+                var installedAccount = InstalledServiceAccount();
+                session["SERVICEACCOUNT"] = SetupValidation.InstallationAccount(installedAccount);
+                session["LEGACYSERVICE"] = SetupValidation.IsLegacyService(installedAccount) ? "1" : "";
+                if (session["LEGACYSERVICE"] != "1") session["SERVICEPASSWORD"] = "";
+                if (session["AUTOSTART"] == "")
+                {
+                    using (var service = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\KommitEye"))
+                        session["AUTOSTART"] = installedAccount == null || (int?)service?.GetValue("Start") == 2 ? "1" : "0";
+                }
                 Default("STARTNOW", "1");
                 Default("GITEXE", FindGit());
                 var configPath = Path.Combine(session["CONFIGDIR"], "server.json");
@@ -55,6 +63,16 @@ public static class Actions
             return ActionResult.Success;
         }
         catch { return Error(session, "Unable to read previous installation settings."); }
+    }
+
+    private static string InstalledServiceAccount()
+    {
+        using (var service = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\KommitEye"))
+        {
+            if (service == null) return null;
+            return service.GetValue("ObjectName") as string
+                ?? throw new ArgumentException("Cannot determine the installed KommitEye service identity.");
+        }
     }
 
     private static string FindGit()
@@ -114,7 +132,7 @@ public static class Actions
         using (var saved = Saved())
         {
             var previousData = saved?.GetValue("DATADIR") as string;
-            var previousAccount = saved?.GetValue("SERVICEACCOUNT") as string;
+            var previousAccount = InstalledServiceAccount();
             if (!File.Exists(configPath) && previousData != null && !string.Equals(previousData.TrimEnd('\\'), data, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Keep the existing data folder during upgrade or repair. Data migration must be performed separately.");
             if (previousAccount != null && !string.Equals(previousAccount, fullAccount, StringComparison.OrdinalIgnoreCase))

@@ -4,6 +4,7 @@ namespace KommitEye.Services;
 
 public sealed class PersistentLog
 {
+    private const int ArchiveCount = 10;
     private readonly object _gate = new();
     private readonly string _path;
     private readonly long _maxBytes;
@@ -27,7 +28,7 @@ public sealed class PersistentLog
         try
         {
             // Seek a bounded suffix, discard a possibly partial UTF-8 line.
-            foreach (var file in new[] { path + ".1", path })
+            foreach (var file in Enumerable.Range(1, ArchiveCount).Reverse().Select(i => path + "." + i).Append(path))
             {
                 if (!File.Exists(file)) continue;
                 using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
@@ -70,7 +71,12 @@ public sealed class PersistentLog
                         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
                         var bytes = Encoding.UTF8.GetBytes(line);
                         if (File.Exists(_path) && new FileInfo(_path).Length + bytes.Length > _maxBytes)
+                        {
+                            for (var i = ArchiveCount - 1; i >= 1; i--)
+                                if (File.Exists(_path + "." + i))
+                                    File.Move(_path + "." + i, _path + "." + (i + 1), true);
                             File.Move(_path, _path + ".1", true);
+                        }
                         using var file = new FileStream(_path, FileMode.Append, FileAccess.Write, FileShare.Read);
                         file.Write(bytes);
                         // Disposing flushes each append, including canceled partial responses.
@@ -87,7 +93,7 @@ public sealed class PersistentLog
         lock (_gate)
         {
             // Remove the rotated history too, otherwise it returns on restart.
-            File.Delete(_path + ".1");
+            for (var i = 1; i <= ArchiveCount; i++) File.Delete(_path + "." + i);
             File.Delete(_path);
             _tail.Clear();
             _characters = 0;

@@ -42,17 +42,24 @@ static class EmptyResponseChecks
         await new StateStore().SaveAsync(new RepositoryState(), default);
         var failedHandler = new EmptyHandler("repeat", finding, new EmptyClock());
         using var failedHttp = new HttpClient(failedHandler);
-        var runner = new ReviewRunner(new GitService(), new ModelClient(failedHttp), new ConfigurationStore(), new StateStore(), new ReportWriter());
-        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var git = new GitService();
+        var state = new StateStore();
+        var runner = new ReviewRunner(git, new ModelClient(failedHttp), new ConfigurationStore(), state, new ReportWriter());
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var failures = 0;
         var successes = 0;
         runner.Reviewed += review => { if (review.Failed) failures++; else successes++; };
-        runner.Log += line => { if (line.Contains("failure saved in report")) saved.TrySetResult(); };
+        runner.AutomaticStopped += () => stopped.TrySetResult();
         runner.Start(new AppSettings { RepositoryPath = repo, BranchRef = "refs/heads/main", PullEnabled = false, PollIntervalSeconds = 60 },
             new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" });
-        try { await saved.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
+        try { await stopped.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
         finally { await runner.StopAsync(); }
         Check(failedHandler.Requests == 3 && failures == 1 && successes == 0, "empty failure must not restart analysis");
+        var identity = await git.GetRepositoryIdentityAsync(repo, default);
+        Check(await state.GetCursorAsync(identity.CommonGitDirectory, "refs/heads/main", default) is null,
+            "empty response must stop without marking the commit processed");
+        Check(runner.FailureReason?.Contains("without a final report") == true,
+            "automatic stop preserves empty response diagnostics");
         var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
         Check(report.Contains("without a final report") && !report.Contains("no bugs found"), "empty failure persisted without false NO_BUGS");
         Console.WriteLine("PASS: empty response runner failure without false NO_BUGS");

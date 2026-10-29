@@ -14,6 +14,21 @@ void Check(bool condition, string message)
 }
 try
 {
+    var logPath = Path.Combine(directory, "rotation.log");
+    var log = new PersistentLog(logPath, maxBytes: 1);
+    for (var i = 1; i <= 13; i++) log.Append($"entry-{i:D2}");
+    Check(Directory.GetFiles(directory, "rotation.log*").Length == 11, "log keeps ten archives plus active file");
+    Check(File.ReadAllText(logPath).Contains("entry-13") &&
+        Enumerable.Range(1, 10).All(i => File.ReadAllText(logPath + "." + i).Contains($"entry-{13 - i:D2}")),
+        "rotation preserves newest entries in order and drops oldest archive");
+    var reloadedLog = new PersistentLog(logPath);
+    var history = reloadedLog.Snapshot()!;
+    Check(history.Contains("entry-03") && !history.Contains("entry-02") &&
+        history.IndexOf("entry-03", StringComparison.Ordinal) < history.IndexOf("entry-13", StringComparison.Ordinal),
+        "restart loads rotated history in chronological order");
+    reloadedLog.Clear();
+    Check(Directory.GetFiles(directory, "rotation.log*").Length == 0 && new PersistentLog(logPath).Snapshot() == "",
+        "clear removes active log and all ten archives without restoring old history");
     using (var rsa = RSA.Create(2048))
     {
         var request = new CertificateRequest("CN=KommitEye platform fixture", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);

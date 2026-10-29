@@ -1350,8 +1350,8 @@ public partial class MainWindow : Window
     private void ClearJournal_Click(object sender, RoutedEventArgs e)
     {
         if (System.Windows.MessageBox.Show(this, Localization.Text(
-            "Clear the journal and its rotated copy? Reports, detailed log and token counters are retained.",
-            "Очистить журнал и его предыдущую копию? Отчёты, подробный лог и счётчики токенов сохранятся."),
+            "Clear the journal and its rotated history? Reports, detailed log and token counters are retained.",
+            "Очистить журнал и все его архивные копии? Отчёты, подробный лог и счётчики токенов сохранятся."),
             Localization.Text("Clear journal", "Очистить журнал"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         try { _journal.Clear(); RefreshLogs(); }
         catch (Exception exception) { ShowError(exception.Message); }

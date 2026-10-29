@@ -295,7 +295,10 @@ Each project has a Logs button opening a separate dialog with journal and detail
 model/Git views, two-second refresh, optional auto-scroll, line filtering and a
 download of the displayed tail. The tail is bounded to 500 entries / 128,000
 characters. Clear requires confirmation and deletes only the selected log and its
-rotated archive; it preserves reports, token counters and the other log type.
+rotated archives; it preserves reports, token counters and the other log type.
+Desktop and Server keep ten rotated files (`.1` newest through `.10` oldest)
+in addition to each active log, rotating at 8 MiB by default. The UI still shows
+only the bounded tail; inspect the files on disk for the full retained history.
 
 ### HTML report export
 

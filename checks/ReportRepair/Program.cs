@@ -65,17 +65,24 @@ foreach (var test in cases)
 var failedHandler = new RepairHandler(incomplete, "NO_BUGS", false);
 using (var http = new HttpClient(failedHandler))
 {
-    var runner = new ReviewRunner(new GitService(), new ModelClient(http), new ConfigurationStore(), new StateStore(), new ReportWriter());
-    var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var git = new GitService();
+    var state = new StateStore();
+    var runner = new ReviewRunner(git, new ModelClient(http), new ConfigurationStore(), state, new ReportWriter());
+    var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var completed = false;
     var failures = 0;
     runner.Reviewed += review => { if (review.Failed) failures++; else completed = true; };
-    runner.Log += line => { if (line.Contains("failure saved in report")) saved.TrySetResult(); };
+    runner.AutomaticStopped += () => stopped.TrySetResult();
     runner.Start(new AppSettings { RepositoryPath = repo, BranchRef = "refs/heads/main", PullEnabled = false, PollIntervalSeconds = 60 }, profile);
-    try { await saved.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
+    try { await stopped.Task.WaitAsync(TimeSpan.FromSeconds(20)); }
     finally { await runner.StopAsync(); }
     Check(failedHandler.Repairs == 1 && failedHandler.Reviews == 2 && !completed, "failed repair was retried or completed");
     Check(failures == 1, "terminal failure must notify exactly once");
+    var identity = await git.GetRepositoryIdentityAsync(repo, default);
+    Check(await state.GetCursorAsync(identity.CommonGitDirectory, "refs/heads/main", default) is null,
+        "failed repair must stop without marking the commit processed");
+    Check(runner.FailureReason?.Contains("Report format repair failed") == true,
+        "automatic stop preserves format repair diagnostics");
     var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
     Check(report.Contains("Report format repair failed") && !report.Contains("no bugs found"), "failure became no bugs");
     Console.WriteLine("PASS: failed repair remains a reported failure without analysis retries.");

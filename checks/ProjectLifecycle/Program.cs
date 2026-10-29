@@ -102,6 +102,15 @@ Check(started.SequenceEqual(new[] { firstPending }), "database error stops immed
 Check(positionAfterFailure.PendingStart == firstPending, "database error preserves pending commit for restart");
 Check(positionAfterFailure.Cursor == cursorBeforeFailure, "database error does not advance saved cursor");
 Check(stopDetail.Contains("report_groups") && stopDetail.Contains(firstPending), "stop notification includes original database error and commit");
+using (var diagnosticsDb = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Path.Combine(root, "diagnostics.db")}"))
+{
+    diagnosticsDb.Open(); using var query = diagnosticsDb.CreateCommand();
+    query.CommandText = "SELECT commit_sha, error, logs_json FROM review_failures WHERE project_id=$project ORDER BY id DESC LIMIT 1";
+    query.Parameters.AddWithValue("$project", enabled.ProjectId);
+    using var row = query.ExecuteReader();
+    Check(row.Read() && row.GetString(0) == firstPending && row.GetString(1).Contains("report_groups") && row.GetString(2).Contains("Failed"),
+        "report database failure preserves commit diagnostics in separate SQLite database");
+}
 for (var i = 0; i < 20 && mail.Counts().Pending > 0; i++) await mail.ProcessOnceAsync(default);
 Check(sentBodies.Any(body => body.Contains("Project stopped") && body.Contains("report_groups")), "configured mail receives stop reason on database failure");
 await using (var failedCoordinator = new ProjectCoordinator(configuration, new ModelClient(), state, brokenWriter, mail, jobs))

@@ -17,6 +17,7 @@ public sealed class AppSettings
     public bool AutoStart { get; set; }
     public bool PullEnabled { get; set; } = true;
     public bool FetchSubmodules { get; set; }
+    public bool FetchSubmodulesAlways { get; set; }
     public bool UpdateSubmodulesAfterAdvance { get; set; } = true;
     public bool QuietHoursEnabled { get; set; }
     public string QuietHoursStart { get; set; } = "09:00";

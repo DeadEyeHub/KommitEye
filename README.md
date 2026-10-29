@@ -7,8 +7,8 @@ contains two applications sharing the same review engine:
 
 | Application | Interface | Windows x64 distribution |
 | --- | --- | --- |
-| Desktop 3.6.4 | WPF desktop app with a system tray icon | Self-contained EXE |
-| Service 3.6.4 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+| Desktop 3.6.5 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Service 3.6.5 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
 
 Both support multiple repositories, review reports and mail notifications.
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
@@ -93,9 +93,9 @@ Run from the repository root:
 
 Outputs in `artifacts/`:
 
-- `KommitEye-Desktop-3.6.4-win-x64.exe`
-- `KommitEye-Service-3.6.4-win-x64.zip`
-- `KommitEye-Service-3.6.4-win-x64.msi`
+- `KommitEye-Desktop-3.6.5-win-x64.exe`
+- `KommitEye-Service-3.6.5-win-x64.zip`
+- `KommitEye-Service-3.6.5-win-x64.msi`
 - `SHA256SUMS-<product>.txt`
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds
@@ -342,6 +342,24 @@ dotnet run --project checks/Installer/Installer.csproj
 ```
 
 ### Project autostart and operational email
+
+Failed reviews also save a diagnostic snapshot in `diagnostics.db` in the application
+data directory (Desktop and Server). Table `review_failures` stores the project,
+repository, branch, commit SHA, model, timestamp, error and `logs_json`: the last
+50 lines from the current run's journal, Git/model logs and stage events, in time
+order. Each line is bounded to 8,192 characters and known credentials are redacted.
+The journal records the snapshot ID and database path. Snapshots survive log
+rotation/clearing and are separate from `reports.db`, so report-storage errors can
+still be diagnosed. If diagnostic storage is also unavailable, the journal records
+that failure while preserving the original error and stopping the project.
+
+Project settings support three submodule fetch modes: disable **Fetch submodules**
+for no recursive fetch; enable it with **Always fetch changes** unchecked for
+`on-demand`; check both to fetch initialized submodules on every repository fetch.
+Existing settings retain their previous behavior. Both modes require **Fetch before
+each check**, do not initialize new submodules, and do not change their checkout.
+`FetchSubmodulesAlways` (`fetchSubmodulesAlways` in the API,
+`fetch_submodules_always` in settings.conf) defaults to false.
 
 The web project status separates **Running** (the project is active) from its current
 action. **Waiting for model response** means a model request is in progress;

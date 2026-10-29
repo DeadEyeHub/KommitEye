@@ -210,9 +210,13 @@ public sealed class GitService
             // git-common-dir avoids competing ref/object updates while Git reuses objects.
             activity?.Invoke(Localization.Format("Fetching {0} from remote {1}.", "Fetch: получение {0} из remote {1}.", resolvedRemote.MergeReference, resolvedRemote.Name));
             GitResult result;
-            var recurse = settings.FetchSubmodules ? "--recurse-submodules=on-demand" : "--no-recurse-submodules";
+            var recurse = settings.FetchSubmodules
+                ? settings.FetchSubmodulesAlways ? "--recurse-submodules=yes" : "--recurse-submodules=on-demand"
+                : "--no-recurse-submodules";
             activity?.Invoke(settings.FetchSubmodules
-                ? Localization.Text("Fetch: initialized submodules on demand; no automatic initialization.", "Fetch: инициализированные сабмодули по необходимости; без автоматической инициализации.")
+                ? settings.FetchSubmodulesAlways
+                    ? Localization.Text("Fetch: always fetch initialized submodules; no automatic initialization.", "Fetch: всегда получать изменения инициализированных сабмодулей; без автоматической инициализации.")
+                    : Localization.Text("Fetch: initialized submodules on demand; no automatic initialization.", "Fetch: инициализированные сабмодули по необходимости; без автоматической инициализации.")
                 : Localization.Text("Fetch: submodule network access disabled.", "Fetch: сетевое получение сабмодулей отключено."));
             if (branch.StartsWith("refs/heads/", StringComparison.Ordinal))
                 result = await RunWithAuthenticationAsync(repositoryPath, IsLocalRemote(resolvedRemote.Url) ? null : settings, cancellationToken,

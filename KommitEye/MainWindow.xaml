@@ -122,7 +122,8 @@
                     <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,7,0,12">
                         <CheckBox x:Name="AutoStartCheckBox" Content="Start this project when the application starts" />
                         <CheckBox x:Name="PullEnabledCheckBox" Content="Fetch before each check" />
-                        <CheckBox x:Name="FetchSubmodulesCheckBox" Margin="0,5,0,0" Content="Fetch initialized submodules on demand" />
+                        <CheckBox x:Name="FetchSubmodulesCheckBox" Margin="0,5,0,0" Content="Fetch initialized submodules" />
+                        <CheckBox x:Name="FetchSubmodulesAlwaysCheckBox" Margin="20,5,0,0" Content="Always fetch submodules (unchecked: on demand)" IsEnabled="{Binding IsChecked, ElementName=FetchSubmodulesCheckBox}" />
                         <CheckBox x:Name="UpdateSubmodulesCheckBox" Margin="0,5,0,0" Content="Update submodules after branch advancement" />
                         <TextBlock x:Name="PullExplanationTextBlock" Margin="0,5,0,0" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
                                    Text="Fetch updates remote-tracking refs, never the checkout. Local branches are read as-is." />

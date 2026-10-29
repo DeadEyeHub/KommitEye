@@ -64,7 +64,6 @@ export function Projects({ tick }: { tick: number }) {
     "pollIntervalSeconds",
     "autoStart",
     "pullEnabled",
-    "fetchSubmodules",
     "updateSubmodulesAfterAdvance",
     "quietHoursEnabled",
     "quietHoursStart",
@@ -81,6 +80,7 @@ export function Projects({ tick }: { tick: number }) {
       autoStart: false,
       pullEnabled: true,
       fetchSubmodules: false,
+      fetchSubmodulesAlways: false,
       updateSubmodulesAfterAdvance: true,
       quietHoursEnabled: false,
       quietHoursStart: "09:00",
@@ -134,6 +134,17 @@ export function Projects({ tick }: { tick: number }) {
           />
           <div className="form-grid">
             <ObjectFields value={edit} set={setEdit} keys={fields} />
+            <fieldset className="submodule-settings">
+              <legend>{t("Получение сабмодулей", "Submodule fetch")}</legend>
+              <Field name="fetchSubmodules" value={!!edit.fetchSubmodules}
+                onChange={(value) => setEdit({ ...edit, fetchSubmodules: value })} />
+              <label className="check">
+                <input type="checkbox" checked={!!edit.fetchSubmodulesAlways} disabled={!edit.fetchSubmodules}
+                  onChange={(e) => setEdit({ ...edit, fetchSubmodulesAlways: e.target.checked })} />
+                {t("Всегда получать изменения (выключено: по необходимости)", "Always fetch changes (unchecked: on demand)")}
+              </label>
+              <small>{t("Работает при включённом fetch перед проверкой. Только для уже инициализированных сабмодулей; не клонирует новые.", "Requires fetch before each check. Applies to initialized submodules; does not clone new ones.")}</small>
+            </fieldset>
             <label className="field">
               <span>{t("Язык отчётов", "Report language")}</span>
               <select

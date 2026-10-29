@@ -9,6 +9,8 @@ public sealed class ReviewRunner
     private readonly ConfigurationStore _configuration;
     private readonly StateStore _stateStore;
     private readonly ReportWriter _reportWriter;
+    private readonly FailureDiagnostics _failureDiagnostics = new(AppPaths.DataDirectory);
+    private AppSettings? _diagnosticSettings;
     private readonly object _lifecycleLock = new();
     private CancellationTokenSource? _cancellation;
     private Task? _runTask;
@@ -75,6 +77,9 @@ public sealed class ReviewRunner
         _stateStore = stateStore;
         _reportWriter = reportWriter;
         _localNow = localNow ?? (() => DateTime.Now);
+        Log += message => _failureDiagnostics.Append("journal", message);
+        ModelLog += message => _failureDiagnostics.Append("model", message);
+        _git.Diagnostic += message => _failureDiagnostics.Append("git", message);
     }
 
     public bool Start(AppSettings settings, ModelProfile profile)
@@ -86,6 +91,8 @@ public sealed class ReviewRunner
 
             _updatedSettings = null; _updatedProfile = null;
             _stopReason = null;
+            _diagnosticSettings = settings;
+            _failureDiagnostics.Clear();
             _settingsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
             profile.Parameters.Validate();
             _schedule = new DailyModelSchedule(settings);
@@ -126,6 +133,8 @@ public sealed class ReviewRunner
                     "Stop automatic monitoring before reviewing a selected commit.",
                     "Остановите автоматическую проверку перед проверкой выбранного коммита."));
             _manualReviewActive = true;
+            _diagnosticSettings = settings;
+            _failureDiagnostics.Clear();
         }
 
         try
@@ -164,6 +173,7 @@ public sealed class ReviewRunner
         catch (Exception exception)
         {
             Emit(ReviewStage.Failed, profile, _activeCommit, exception.Message);
+            SaveFailureDiagnostics(profile, exception.ToString(), true);
             throw;
         }
         finally
@@ -223,6 +233,7 @@ public sealed class ReviewRunner
             lock (_lifecycleLock)
             {
                 settings = _updatedSettings ?? settings;
+                _diagnosticSettings = settings;
                 profile = _updatedProfile?.Clone() ?? profile;
                 _settingsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 configurationChanged = _settingsChanged.Task;
@@ -254,6 +265,7 @@ public sealed class ReviewRunner
             catch (Exception exception)
             {
                 Emit(ReviewStage.Failed, profile, _activeCommit, exception.Message);
+                SaveFailureDiagnostics(profile, exception.ToString(), false);
                 StatusChanged?.Invoke(Localization.Text("Error", "Ошибка"));
                 Log?.Invoke(Localization.Format("Error: {0}", "Ошибка: {0}", exception.Message));
                 _stopReason = Localization.Format(
@@ -304,6 +316,7 @@ public sealed class ReviewRunner
             {
                 BranchRef = branch,
                 FetchSubmodules = settings.FetchSubmodules,
+                FetchSubmodulesAlways = settings.FetchSubmodulesAlways,
                 GitAuthenticationMode = settings.GitAuthenticationMode,
                 SshPrivateKeyPath = settings.SshPrivateKeyPath,
                 PlinkPath = settings.PlinkPath
@@ -485,6 +498,7 @@ public sealed class ReviewRunner
                 throw;
             }
             Emit(ReviewStage.Failed, profile, sha, exception.Message);
+            SaveFailureDiagnostics(profile, exception.ToString(), manualReview);
             result = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message) };
         }
         Emit(ReviewStage.Report, profile, sha);
@@ -543,9 +557,25 @@ public sealed class ReviewRunner
 
     private void Emit(ReviewStage stage, ModelProfile profile, string sha, string detail = "")
     {
+        _failureDiagnostics.Append("stage", $"{stage} | {sha} | {detail}");
         Publish(Progress, new ReviewProgress(stage, profile.Model, sha, detail));
         if (stage is ReviewStage.Failed or ReviewStage.ModelUnavailable)
             Publish(OperationalEvent, ("Project error", GitService.SanitizeDiagnostic(detail)));
+    }
+
+    private void SaveFailureDiagnostics(ModelProfile profile, string error, bool manual)
+    {
+        if (_diagnosticSettings is null) return;
+        try
+        {
+            var id = _failureDiagnostics.Save(_diagnosticSettings, profile, _activeCommit, error, manual);
+            Publish(Log, $"Failure diagnostics #{id} saved: {_failureDiagnostics.DatabasePath}");
+        }
+        catch (Exception exception)
+        {
+            // A storage failure must not hide the original review failure or resume the project.
+            Publish(Log, $"Could not save failure diagnostics to '{_failureDiagnostics.DatabasePath}': {GitService.SanitizeDiagnostic(exception.Message)}");
+        }
     }
 
     private void Complete(string path, string branch, string sha, ModelProfile profile,

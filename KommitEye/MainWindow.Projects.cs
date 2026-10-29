@@ -92,6 +92,7 @@ public partial class MainWindow
             PollIntervalSeconds = interval, AutoStart = AutoStartCheckBox.IsChecked == true,
             PullEnabled = PullEnabledCheckBox.IsChecked == true,
             FetchSubmodules = FetchSubmodulesCheckBox.IsChecked == true,
+            FetchSubmodulesAlways = FetchSubmodulesAlwaysCheckBox.IsChecked == true,
             UpdateSubmodulesAfterAdvance = UpdateSubmodulesCheckBox.IsChecked == true,
             QuietHoursEnabled = QuietHoursCheckBox.IsChecked == true,
             QuietHoursStart = QuietStartTextBox.Text.Trim(), QuietHoursEnd = QuietEndTextBox.Text.Trim(),

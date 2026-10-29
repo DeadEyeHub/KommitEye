@@ -448,6 +448,8 @@ summary {
   border-radius: 6px;
 }
 .project-status { min-width: 220px; }
+.submodule-settings { grid-column: 1 / -1; min-width: 0; border: 1px solid #c4cdca; border-radius: 6px; padding: 12px 16px; }
+.submodule-settings .check { margin-bottom: 8px; }
 .commit-row {
   display: grid;
   grid-template-columns: 18px 11ch minmax(80px, 140px) max-content minmax(0, 1fr);

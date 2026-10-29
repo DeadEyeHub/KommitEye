@@ -35,6 +35,7 @@ cancellation.Cancel();
 try { await git.GetCommitPageAsync(repo, head, 0, 101, cancellation.Token); throw new Exception("Cancellation ignored"); }
 catch (OperationCanceledException) { }
 Console.WriteLine("PASS: 205 commits across three pages; no duplicates or gaps after branch moves; end of history and cancellation.");
+await SubmoduleFetchChecks.RunAsync();
 
 async Task Git(string? inputText, params string[] args)
 {

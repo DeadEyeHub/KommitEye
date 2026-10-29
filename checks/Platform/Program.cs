@@ -14,6 +14,21 @@ void Check(bool condition, string message)
 }
 try
 {
+    var diagnostics = new FailureDiagnostics(directory);
+    for (var i = 0; i < 60; i++) diagnostics.Append("fixture", $"line-{i:D2}");
+    diagnostics.Append("model", "Authorization: Bearer secret-token\napi_key: private-key");
+    var diagnosticId = diagnostics.Save(new KommitEye.Models.AppSettings { ProjectId = "fixture" },
+        new KommitEye.Models.ModelProfile { ApiKey = "private-key" }, "abc", "Failure private-key", false);
+    using (var db = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={diagnostics.DatabasePath};Pooling=False"))
+    {
+        db.Open(); using var query = db.CreateCommand();
+        query.CommandText = "SELECT error,logs_json FROM review_failures WHERE id=$id"; query.Parameters.AddWithValue("$id", diagnosticId);
+        using var row = query.ExecuteReader(); Check(row.Read(), "failure snapshot persisted");
+        var text = row.GetString(1);
+        var entries = JsonSerializer.Deserialize<FailureLogEntry[]>(text)!;
+        Check(entries.Length == 50 && entries[0].Text == "line-12" && entries[47].Text == "line-59", "failure snapshot keeps last 50 log lines in order");
+        Check(!text.Contains("secret-token") && !text.Contains("private-key") && !row.GetString(0).Contains("private-key"), "failure snapshot redacts credentials");
+    }
     var logPath = Path.Combine(directory, "rotation.log");
     var log = new PersistentLog(logPath, maxBytes: 1);
     for (var i = 1; i <= 13; i++) log.Append($"entry-{i:D2}");

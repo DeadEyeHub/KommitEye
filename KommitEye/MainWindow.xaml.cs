@@ -249,6 +249,7 @@ public partial class MainWindow : Window
         AutoStartCheckBox.IsChecked = settings.AutoStart;
         PullEnabledCheckBox.IsChecked = settings.PullEnabled;
         FetchSubmodulesCheckBox.IsChecked = settings.FetchSubmodules;
+        FetchSubmodulesAlwaysCheckBox.IsChecked = settings.FetchSubmodulesAlways;
         UpdateSubmodulesCheckBox.IsChecked = settings.UpdateSubmodulesAfterAdvance;
         QuietHoursCheckBox.IsChecked = settings.QuietHoursEnabled;
         QuietStartTextBox.Text = settings.QuietHoursStart;
@@ -307,7 +308,8 @@ public partial class MainWindow : Window
         UpdateSubmodulesCheckBox.ToolTip = Localization.Text("Fast-forward only, not rebase. Enabled by default: local recursive checkout without fetch or force. If disabled, modules stay at old SHAs; later advancement may require manual alignment. Dirty-file protection remains enabled.", "Только fast-forward, не rebase. По умолчанию включено: локальный рекурсивный checkout без fetch и force. Если выключить, сабмодули останутся на старых SHA; следующее продвижение может потребовать ручного обновления. Защита изменённых файлов сохраняется.");
         QuietHoursCheckBox.Content = Localization.Text("Do not run model (local time):", "Не запускать модель (местное время):");
         QuietHoursCheckBox.ToolTip = Localization.Text("Daily interval, HH:mm; overnight intervals are supported. In-flight requests may finish. Interrupted reviews restart after the pause, without marking the commit failed. Applies to the next Start.", "Ежедневный интервал ЧЧ:мм, в том числе через полночь. Отправленный запрос может завершиться. Прерванное ревью начнётся заново после паузы, без отметки об ошибке. Применяется при следующем запуске проверки.");
-        FetchSubmodulesCheckBox.Content = Localization.Text("Fetch initialized submodules on demand", "Получать изменения инициализированных сабмодулей при необходимости");
+        FetchSubmodulesCheckBox.Content = Localization.Text("Fetch initialized submodules", "Получать изменения инициализированных сабмодулей");
+        FetchSubmodulesAlwaysCheckBox.Content = Localization.Text("Always fetch submodules (unchecked: on demand)", "Всегда получать изменения сабмодулей (выключено: по необходимости)");
         FetchSubmodulesCheckBox.ToolTip = Localization.Text("Requires fetch above. Uses configured submodule remotes; may connect to other servers using the selected credentials. Enable only for trusted repositories. Does not clone uninitialized modules.", "Требует включённого fetch. Использует настроенные remote сабмодулей: возможны подключения к другим серверам с выбранными учётными данными. Только для доверенных репозиториев. Не клонирует неинициализированные сабмодули.");
         AutoStartCheckBox.Content = Localization.Text("Start this project when the application starts", "Запускать проект при старте приложения");
         PullEnabledCheckBox.Content = Localization.Text(
@@ -1114,6 +1116,7 @@ public partial class MainWindow : Window
             AutoStart = AutoStartCheckBox.IsChecked == true,
             PullEnabled = PullEnabledCheckBox.IsChecked == true,
             FetchSubmodules = FetchSubmodulesCheckBox.IsChecked == true,
+            FetchSubmodulesAlways = FetchSubmodulesAlwaysCheckBox.IsChecked == true,
             UpdateSubmodulesAfterAdvance = UpdateSubmodulesCheckBox.IsChecked == true,
             QuietHoursEnabled = QuietHoursCheckBox.IsChecked == true,
             QuietHoursStart = QuietStartTextBox.Text.Trim(), QuietHoursEnd = QuietEndTextBox.Text.Trim(),

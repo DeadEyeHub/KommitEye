@@ -98,6 +98,7 @@ public sealed class ConfigurationStore
                 case "fetch_submodules" when bool.TryParse(value, out var modules):
                     settings.FetchSubmodules = modules;
                     break;
+                case "fetch_submodules_always" when bool.TryParse(value, out var alwaysModules): settings.FetchSubmodulesAlways = alwaysModules; break;
                 case "quiet_hours_enabled" when bool.TryParse(value, out var quiet): settings.QuietHoursEnabled = quiet; break;
                 case "update_submodules_after_advance" when bool.TryParse(value, out var updateModules): settings.UpdateSubmodulesAfterAdvance = updateModules; break;
                 case "quiet_hours_start": settings.QuietHoursStart = value; break;
@@ -141,6 +142,7 @@ public sealed class ConfigurationStore
             .AppendLine($"auto_start={settings.AutoStart.ToString().ToLowerInvariant()}")
             .AppendLine($"pull_enabled={settings.PullEnabled.ToString().ToLowerInvariant()}")
             .AppendLine($"fetch_submodules={settings.FetchSubmodules.ToString().ToLowerInvariant()}")
+            .AppendLine($"fetch_submodules_always={settings.FetchSubmodulesAlways.ToString().ToLowerInvariant()}")
             .AppendLine($"update_submodules_after_advance={settings.UpdateSubmodulesAfterAdvance.ToString().ToLowerInvariant()}")
             .AppendLine($"quiet_hours_enabled={settings.QuietHoursEnabled.ToString().ToLowerInvariant()}")
             .AppendLine($"quiet_hours_start={settings.QuietHoursStart}")

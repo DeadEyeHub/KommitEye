@@ -9,6 +9,15 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.SignalR;
 
+try { args = ServerCommandLine.Validate(args); }
+catch (ArgumentException error)
+{
+    Console.Error.WriteLine($"Error: {error.Message}\n\nAllowed options:\n  {ServerCommandLine.AllowedOptions}\n\nRun KommitEye.Server.exe --help for descriptions and examples.");
+    Environment.ExitCode = 2;
+    return;
+}
+if (args.Contains("--help") || args.Contains("-h")) { Console.WriteLine(ServerCommandLine.Help); return; }
+
 if (WindowsServiceCommands.Run(args) is { } serviceExitCode)
 { Environment.ExitCode = serviceExitCode; return; }
 

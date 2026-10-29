@@ -49,6 +49,7 @@ public sealed class ServerHostOptions
 
     public static ServerHostOptions Load(string[] args)
     {
+        args = ServerCommandLine.Validate(args);
         var path = ResolveConfigurationPath(args);
         Console.WriteLine("Server configuration path: " + path);
         try
@@ -70,7 +71,7 @@ public sealed class ServerHostOptions
                 var initial = new ServerHostOptions
                 {
                     DataDirectory = Option(args, "--data-dir") ?? DefaultDataDirectory,
-                    Urls = Option(args, "--urls") ?? "http://127.0.0.1:5080",
+                    Urls = ApplyPort(Option(args, "--urls") ?? "http://127.0.0.1:5080", Option(args, "--port")),
                     GitExecutable = Option(args, "--git-path") ?? GitExecutables.Current.GitFileName,
                     CredentialProtection = Option(args, "--credential-protection") ?? "CurrentUser"
                 };
@@ -97,6 +98,21 @@ public sealed class ServerHostOptions
         }
     }
 
+    private static string ApplyPort(string urls, string? port)
+    {
+        if (port is null) return urls;
+        return string.Join(';', urls.Split(';').Select(address =>
+        {
+            // Preserve wildcard and IPv6 hosts verbatim, including the original scheme.
+            var schemeEnd = address.IndexOf("://", StringComparison.Ordinal) + 3;
+            if (schemeEnd < 3) throw new ArgumentException("Urls must contain HTTP/HTTPS listening addresses.");
+            var authority = address[schemeEnd..].TrimEnd('/');
+            var colon = authority.LastIndexOf(':');
+            var host = colon > authority.LastIndexOf(']') ? authority[..colon] : authority;
+            return address[..schemeEnd] + host + ":" + port;
+        }));
+    }
+
     private static ServerHostOptions Resolve(ServerHostOptions config, string[] args)
     {
         string? Option(string name) => ServerHostOptions.Option(args, name);
@@ -112,6 +128,7 @@ public sealed class ServerHostOptions
                 !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || uri.AbsolutePath != "/")
                 throw new ArgumentException("Urls must contain HTTP/HTTPS listening addresses, separated by semicolons, without credentials, paths, query strings or fragments.");
         }
+        urls = ApplyPort(urls, Option("--port"));
         var git = Option("--git-path") ?? config.GitExecutable;
         if (string.Equals(git, GitExecutables.Current.GitFileName, OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) git = null; // Discover on PATH.

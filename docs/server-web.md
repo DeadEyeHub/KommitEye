@@ -92,6 +92,9 @@ Console and Windows service startup run the same initializer before starting HTT
   `C:\ProgramData\KommitEye\Server\server.json`).
 - Linux/macOS default: `/etc/kommiteye/server.json`.
 - `--config <absolute-path>` selects another location; it does not need to exist.
+- `--help` or `-h` prints English command-line help and exits without starting the server or creating configuration.
+- Unknown arguments, missing values and incompatible commands print an error and the allowed options, then exit with code `2` before initialization or service operations.
+- `--port 5081` (or `--port=5081`) overrides the port on every configured listening address, preserving its host and scheme. Valid range: 1–65535. Do not combine it with `--urls`, which already includes ports. Existing configuration is unchanged; a newly generated configuration records the chosen port. To persist a change for an existing service, edit `Urls` in `server.json` and restart the service.
   `--config=<absolute-path>` is also supported. The working directory and service
   account do not change the default location.
 

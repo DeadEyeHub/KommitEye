@@ -77,6 +77,16 @@ jobs:
           $payload = Join-Path $env:RUNNER_TEMP 'kommiteye-msi-payload'
           Expand-Archive "artifacts/KommitEye-Service-$version-win-x64.zip" $payload
           ./build/test-windows-installer.ps1 -Msi (Resolve-Path "artifacts/KommitEye-Service-$version-win-x64.msi") -Payload $payload -Result (Join-Path $env:RUNNER_TEMP 'kommiteye-msi-check.log')
+      - name: Upload MSI diagnostics
+        if: always() && matrix.product == 'Service'
+        uses: actions/upload-artifact@v6
+        with:
+          name: diagnostics-msi-build
+          path: |
+            ${{ runner.temp }}/kommiteye-msi-check.log*
+            C:/Users/Public/Documents/KommitEye MSI checks */*.log
+          if-no-files-found: ignore
+          retention-days: 14
       - uses: actions/upload-artifact@v6
         with:
           name: KommitEye-${{ matrix.product }}
@@ -124,7 +134,13 @@ jobs:
           $lines | Set-Content release-files/SHA256SUMS.txt
           $releases = gh api --paginate "repos/$env:GH_REPO/releases?per_page=100" --jq '.[].tag_name'
           if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect releases' }
-          if ($releases -contains $tag) { Write-Host "Release $tag exists; leaving unchanged."; exit 0 }
+          if ($releases -contains $tag) {
+            $draft = gh release view $tag --json isDraft --jq '.isDraft'
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect existing release state' }
+            if ($draft.Trim() -eq 'true') { throw "Release $tag is an unfinished draft. Complete or delete the draft before retrying publication." }
+            Write-Host "Release $tag is already published; leaving unchanged. Bump the version to publish new changes."
+            exit 0
+          }
           git show-ref --verify --quiet "refs/tags/$tag"
           if ($LASTEXITCODE -eq 0) {
             $commit = git rev-list -n 1 $tag

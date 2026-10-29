@@ -35,7 +35,15 @@ jobs:
         run: dotnet run --project checks/Server/Server.csproj -c Release -- --service-config
       - name: Real Windows service lifecycle and unchanged permissions
         if: runner.os == 'Windows'
-        run: ./build/test-service-script.ps1
+        run: ./build/test-service-script.ps1 -Result (Join-Path $env:RUNNER_TEMP 'kommiteye-scm-check.log')
+      - name: Upload SCM diagnostics
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: diagnostics-scm
+          path: ${{ runner.temp }}/kommiteye-scm-*.log
+          if-no-files-found: ignore
+          retention-days: 14
   docker:
     name: Required Docker package checks
     runs-on: ubuntu-latest

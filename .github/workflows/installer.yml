@@ -52,6 +52,16 @@ jobs:
           $payload = Join-Path $env:RUNNER_TEMP 'kommiteye-msi-payload'
           Expand-Archive "artifacts/KommitEye-Service-$version-win-x64.zip" $payload
           ./build/test-windows-installer.ps1 -Msi (Resolve-Path "artifacts/KommitEye-Service-$version-win-x64.msi") -Payload $payload -Result (Join-Path $env:RUNNER_TEMP 'kommiteye-msi-check.log')
+      - name: Upload MSI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: diagnostics-msi-installer
+          path: |
+            ${{ runner.temp }}/kommiteye-msi-check.log*
+            C:/Users/Public/Documents/KommitEye MSI checks */*.log
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Upload installer and portable server
         uses: actions/upload-artifact@v6
         with:

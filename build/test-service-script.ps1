@@ -1,5 +1,5 @@
 # Real SCM regression check; run elevated on a Windows machine without KommitEye installed.
-param([string]$ServerExecutable)
+param([string]$ServerExecutable, [string]$Result)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 if (!$ServerExecutable) {
@@ -8,6 +8,6 @@ if (!$ServerExecutable) {
     if ($LASTEXITCODE -ne 0) { throw 'Service fixture publish failed.' }
     $ServerExecutable = Join-Path $payload 'KommitEye.Server.exe'
 }
-$result = Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-scm-' + [guid]::NewGuid().ToString('N') + '.log')
+if (!$Result) { $Result = Join-Path ([IO.Path]::GetTempPath()) ('kommiteye-scm-' + [guid]::NewGuid().ToString('N') + '.log') }
 try { & (Join-Path $PSScriptRoot 'test-windows-service.ps1') -Payload (Split-Path $ServerExecutable -Parent) -Result $result }
 finally { if (Test-Path $result) { Get-Content -LiteralPath $result } }

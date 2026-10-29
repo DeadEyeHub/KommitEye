@@ -40,16 +40,18 @@ static class DeadlineChecks
         {
             var state = new StateStore();
             var runner = new ReviewRunner(git, new ModelClient(http, activeHandler.Clock), config, state, new ReportWriter());
-            var skipped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var notifications = new List<CommitReviewed>();
             runner.Reviewed += notifications.Add;
-            runner.Log += message => { if (message.Contains("failure saved in report")) skipped.TrySetResult(); };
+            runner.AutomaticStopped += () => stopped.TrySetResult();
             Check(runner.Start(settings, profile), "automatic review starts");
-            try { await skipped.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
+            try { await stopped.Task.WaitAsync(TimeSpan.FromSeconds(15)); }
             finally { await runner.StopAsync(); }
             var report = new ReportWriter().Read(new ReportWriter().List().Single().Name)!;
             Check(report.Contains("review is incomplete"), "complexity explanation saved in report");
             Check(activeHandler.Reviews == 1 && activeHandler.Probes == 0, "active model is not retried or probed");
+            var identity = await git.GetRepositoryIdentityAsync(repo, default);
+            Check(await state.GetCursorAsync(identity.CommonGitDirectory, "refs/heads/main", default) is null, "incomplete review stops without advancing cursor");
             Check(notifications.Count == 1 && notifications[0].Failed && notifications[0].ReportMarkdown.Contains("review is incomplete"), "terminal failure publishes saved report for notification");
             Console.WriteLine("PASS: active deadline writes complexity report without retries.");
         }

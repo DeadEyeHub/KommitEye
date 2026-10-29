@@ -145,7 +145,7 @@ public sealed class ProjectCoordinator : IAsyncDisposable
             var job = new ReviewJob(Guid.NewGuid().ToString("N"), id, requestKey, sha ?? "", sha is null ? "monitor" : "review", "running", DateTimeOffset.UtcNow);
             _jobs.Save(job); runtime.Job = job;
             runtime.Cancellation?.Dispose(); runtime.Cancellation = new();
-            lock (_stateGate) runtime.Status = runtime.Status with { Running = true, Status = "starting" };
+            lock (_stateGate) runtime.Status = runtime.Status with { Running = true, Status = "starting", Stage = "idle", NextRun = null, Remaining = null };
             runtime.Task = Task.Run(async () =>
             {
                 using var language = Localization.UseLanguage(project.Language);
@@ -157,6 +157,7 @@ public sealed class ProjectCoordinator : IAsyncDisposable
                     {
                         if (!runtime.Runner.Start(project, profile)) throw new InvalidOperationException("Cannot start review.");
                         while (runtime.Runner.IsRunning) await Task.Delay(250, runtime.Cancellation.Token);
+                        if (runtime.Runner.FailureReason is { } reason) { status = "failed"; error = reason; }
                     }
                 }
                 catch (OperationCanceledException) { status = "canceled"; }

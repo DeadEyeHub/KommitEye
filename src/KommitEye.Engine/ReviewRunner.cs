@@ -16,7 +16,7 @@ public sealed class ReviewRunner
     private bool _manualReviewActive;
     private string _activeCommit = string.Empty;
     private int _remaining;
-    private int _retryDelaySeconds;
+    private string? _stopReason;
     private AppSettings? _updatedSettings;
     private ModelProfile? _updatedProfile;
     private TaskCompletionSource _settingsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -27,7 +27,6 @@ public sealed class ReviewRunner
         {
             _updatedSettings = settings;
             _schedule = schedule;
-            _retryDelaySeconds = settings.PollIntervalSeconds;
             _settingsChanged.TrySetResult();
         }
     }
@@ -52,6 +51,7 @@ public sealed class ReviewRunner
     public event Action<CommitInfo>? CommitInfoChanged;
     public event Action<ReviewProgress>? Progress;
     public event Action<CommitReviewed>? Reviewed;
+    public string? FailureReason => _stopReason;
     public bool IsRunning
     {
         get
@@ -85,12 +85,12 @@ public sealed class ReviewRunner
                 return false;
 
             _updatedSettings = null; _updatedProfile = null;
+            _stopReason = null;
             _settingsChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
             profile.Parameters.Validate();
             _schedule = new DailyModelSchedule(settings);
             _cancellation?.Dispose();
             _cancellation = new CancellationTokenSource();
-            _retryDelaySeconds = settings.PollIntervalSeconds;
             _runTask = RunMonitoredAsync(settings, profile.Clone(), _cancellation.Token);
             return true;
         }
@@ -211,14 +211,12 @@ public sealed class ReviewRunner
     private async Task RunMonitoredAsync(AppSettings settings, ModelProfile profile, CancellationToken token)
     {
         try { await RunLoopAsync(settings, profile, token); }
-        finally { Publish(OperationalEvent, ("Project stopped", token.IsCancellationRequested ? "Monitoring stopped by user or application shutdown." : "Monitoring stopped after errors. See the project journal.")); }
+        finally { Publish(OperationalEvent, ("Project stopped", _stopReason ?? (token.IsCancellationRequested ? "Monitoring stopped by user or application shutdown." : "Monitoring stopped after errors. See the project journal."))); }
     }
 
     private async Task RunLoopAsync(AppSettings settings, ModelProfile profile, CancellationToken cancellationToken)
     {
         Log?.Invoke(Localization.Text("Review started.", "Проверка запущена."));
-        var failures = 0;
-        string? failedCommit = null;
         while (!cancellationToken.IsCancellationRequested)
         {
             Task configurationChanged;
@@ -231,12 +229,12 @@ public sealed class ReviewRunner
             }
             try
             {
-                await WaitForScheduleAsync(cancellationToken);
+                await WaitForScheduleAsync(profile, cancellationToken);
                 _activeCommit = string.Empty;
+                Emit(ReviewStage.CheckingRepository, profile, _activeCommit);
                 Publish(RemainingChanged, (int?)null);
                 await RunCycleAsync(settings, profile, cancellationToken);
-                failures = 0;
-                failedCommit = null;
+                Emit(ReviewStage.WaitingForChanges, profile, _activeCommit);
                 StatusChanged?.Invoke(Localization.Format(
                     "Waiting {0} sec.",
                     "Ожидание {0} сек.",
@@ -258,24 +256,16 @@ public sealed class ReviewRunner
                 Emit(ReviewStage.Failed, profile, _activeCommit, exception.Message);
                 StatusChanged?.Invoke(Localization.Text("Error", "Ошибка"));
                 Log?.Invoke(Localization.Format("Error: {0}", "Ошибка: {0}", exception.Message));
-                if (failedCommit != _activeCommit) failures = 0;
-                failedCommit = _activeCommit;
-                failures++;
-                if (exception is ReviewApiException { Kind: ReviewApiErrorKind.Authentication or ReviewApiErrorKind.Configuration } || failures > profile.Parameters.MaxRetries)
-                {
-                    var message = Localization.Format(
-                        "Automatic review stopped after {0} failed attempts ({1} retries). Press Start to try again.",
-                        "Автопроверка остановлена после {0} неудачных попыток ({1} повторов). Для повторного запуска нажмите «Старт».",
-                        failures, failures - 1);
-                    Log?.Invoke(message);
-                    StatusChanged?.Invoke(message);
-                    Publish(NextRunChanged, (DateTimeOffset?)null);
-                    Publish(RemainingChanged, (int?)null);
-                    AutomaticStopped?.Invoke();
-                    return;
-                }
-                Log?.Invoke(Localization.Format("Retry {0} of {1} after {2} seconds.",
-                    "Повторная попытка {0} из {1} через {2} сек.", failures, profile.Parameters.MaxRetries, settings.PollIntervalSeconds));
+                _stopReason = Localization.Format(
+                    "Project stopped at commit {0}: {1}. Fix the error and press Start to retry.",
+                    "Проект остановлен на коммите {0}: {1}. Исправьте ошибку и нажмите «Старт» для повторной проверки.",
+                    string.IsNullOrEmpty(_activeCommit) ? "—" : _activeCommit, GitService.SanitizeDiagnostic(exception.Message));
+                Publish(Log, _stopReason);
+                Publish(StatusChanged, _stopReason);
+                Publish(NextRunChanged, (DateTimeOffset?)null);
+                Publish(RemainingChanged, (int?)null);
+                AutomaticStopped?.Invoke();
+                return;
             }
 
             Publish(NextRunChanged, (DateTimeOffset?)DateTimeOffset.Now.AddSeconds(settings.PollIntervalSeconds));
@@ -428,8 +418,6 @@ public sealed class ReviewRunner
         lock (_lifecycleLock) if (!_manualReviewActive) profile = _updatedProfile?.Clone() ?? profile;
         var result = await AnalyzeAndReportAsync(
             repositoryPath, repositoryIdentity, branch, sha, profile, false, cancellationToken);
-        Emit(ReviewStage.SavingCursor, profile, sha);
-        await _stateStore.SetCursorAsync(repositoryIdentity, branch, sha, cancellationToken);
         if (advanceFrom is not null)
         {
             await _git.AdvanceBranchAsync(repositoryPath, branch, advanceFrom, sha, cancellationToken, updateSubmodulesAfterAdvance);
@@ -438,6 +426,8 @@ public sealed class ReviewRunner
             Publish(Log, Localization.Format("Local branch {0} advanced: {1} → {2}.",
                 "Локальная ветка {0} продвинута: {1} → {2}.", branch, Short(advanceFrom), Short(sha)));
         }
+        Emit(ReviewStage.SavingCursor, profile, sha);
+        await _stateStore.SetCursorAsync(repositoryIdentity, branch, sha, cancellationToken);
         if (result.Failure is not null)
         {
             SetRemaining(Math.Max(0, _remaining - 1));
@@ -473,41 +463,29 @@ public sealed class ReviewRunner
         var commit = await _git.GetCommitInfoAsync(repositoryPath, sha, cancellationToken);
         Publish(CommitInfoChanged, commit);
         ReviewResult result;
-        var attempt = 0;
-        while (true)
+        try
         {
-            try
+            result = await AnalyzeAsync(repositoryPath, branch, sha, profile, repositoryIdentity, cancellationToken);
+        }
+        catch (ModelSchedulePauseException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (manualReview || exception is not ReviewApiException { IsTransient: true })
             {
-                if (attempt > 0) Emit(ReviewStage.Started, profile, sha);
-                result = await AnalyzeAsync(repositoryPath, branch, sha, profile, repositoryIdentity, cancellationToken);
-                break;
-            }
-            catch (ModelSchedulePauseException) { throw; }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception exception)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (manualReview || exception is ReviewApiException { Kind: ReviewApiErrorKind.Authentication or ReviewApiErrorKind.Configuration })
+                var failed = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message), AnalysisDuration = analysisClock.Elapsed };
+                try
                 {
-                    var failed = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message), AnalysisDuration = analysisClock.Elapsed };
                     await _reportWriter.AppendAsync(repositoryPath, branch, commit, failed, manualReview, cancellationToken, repositoryIdentity);
                     PublishFailedReview(repositoryPath, branch, sha, failed, manualReview);
-                    throw;
                 }
-                Emit(ReviewStage.Failed, profile, sha, exception.Message);
-                if (exception is ReviewApiException or OperationCanceledException or ReviewComplexityException or ReviewFormatException or EmptyReviewResponseException || attempt++ >= profile.Parameters.MaxRetries)
-                {
-                    result = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message) };
-                    break;
-                }
-                Publish(Log, Localization.Format("Commit {0}: retry {1}/{2}.",
-                    "Коммит {0}: повтор {1}/{2}.", Short(sha), attempt, profile.Parameters.MaxRetries));
-                analysisClock.Stop();
-                Publish(NextRunChanged, (DateTimeOffset?)DateTimeOffset.Now.AddSeconds(_retryDelaySeconds));
-                try { await Task.Delay(TimeSpan.FromSeconds(_retryDelaySeconds), cancellationToken); }
-                finally { Publish(NextRunChanged, (DateTimeOffset?)null); }
-                analysisClock.Start();
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (Exception saveError) { Publish(Log, GitService.SanitizeDiagnostic($"Could not save failure report: {saveError.Message}")); }
+                throw;
             }
+            Emit(ReviewStage.Failed, profile, sha, exception.Message);
+            result = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message) };
         }
         Emit(ReviewStage.Report, profile, sha);
         analysisClock.Stop();
@@ -543,9 +521,10 @@ public sealed class ReviewRunner
         return result;
     }
 
-    private async Task WaitForScheduleAsync(CancellationToken token)
+    private async Task WaitForScheduleAsync(ModelProfile profile, CancellationToken token)
     {
         if (!_schedule.IsBlocked(_localNow())) return;
+        Emit(ReviewStage.ScheduledPause, profile, _activeCommit);
         Publish(Log, Localization.Text("Model paused by daily schedule.", "Модель приостановлена по ежедневному расписанию."));
         try
         {

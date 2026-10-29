@@ -219,21 +219,25 @@ export function Projects({ tick }: { tick: number }) {
                           · {p.branchRef || "—"}
                         </small>
                       </td>
-                      <td>
+                      <td className="project-status">
                         <span
                           className={
                             "badge " + (status.running ? "running" : "")
                           }
                         >
-                          {status.stage === "idle"
-                            ? t("Остановлен", "Stopped")
-                            : status.status}
+                          {status.running
+                            ? t("Запущен", "Running")
+                            : status.status === "failed"
+                              ? t("Остановлен из-за ошибки", "Stopped with error")
+                              : status.status === "completed"
+                                ? t("Завершён", "Completed")
+                                : t("Остановлен", "Stopped")}
                         </span>
                         {status.running && (
                           <small>
-                            {status.stage}
-                            {status.remaining != null
-                              ? ` · ${status.remaining}`
+                            {projectStageLabel(status.stage)}
+                            {status.remaining > 0
+                              ? ` · ${t("Осталось коммитов", "Commits remaining")}: ${status.remaining}`
                               : ""}
                           </small>
                         )}
@@ -458,6 +462,32 @@ export function Projects({ tick }: { tick: number }) {
       )}
     </>
   );
+}
+
+function projectStageLabel(stage: string) {
+  const labels: Record<string, string> = {
+    idle: t("Запуск проекта", "Starting project"),
+    CheckingRepository: t("Проверка репозитория и новых коммитов", "Checking repository for new commits"),
+    WaitingForChanges: t("Ожидание следующей проверки репозитория", "Waiting for the next repository check"),
+    Started: t("Начало проверки коммита", "Starting commit review"),
+    PreparingDiff: t("Подготовка изменений коммита", "Preparing commit changes"),
+    AgentStarted: t("Анализ коммита", "Analyzing commit"),
+    Request: t("Отправка запроса модели", "Sending request to model"),
+    Waiting: t("Ожидание ответа модели", "Waiting for model response"),
+    Response: t("Обработка ответа модели", "Processing model response"),
+    Parsing: t("Разбор результата проверки", "Parsing review result"),
+    Report: t("Сохранение отчёта", "Saving report"),
+    SavingCursor: t("Сохранение позиции проверки", "Saving review position"),
+    Completed: t("Проверка коммита завершена", "Commit review completed"),
+    Failed: t("Ошибка проверки", "Review failed"),
+    Canceled: t("Остановка проекта", "Stopping project"),
+    Tool: t("Модель изучает код", "Model is inspecting code"),
+    ToolRejected: t("Запрос инструмента отклонён", "Tool request rejected"),
+    FormatCorrection: t("Исправление формата ответа", "Correcting response format"),
+    ScheduledPause: t("Пауза по расписанию", "Paused by schedule"),
+    ModelUnavailable: t("Модель временно недоступна", "Model temporarily unavailable"),
+  };
+  return labels[stage] || t("Выполняется", "Working");
 }
 
 function validateSelection(project: Data) {

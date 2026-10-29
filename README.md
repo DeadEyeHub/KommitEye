@@ -7,8 +7,8 @@ contains two applications sharing the same review engine:
 
 | Application | Interface | Windows x64 distribution |
 | --- | --- | --- |
-| Desktop 3.6.3 | WPF desktop app with a system tray icon | Self-contained EXE |
-| Service 3.6.3 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+| Desktop 3.6.4 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Service 3.6.4 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
 
 Both support multiple repositories, review reports and mail notifications.
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
@@ -93,9 +93,9 @@ Run from the repository root:
 
 Outputs in `artifacts/`:
 
-- `KommitEye-Desktop-3.6.3-win-x64.exe`
-- `KommitEye-Service-3.6.3-win-x64.zip`
-- `KommitEye-Service-3.6.3-win-x64.msi`
+- `KommitEye-Desktop-3.6.4-win-x64.exe`
+- `KommitEye-Service-3.6.4-win-x64.zip`
+- `KommitEye-Service-3.6.4-win-x64.msi`
 - `SHA256SUMS-<product>.txt`
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds
@@ -342,6 +342,19 @@ dotnet run --project checks/Installer/Installer.csproj
 ```
 
 ### Project autostart and operational email
+
+The web project status separates **Running** (the project is active) from its current
+action. **Waiting for model response** means a model request is in progress;
+**Waiting for the next repository check** is the normal polling interval, with a
+countdown. **Paused by schedule** means the configured quiet hours are active.
+**Stopped with error** requires fixing the error and starting the project again.
+
+Repository, access, storage, configuration and other non-transient review errors stop
+the affected project immediately. The failed commit is not marked as processed; after
+fixing the error, press Start to retry it before later commits. The journal and stop
+email include the reason and commit SHA when available. Incomplete reviews (including
+an exhausted review deadline) also stop the project. Temporary model availability
+errors retain their existing recovery behavior.
 
 In Project settings, enable **Start this project when the application/server starts** and Apply/Save.
 The setting is per project (`AutoStart` in `projects.json`, API field `autoStart`), disabled by default,

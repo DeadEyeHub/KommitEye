@@ -1429,6 +1429,8 @@ public partial class MainWindow : Window
             return;
         var description = progress.Stage switch
         {
+            ReviewStage.CheckingRepository => Localization.Text("Checking repository for new commits", "Проверка репозитория и новых коммитов"),
+            ReviewStage.WaitingForChanges => Localization.Text("Waiting for the next repository check", "Ожидание следующей проверки репозитория"),
             ReviewStage.Started => Localization.Text("Commit review started", "Начата проверка коммита"),
             ReviewStage.PreparingDiff => Localization.Text("Preparing commit changes", "Подготовка изменений коммита"),
             ReviewStage.Request => Localization.Text("Model is analyzing the available context", "Модель анализирует доступный контекст"),

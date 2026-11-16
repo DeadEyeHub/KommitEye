@@ -236,6 +236,53 @@ on the target server; copying settings does not copy repositories or SSH keys.
 
 ## Mail sign-in
 
+### Commit author portal
+
+The administrator's **Author portal** section enables `/author` and configures
+the public server origin used in email links (HTTPS, or localhost HTTP for development).
+It also controls code lifetime (1–60 minutes), resend interval (30–3600 seconds),
+emails per address per hour (1–30), code attempts (1–10), lockout duration
+(1–1440 minutes), and fixed session lifetime (1–720 hours). Saving these settings
+invalidates outstanding codes and existing author sessions. An additional server
+limit of 30 authentication requests per IP per minute protects the public endpoints.
+
+Configure an active mail provider in **Mail**. **Send to author** sends separate
+portal invitations for completed reviews, including reviews without findings;
+the clean-review switch continues to control ordinary recipient reports.
+Failed analysis notifications remain administrator-only. **Notify administrator
+about false positives** is off by default and requires explicit recipients.
+It sends a finding, author email, comment and report link when a finding transitions
+to false positive. Editing the comment or saving the same status does not send
+another alert. Switching away and back is a new transition.
+
+Authors authenticate using the address recorded in Git metadata and a single-use
+six-digit email code. Email verification proves mailbox access, not Git authorship.
+Different addresses are not merged. The portal only returns owned, active reviews;
+legacy entries without a stored email are not assigned by author name. Authors
+cannot use administrator APIs, branch exports, repository browsing or the shared
+SignalR channel. The author session uses a separate HttpOnly cookie; HTTPS public
+origins issue Secure cookies even when TLS terminates at a reverse proxy.
+
+Each finding supports awaiting response, confirmed bug, or false positive, plus
+an optional comment of up to 4,000 characters. Responses are editable and visible
+to administrators under **Reports → Author responses**. No fix status, automatic
+closure, or link to later corrective commits is maintained. A review with any
+saved author response cannot be overwritten by rechecking that commit. Stale
+open review forms are rejected if the underlying review was replaced.
+
+`reports.db` schema 2 stores responses and a transactional notification outbox.
+The mail queue deduplicates outbox IDs across retries and restarts; as with SMTP
+generally, provider acceptance followed by a process crash can still cause a
+delivery retry. Disabled notifications are skipped, not sent retroactively.
+`author-access.json` stores access settings, rate-limit counters and keyed code
+hashes; its hashing key uses the configured credential protector. Codes are sent
+directly through the selected provider without being stored in the mail queue,
+attached to messages, or written to logs. Back up this file with the data directory.
+
+`dotnet run --project checks/Authors` exercises code expiry, consumption, lockout,
+restart persistence, ownership, administrator isolation, feedback, and email
+delivery using a local SMTP fixture with no external recipients.
+
 SMTP works directly. Outlook uses Microsoft's device-code flow: configure a public
 client application, enable public client flows, then provide `client ID;tenant ID`.
 The browser shows the verification URL/code; token refresh and sends remain server-side.

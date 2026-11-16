@@ -43,6 +43,7 @@ data/
 *.p12
 *.key
 admin.json
+author-access.json
 projects.json
 mail-settings.json
 mail-queue.json

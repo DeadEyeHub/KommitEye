@@ -7,10 +7,14 @@ contains two applications sharing the same review engine:
 
 | Application | Interface | Windows x64 distribution |
 | --- | --- | --- |
-| Desktop 3.6.5 | WPF desktop app with a system tray icon | Self-contained EXE |
-| Service 3.6.5 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
+| Desktop 3.7.0 | WPF desktop app with a system tray icon | Self-contained EXE |
+| Service 3.7.0 | ASP.NET Core server with a bundled React browser UI | Windows service MSI or portable ZIP |
 
 Both support multiple repositories, review reports and mail notifications.
+Service also provides an email-code author portal: authors see their own reviewed
+commits, confirm bugs or mark false positives, and leave comments. Administrators
+configure sign-in limits and optional false-positive email alerts. See
+[author portal setup](docs/server-web.md#commit-author-portal).
 Both editions share `Version` in `Directory.Build.props`. The server and React UI are
 packaged together. Shared libraries and the server now target portable .NET 10;
 Windows keeps its existing DPAPI credential format. Linux server execution requires
@@ -93,9 +97,9 @@ Run from the repository root:
 
 Outputs in `artifacts/`:
 
-- `KommitEye-Desktop-3.6.5-win-x64.exe`
-- `KommitEye-Service-3.6.5-win-x64.zip`
-- `KommitEye-Service-3.6.5-win-x64.msi`
+- `KommitEye-Desktop-3.7.0-win-x64.exe`
+- `KommitEye-Service-3.7.0-win-x64.zip`
+- `KommitEye-Service-3.7.0-win-x64.msi`
 - `SHA256SUMS-<product>.txt`
 
 WiX is restored through NuGet; a global WiX installation is not needed. MSI builds

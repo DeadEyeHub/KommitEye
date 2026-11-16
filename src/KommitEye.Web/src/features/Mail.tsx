@@ -115,6 +115,7 @@ export function Mail() {
                 "enabled",
                 "sendToAuthor",
                 "sendWithoutBugs",
+                "notifyFalsePositives",
                 "recipients",
               ]}
             />
@@ -140,6 +141,7 @@ export function Mail() {
               </select>
             </Field>
           </div>
+          <p className="muted">{t("При включённом кабинете автор получает отдельное письмо после каждой завершённой проверки. «Без багов» управляет обычными отчётами получателям. Уведомления о ложных срабатываниях отправляются указанным ниже получателям.", "When the portal is enabled, authors receive a separate email after each completed review. Clean-review notifications control regular recipient reports. False-positive alerts go to the configured recipients.")}</p>
           <label className="check">
             <input
               type="checkbox"

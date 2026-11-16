@@ -54,8 +54,37 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = 401; return Task.CompletedTask; };
     options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = 403; return Task.CompletedTask; };
 });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthentication().AddCookie(AuthorApi.Scheme, options =>
+{
+    options.Cookie.Name = "KommitEye.Author";
+    options.Cookie.HttpOnly = true; options.Cookie.SameSite = SameSiteMode.Strict;
+    options.SlidingExpiration = false;
+    options.Events.OnSigningIn = context =>
+    {
+        context.CookieOptions.Secure = context.HttpContext.RequestServices.GetRequiredService<AuthorAccess>().Settings.PublicUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = 401; return Task.CompletedTask; };
+    options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = 403; return Task.CompletedTask; };
+    options.Events.OnValidatePrincipal = context =>
+    {
+        var access = context.HttpContext.RequestServices.GetRequiredService<AuthorAccess>();
+        if (!access.Settings.Enabled || context.Principal?.FindFirstValue("version") != access.SessionVersion) context.RejectPrincipal();
+        return Task.CompletedTask;
+    };
+});
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy => policy.AddAuthenticationSchemes(CookieAuthenticationDefaults.AuthenticationScheme).RequireAuthenticatedUser().RequireClaim(ClaimTypes.Name, "admin"));
+    options.AddPolicy("Author", policy => policy.AddAuthenticationSchemes(AuthorApi.Scheme).RequireAuthenticatedUser().RequireClaim(ClaimTypes.Email));
+});
+builder.Services.AddSingleton(sp => new AuthorAccess(AppPaths.DataDirectory, sp.GetRequiredService<KommitEye.Platform.ISecretProtector>()));
+builder.Services.AddSingleton(new ReportStore(AppPaths.DataDirectory));
+builder.Services.AddHostedService<AuthorMailWorker>();
 builder.Services.AddSignalR();
+builder.Services.AddRateLimiter(options => options.AddPolicy("author-login", context =>
+    RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new()
+    { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })));
 builder.Services.AddRateLimiter(options => options.AddPolicy("login", context =>
     RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "local", _ => new()
     { PermitLimit = 8, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })));
@@ -114,7 +143,7 @@ app.MapPost("/api/v1/login", async (LoginRequest request, HttpContext context, S
     await context.SignInAsync(new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "admin")], CookieAuthenticationDefaults.AuthenticationScheme)));
     return Results.Ok(new { user = "admin" });
 }).RequireRateLimiting("login");
-var api = app.MapGroup("/api/v1").RequireAuthorization();
+var api = app.MapGroup("/api/v1").RequireAuthorization("Admin");
 api.MapGet("/mail/log", (OAuthOperations oauth) => Results.Text(oauth.MailLog.Snapshot(true) ?? ""));
 api.MapPost("/oauth/{provider}/connect", (string provider, OAuthRequest request, OAuthOperations oauth) => oauth.Begin(provider, request.Configuration));
 api.MapGet("/oauth/{id}", (string id, OAuthOperations oauth) => oauth.Get(id));
@@ -180,11 +209,13 @@ api.MapGet("/projects/{id}/branches", async (string id, ProjectCoordinator coord
 });
 SettingsApi.Map(api);
 RepositoryApi.Map(api);
+AuthorApi.Map(app, api);
+app.Services.GetRequiredService<MailNotifications>().AuthorPortalEnabled = app.Services.GetRequiredService<AuthorAccess>().Settings.Enabled;
 var coordinator = app.Services.GetRequiredService<ProjectCoordinator>();
 var hub = app.Services.GetRequiredService<IHubContext<EventsHub>>();
 coordinator.Changed += value => { _ = Broadcast(value); };
 async Task Broadcast(ServerEvent value) { try { await hub.Clients.All.SendAsync("changed", value); } catch (Exception e) { app.Logger.LogDebug(e, "Event client disconnected"); } }
-app.MapHub<EventsHub>("/hubs/events").RequireAuthorization();
+app.MapHub<EventsHub>("/hubs/events").RequireAuthorization("Admin");
 app.UseDefaultFiles(); app.UseStaticFiles();
 app.MapFallbackToFile("index.html");
 await app.StartAsync();

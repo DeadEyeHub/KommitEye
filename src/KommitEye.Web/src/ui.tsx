@@ -123,6 +123,7 @@ const labels: Record<string, [string, string]> = {
     "Max tokens (0 — model default)",
   ],
   enabled: ["Включить уведомления", "Enable notifications"],
+  notifyFalsePositives: ["Уведомлять администратора о ложных срабатываниях", "Notify administrator about false positives"],
   sendToAuthor: [
     "Отправлять также автору коммита",
     "Also send to commit author",

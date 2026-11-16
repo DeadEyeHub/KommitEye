@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { t, Heading, Modal } from "../ui";
 
+import { AuthorReviewView } from "./AuthorPortal";
+
 type Entry = {
   id: number; reportName: string; repository: string; branch: string; sha: string;
   shortSha: string; subject: string; author: string; commitDate: string | null;
@@ -17,6 +19,7 @@ const outcomeLabel = (value: string) => ({
 
 export function Reports({ tick }: { tick: number }) {
   const [preview, setPreview] = useState<{ url: string; title: string } | null>(null);
+  const [feedback, setFeedback] = useState<number | null>(() => { const id = Number(new URLSearchParams(location.search).get("review")); return Number.isSafeInteger(id) && id > 0 ? id : null; });
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("saved");
@@ -55,6 +58,7 @@ export function Reports({ tick }: { tick: number }) {
   const branchUrl = "/api/v1/reports/" + encodeURIComponent(report);
   return <>
     {preview && <ReportPreview key={preview.url} {...preview} close={() => setPreview(null)} />}
+    {feedback && <section className="panel"><div className="section-heading"><h2>{t("Ответы автора", "Author responses")}</h2><button onClick={() => { setFeedback(null); history.replaceState(null, "", "/"); }}>{t("Закрыть", "Close")}</button></div><AuthorReviewView id={feedback} admin /></section>}
     <Heading title={t("Отчёты", "Reports")} description={t("Одна запись на коммит. Найдите проверку по автору, SHA или тексту замечания.", "One entry per commit. Find a review by author, SHA or finding text.")} />
     <div className="report-controls">
       <label className="report-search">{t("Поиск по отчётам", "Search reports")}
@@ -120,6 +124,7 @@ export function Reports({ tick }: { tick: number }) {
             <a href={url + "?format=html"} onClick={e => { e.preventDefault(); setPreview({ url, title: entry.shortSha + " " + entry.subject }); }}>{t("Открыть проверку", "Open review")}</a>
             <a href={url + "?download=true"}>{t("Скачать Markdown", "Download Markdown")}</a>
             <a href={url + "?format=html&download=true"}>{t("Скачать HTML", "Download HTML")}</a>
+            <button onClick={() => setFeedback(entry.id)}>{t("Ответы автора", "Author responses")}</button>
             <button onClick={() => { setReport(entry.reportName); setOffset(0); }}>{t("Все коммиты ветки", "All branch commits")}</button>
           </div>
           </div>

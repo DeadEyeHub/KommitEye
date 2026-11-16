@@ -11,6 +11,8 @@ import { Mail } from "./features/Mail";
 import { Prompt } from "./features/Prompt";
 import { Reports } from "./features/Reports";
 import { Jobs } from "./features/Jobs";
+import { AuthorPortal } from "./features/AuthorPortal";
+import { AuthorSettings } from "./features/AuthorSettings";
 function App() {
   const [signed, setSigned] = useState<boolean | null>(null),
     [password, setPassword] = useState(""),
@@ -18,7 +20,7 @@ function App() {
     [setup, setSetup] = useState<Data | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState("projects"),
+  const [tab, setTab] = useState(new URLSearchParams(location.search).has("review") ? "reports" : "projects"),
     [connection, setConnection] = useState("connecting"),
     [info, setInfo] = useState<Data>({}),
     [tick, setTick] = useState(0),
@@ -230,6 +232,7 @@ function App() {
             ["jobs", "Задания", "Jobs"],
             ["models", "Модели", "Models"],
             ["mail", "Почта", "Mail"],
+            ["authors", "Кабинет автора", "Author portal"],
             ["prompt", "Промпт", "Prompt"],
           ].map(([key, ru, en]) => (
             <button
@@ -270,6 +273,8 @@ function App() {
           <Jobs tick={tick} />
         ) : tab === "models" ? (
           <Models />
+        ) : tab === "authors" ? (
+          <AuthorSettings />
         ) : tab === "mail" ? (
           <Mail />
         ) : (
@@ -279,4 +284,4 @@ function App() {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(location.pathname === "/author" || location.pathname.startsWith("/author/") ? <AuthorPortal /> : <App />);

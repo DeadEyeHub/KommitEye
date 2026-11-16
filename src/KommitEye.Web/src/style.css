@@ -621,3 +621,21 @@ dialog.modal:has(.project-log) {
 .report-preview-body { line-height: 1.6; }
 .report-preview-body pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: #f3f5f2; }
 .report-preview-body h2 { margin-top: 28px; }
+
+.author-workspace { max-width: 1100px; margin: 0 auto; padding: 32px; }
+.author-header { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; padding-bottom: 28px; margin-bottom: 24px; border-bottom: 1px solid #ccd6cf; }
+.author-header .brand { margin: 0; margin-right: auto; }
+.author-header > span { overflow-wrap: anywhere; }
+.author-header .language-menu { margin: 0; }
+.author-detail { margin-top: 24px; }
+.author-detail h2, .author-finding h3 { overflow-wrap: anywhere; }
+.author-finding { padding: 24px 0; border-top: 1px solid #ccd6cf; }
+.author-finding form { max-width: 720px; display: grid; gap: 16px; }
+.author-finding form button { justify-self: start; }
+.finding-description { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 75ch; }
+.review-title-button { padding: 0; background: transparent; border: 0; text-align: left; color: #155c50; text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .author-workspace { padding: 20px 16px; }
+  .author-header .brand { flex-basis: 100%; }
+  .author-finding form button { width: 100%; }
+}

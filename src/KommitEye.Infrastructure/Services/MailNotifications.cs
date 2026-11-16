@@ -16,6 +16,7 @@ public sealed class MailSettings
     public bool AuthorizationRequired { get; set; }
     public bool Enabled { get; set; }
     public bool SendToAuthor { get; set; }
+    public bool NotifyFalsePositives { get; set; }
     public bool SendWithoutBugs { get; set; }
     public string AttachmentFormat { get; set; } = "html";
     public string Host { get; set; } = "";
@@ -44,6 +45,8 @@ public sealed class MailSettings
         .Select(MailboxAddress.Parse).ToList();
     public void Validate(ISecretProtector? protector = null)
     {
+        if (NotifyFalsePositives && Addresses().Count == 0)
+            throw new InvalidOperationException("Укажите получателей уведомлений о ложных срабатываниях. / Configure recipients for false-positive alerts.");
         if (AttachmentFormat is not ("html" or "md")) throw new InvalidOperationException("Attachment format must be html or md.");
         if (Provider is "gmail" or "outlook")
         {
@@ -74,6 +77,8 @@ public sealed class MailJob
     public string MessageId { get; set; } = "";
     public string Subject { get; set; } = "";
     public string Report { get; set; } = "";
+    public string? ActionUrl { get; set; }
+    public bool NoAttachment { get; set; }
     public string From { get; set; } = "";
     public string Recipients { get; set; } = "";
     public int Attempts { get; set; }
@@ -81,7 +86,7 @@ public sealed class MailJob
     public DateTimeOffset NextAttempt { get; set; }
 }
 
-public sealed class MailNotifications : IAsyncDisposable
+public sealed partial class MailNotifications : IAsyncDisposable
 {
     private readonly ISecretProtector _protector;
     private readonly MailSettingsStore? _unifiedSettings;
@@ -244,7 +249,7 @@ public sealed class MailNotifications : IAsyncDisposable
             {
                 _settings.Validate(_protector);
                 var recipients = _settings.Addresses();
-                if (!review.Failed && _settings.SendToAuthor && !string.IsNullOrWhiteSpace(review.AuthorEmail))
+                if (!review.Failed && !AuthorPortalEnabled && _settings.SendToAuthor && !string.IsNullOrWhiteSpace(review.AuthorEmail))
                 {
                     // Commit metadata is untrusted: accept exactly one bare mailbox, never a header/list.
                     var email = review.AuthorEmail.Trim();
@@ -444,10 +449,12 @@ public sealed class MailNotifications : IAsyncDisposable
         foreach (var address in job.Recipients.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             message.To.Add(MailboxAddress.Parse(address));
         var html = RenderHtml(job.Report);
+        if (job.ActionUrl is not null && Uri.TryCreate(job.ActionUrl, UriKind.Absolute, out var action) && action.Scheme is "https" or "http")
+            html = html.Replace("</body>", "<p><a href=\"" + System.Net.WebUtility.HtmlEncode(job.ActionUrl) + "\">Открыть / Open KommitEye</a></p></body>");
         var body = new BodyBuilder { TextBody = job.Report, HtmlBody = html };
         if (job.AttachmentFormat is not ("html" or "md")) throw new InvalidOperationException("Unsupported queued attachment format.");
         var markdown = job.AttachmentFormat == "md";
-        body.Attachments.Add(markdown ? "commit-review.md" : "commit-review.html",
+        if (!job.NoAttachment) body.Attachments.Add(markdown ? "commit-review.md" : "commit-review.html",
             Encoding.UTF8.GetBytes(markdown ? job.Report : html), new ContentType("text", markdown ? "markdown" : "html"));
         message.Body = body.ToMessageBody();
         return message;

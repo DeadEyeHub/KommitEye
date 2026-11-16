@@ -24,7 +24,7 @@ public sealed partial class ReportStore
         using var db = Open();
         using var version = Command(db, null, "PRAGMA user_version");
         var current = Convert.ToInt32(version.ExecuteScalar());
-        if (current > 1) throw new InvalidOperationException("Unsupported reports database version.");
+        if (current > 2) throw new InvalidOperationException("Unsupported reports database version.");
         using (var wal = Command(db, null, "PRAGMA journal_mode=WAL")) wal.ExecuteNonQuery();
         using (var transaction = db.BeginTransaction())
         {
@@ -57,9 +57,10 @@ public sealed partial class ReportStore
                 CREATE TABLE IF NOT EXISTS legacy_imports(
                     name TEXT PRIMARY KEY, original_markdown TEXT NOT NULL,
                     imported_at TEXT NOT NULL);
-                PRAGMA user_version=1;
+                PRAGMA user_version=2;
                 """);
             schema.ExecuteNonQuery();
+            CreateAuthorSchema(db, transaction);
             transaction.Commit();
         }
         ImportLegacy(db, Path.Combine(directory, "reports"));
@@ -181,6 +182,12 @@ public sealed partial class ReportStore
                 """, ("$key", key), ("$branch", branch), ("$now", now), ("$id", groupId));
             bind.ExecuteNonQuery();
         }
+        using (var answered = Command(db, transaction, """
+            SELECT 1 FROM author_feedback a JOIN reviews r ON r.id=a.review_id
+            WHERE r.group_id=$group AND r.commit_sha=$sha LIMIT 1
+            """, ("$group", groupId), ("$sha", commit.Sha.ToLowerInvariant())))
+            if (answered.ExecuteScalar() is not null)
+                throw new InvalidOperationException("This review has author responses and cannot be overwritten.");
         using var save = Command(db, transaction, """
             INSERT INTO reviews(group_id,commit_sha,author,author_email,commit_date,subject,reviewed_at,
                 manual,failure,empty_diff,duration_ticks,unstructured_response,markdown)
@@ -206,6 +213,13 @@ public sealed partial class ReportStore
                 """, ("$id", reviewId), ("$ordinal", i), ("$file", finding.File),
                 ("$line", finding.Line), ("$side", finding.Side), ("$description", finding.Description));
             insert.ExecuteNonQuery();
+        }
+        if (string.IsNullOrEmpty(result.Failure) && result.UnstructuredResponse is null)
+        {
+            using var notice = Command(db, transaction,
+                "INSERT INTO portal_notices(kind,email,payload) VALUES('review',$email,$payload) ON CONFLICT DO NOTHING",
+                ("$email", commit.AuthorEmail.Trim().ToLowerInvariant()), ("$payload", reviewId.ToString()));
+            notice.ExecuteNonQuery();
         }
         cancellationToken.ThrowIfCancellationRequested();
         transaction.Commit();

@@ -51,7 +51,7 @@ public partial class MainWindow
             Journal = new PersistentLog(Path.Combine(logDirectory, "journal.log")),
             DetailsLog = new PersistentLog(Path.Combine(logDirectory, "model.log"),
                 maxBytes: 32 * 1024 * 1024, maxTailLines: 10_000, maxTailCharacters: 4_000_000),
-            Runner = new ReviewRunner(git, _model, _configuration, _stateStore, _reportWriter),
+            Runner = new ReviewRunner(git, _model, _configuration, _stateStore, _reportWriter, queueSkipNotice: _mail.EnqueueBudgetSkip),
             Label = settings.RepositoryPath + " | " + settings.BranchRef,
             Status = Localization.Text("Stopped", "Остановлено")
         };

@@ -35,6 +35,7 @@ public partial class ReportsWindow : Window
             new Option("", Localization.Text("All results", "Все результаты")),
             new Option("bug", Localization.Text("Bug", "Баг")),
             new Option("clean", Localization.Text("No bug", "Не баг")),
+            new Option("skipped", Localization.Text("Skipped — review incomplete", "Пропущен — проверка не завершена")),
             new Option("failed", Localization.Text("Review failed", "Ошибка проверки")),
             new Option("empty", Localization.Text("Empty diff", "Нет изменений")),
             new Option("unknown", Localization.Text("Unknown", "Не определено")) };

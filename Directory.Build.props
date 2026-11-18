@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
-    <Version>3.7.0</Version>
+    <Version>3.8.2-experimental</Version>
+    <Product>KommitEye experimental</Product>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

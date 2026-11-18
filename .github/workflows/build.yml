@@ -28,7 +28,7 @@ jobs:
       - name: Run fixture checks
         shell: pwsh
         run: |
-          foreach ($check in @('Gmail','Outlook','CommitPaging','ProjectLifecycle','ReportRepair','ApplyChanges','Server','Authors','Reports')) {
+          foreach ($check in @('Gmail','Outlook','CommitPaging','ProjectLifecycle','ReportRepair','ApplyChanges','Server','Authors','Reports','BudgetSkip')) {
             dotnet run --project "checks/$check/$check.csproj" -c Release
             if ($LASTEXITCODE -ne 0) { throw "$check failed" }
           }
@@ -128,7 +128,9 @@ jobs:
           $tag = "v$version"
           $title = "KommitEye $version"
           $files = @("KommitEye-Desktop-$version-win-x64.exe", "KommitEye-Service-$version-win-x64.msi", "KommitEye-Service-$version-win-x64.zip")
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid version' }
+          if ($version -notmatch '^\d+\.\d+\.\d+(-experimental)?$') { throw 'Invalid version' }
+          $releaseOptions = @()
+          if ($version.EndsWith('-experimental')) { $releaseOptions = @('--prerelease', '--latest=false') }
           foreach ($file in $files) {
             if (!(Test-Path -LiteralPath "release-files/$file")) { throw "Missing $file" }
           }
@@ -149,7 +151,7 @@ jobs:
             if ($commit.Trim() -ne $env:GITHUB_SHA) { throw 'Tag belongs to another commit; bump version.' }
           } elseif ($LASTEXITCODE -ne 1) { throw 'Cannot inspect release tag' }
           $assets = @($files | ForEach-Object { "release-files/$_" }) + @('release-files/SHA256SUMS.txt')
-          gh release create $tag @assets --draft --target $env:GITHUB_SHA --title $title --generate-notes
+          gh release create $tag @assets @releaseOptions --draft --target $env:GITHUB_SHA --title $title --generate-notes
           if ($LASTEXITCODE -ne 0) { throw 'Draft release upload failed' }
           $uploaded = gh release view $tag --json assets --jq '.assets[].name'
           if ($LASTEXITCODE -ne 0) { throw 'Cannot verify release assets' }

@@ -8,6 +8,7 @@
     <Project Path="src/KommitEye.Server/KommitEye.Server.csproj" />
   </Folder>
   <Folder Name="/checks/">
+    <Project Path="checks/BudgetSkip/BudgetSkip.csproj" />
     <Project Path="checks/Server/Server.csproj" />
     <Project Path="checks/Authors/Authors.csproj" />
     <Project Path="checks/Platform/Platform.csproj" />

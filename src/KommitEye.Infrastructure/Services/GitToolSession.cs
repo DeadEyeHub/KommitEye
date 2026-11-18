@@ -39,6 +39,30 @@ public sealed class GitToolSession : IDisposable
     private readonly string? _parent;
     public string Sha { get; }
     public bool DiffComplete { get; private set; }
+    public async Task<string> DescribeBudgetEvidenceAsync(CancellationToken token)
+    {
+        var remaining = 24000;
+        var modules = new List<object>();
+        async Task Visit(GitToolSession session)
+        {
+            if (remaining <= 0) return;
+            var args = session.DiffArguments(false).Select(a => a == "--patch" ? "--numstat" : a).ToArray();
+            // Use the same immutable comparison as the reviewed diff, with a bounded file/size listing.
+            args = args.Where(a => a != "-p" && !a.StartsWith("--unified=", StringComparison.Ordinal)).ToArray();
+            var listing = await GitService.ReadPageAsync(session._repository, 0, Math.Min(8000, remaining), token,
+                args);
+            if (listing.ExitCode != 0) throw new GitException("Cannot collect skip-decision evidence: " + listing.Error);
+            remaining -= listing.Output.Length + 512;
+            modules.Add(new { path = session._modulePath, sha = session.Sha, diff_complete = session.DiffComplete,
+                next_offsets = session._nextOffsets.Take(10).Select(p => new { key = p.Key[..Math.Min(256, p.Key.Length)], offset = p.Value }).ToArray(), files_numstat = listing.Output,
+                listing_truncated = listing.HasMore, submodules_discovered = session._links.Count });
+            foreach (var child in session._submodules.Values) await Visit(child);
+        }
+        await Visit(this);
+        return JsonSerializer.Serialize(new { reviewed_sha = Sha, complete = ReadyForFinal,
+            modules, evidence_truncated = remaining <= 0,
+            findings = "No final validated findings report was produced; reasoning is not confirmed evidence." });
+    }
     public bool ReadyForFinal => DiffComplete && _linksLoaded && _links.Keys.All(path =>
         _submodules.TryGetValue(path, out var child) && child.ReadyForFinal);
 

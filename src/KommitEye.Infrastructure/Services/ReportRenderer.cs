@@ -62,6 +62,8 @@ public static class ReportRenderer
 
     private static string DescribeResult(ReviewResult result)
     {
+        if (result.BudgetSkipped)
+            return Localization.Text("Skipped — review incomplete: ", "Пропущен — проверка не завершена: ") + Escape(result.Failure ?? "");
         if (result.Failure is not null)
             return Localization.Text("review failed; skipped: ", "проверка не выполнена; пропущен: ") + Escape(result.Failure);
         if (result.EmptyDiff)

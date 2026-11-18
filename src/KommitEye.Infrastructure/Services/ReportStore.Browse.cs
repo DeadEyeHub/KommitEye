@@ -12,6 +12,7 @@ public sealed record ReviewReportEntry(long Id, string ReportName, string Reposi
         "bug" => Localization.Text("Bug", "Баг"),
         "clean" => Localization.Text("No bug", "Не баг"),
         "failed" => Localization.Text("Review failed", "Ошибка проверки"),
+        "skipped" => Localization.Text("Skipped — review incomplete", "Пропущен — проверка не завершена"),
         "empty" => Localization.Text("Empty diff", "Нет изменений"),
         _ => Localization.Text("Unknown", "Не определено")
     };
@@ -52,7 +53,7 @@ public sealed partial class ReportStore
         query = query?.Trim() ?? "";
         if (query.Length > 500) throw new ArgumentException("Search is limited to 500 characters.");
         if (offset < 0 || limit is < 1 or > 200) throw new ArgumentException("Invalid report page.");
-        if (outcome is not (null or "" or "bug" or "clean" or "failed" or "unknown" or "empty"))
+        if (outcome is not (null or "" or "bug" or "clean" or "failed" or "skipped" or "unknown" or "empty"))
             throw new ArgumentException("Unknown report outcome.");
         var order = sort switch
         {
@@ -87,6 +88,7 @@ public sealed partial class ReportStore
                     r.reviewed_at IS NULL AS legacy,r.markdown,r.author_email,
                     CASE
                         WHEN r.reviewed_at IS NULL THEN legacy_outcome(r.markdown)
+                        WHEN substr(r.failure,1,14)='[budget-skip] ' THEN 'skipped'
                         WHEN r.failure IS NOT NULL THEN 'failed'
                         WHEN r.empty_diff=1 THEN 'empty'
                         WHEN EXISTS(SELECT 1 FROM findings f WHERE f.review_id=r.id) THEN 'bug'

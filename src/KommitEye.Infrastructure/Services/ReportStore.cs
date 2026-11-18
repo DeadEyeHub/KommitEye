@@ -24,7 +24,7 @@ public sealed partial class ReportStore
         using var db = Open();
         using var version = Command(db, null, "PRAGMA user_version");
         var current = Convert.ToInt32(version.ExecuteScalar());
-        if (current > 2) throw new InvalidOperationException("Unsupported reports database version.");
+        if (current > 3) throw new InvalidOperationException("Unsupported reports database version.");
         using (var wal = Command(db, null, "PRAGMA journal_mode=WAL")) wal.ExecuteNonQuery();
         using (var transaction = db.BeginTransaction())
         {
@@ -60,6 +60,20 @@ public sealed partial class ReportStore
                 PRAGMA user_version=2;
                 """);
             schema.ExecuteNonQuery();
+            // Repair the first experimental build's schema without losing its reports.
+            // New skips use the existing failure field; old builds can read and overwrite it.
+            using (var columns = Command(db, transaction, "SELECT COUNT(*) FROM pragma_table_info('reviews') WHERE name='budget_skipped'"))
+            {
+                if (Convert.ToInt32(columns.ExecuteScalar()) != 0)
+                {
+                    using var repair = Command(db, transaction, """
+                        UPDATE reviews SET failure='[budget-skip] ' || COALESCE(failure,'Review incomplete')
+                        WHERE budget_skipped=1 AND substr(COALESCE(failure,''),1,14) <> '[budget-skip] ';
+                        ALTER TABLE reviews DROP COLUMN budget_skipped;
+                        """);
+                    repair.ExecuteNonQuery();
+                }
+            }
             CreateAuthorSchema(db, transaction);
             transaction.Commit();
         }
@@ -200,7 +214,7 @@ public sealed partial class ReportStore
             RETURNING id
             """, ("$group", groupId), ("$sha", commit.Sha.ToLowerInvariant()), ("$author", commit.Author),
             ("$email", commit.AuthorEmail), ("$date", commit.Date.ToString("O")), ("$subject", commit.Subject),
-            ("$now", now), ("$manual", manual), ("$failure", result.Failure), ("$empty", result.EmptyDiff),
+            ("$now", now), ("$manual", manual), ("$failure", result.BudgetSkipped ? "[budget-skip] " + result.Failure : result.Failure), ("$empty", result.EmptyDiff),
             ("$duration", result.AnalysisDuration?.Ticks), ("$raw", result.UnstructuredResponse), ("$markdown", markdown));
         var reviewId = (long)save.ExecuteScalar()!;
         using (var clear = Command(db, transaction, "DELETE FROM findings WHERE review_id=$id", ("$id", reviewId)))

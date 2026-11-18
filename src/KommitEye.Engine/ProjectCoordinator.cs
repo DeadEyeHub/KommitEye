@@ -36,7 +36,7 @@ public sealed class ProjectCoordinator : IAsyncDisposable
     }
     private Runtime Create(AppSettings project)
     {
-        var git = new GitService(); var runner = new ReviewRunner(git, _model, _configuration, _state, _reports);
+        var git = new GitService(); var runner = new ReviewRunner(git, _model, _configuration, _state, _reports, queueSkipNotice: _mail.EnqueueBudgetSkip);
         var directory = Path.Combine(AppPaths.DataDirectory, "logs", project.ProjectId);
         var runtime = new Runtime { Git = git, Runner = runner,
             Journal = new(Path.Combine(directory, "journal.log")), Details = new(Path.Combine(directory, "model.log")),
@@ -114,7 +114,23 @@ public sealed class ProjectCoordinator : IAsyncDisposable
         }
         finally { _commands.Release(); }
     }
-    public async Task<ReviewJob> StartAsync(string id, string? sha, string requestKey, CancellationToken token = default)
+    public async Task<int> GetStartSkipCountAsync(string id, CancellationToken token = default)
+    {
+        await _commands.WaitAsync(token);
+        try
+        {
+            var project = _configuration.LoadProjects().Projects.SingleOrDefault(p => p.ProjectId == id)
+                ?? throw new KeyNotFoundException("Project not found.");
+            var runtime = _runtimes[id];
+            var identity = await runtime.Git.GetRepositoryIdentityAsync(project.RepositoryPath, token);
+            var branch = await runtime.Git.ResolveBranchAsync(project.RepositoryPath, project.BranchRef, token);
+            return await _state.GetConsecutiveBudgetSkipsAsync(identity.CommonGitDirectory, branch, token);
+        }
+        finally { _commands.Release(); }
+    }
+
+    public async Task<ReviewJob> StartAsync(string id, string? sha, string requestKey, CancellationToken token = default,
+        bool manualStart = false, bool resetSkipCounter = false)
     {
         if (!Guid.TryParse(requestKey, out _)) throw new ArgumentException("A UUID request key is required.");
         await _commands.WaitAsync();
@@ -142,6 +158,17 @@ public sealed class ProjectCoordinator : IAsyncDisposable
                 r.Identity.Equals(identity.CommonGitDirectory, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) && r.Branch == branch)))
                 throw new InvalidOperationException("This repository/worktree is already running in another project.");
             runtime.WorkTree = identity.WorkTreeRoot; runtime.Identity = identity.CommonGitDirectory; runtime.Branch = branch;
+            if (manualStart && sha is null)
+            {
+                var skips = await _state.GetConsecutiveBudgetSkipsAsync(identity.CommonGitDirectory, branch, token);
+                if (skips > 0 && !resetSkipCounter)
+                    throw new InvalidOperationException("Confirm resetting the consecutive skip counter before starting. / Подтвердите сброс счётчика пропусков перед запуском.");
+                if (skips > 0)
+                {
+                    await _state.ResetBudgetSkipsAsync(identity.CommonGitDirectory, branch, token);
+                    runtime.Journal.Append($"Manual start confirmed: consecutive skip counter reset from {skips} to 0.");
+                }
+            }
             var job = new ReviewJob(Guid.NewGuid().ToString("N"), id, requestKey, sha ?? "", sha is null ? "monitor" : "review", "running", DateTimeOffset.UtcNow);
             _jobs.Save(job); runtime.Job = job;
             runtime.Cancellation?.Dispose(); runtime.Cancellation = new();

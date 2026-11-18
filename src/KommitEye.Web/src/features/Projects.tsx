@@ -15,6 +15,8 @@ import {
   type Data,
 } from "../ui";
 export function Projects({ tick }: { tick: number }) {
+  const [startConfirmation, setStartConfirmation] = useState<Data | null>(null);
+  const [starting, setStarting] = useState(false);
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -268,7 +270,14 @@ export function Projects({ tick }: { tick: number }) {
                         <div className="buttons">
                           <Action
                             onClick={async () => {
-                              if (!status.running) validateSelection(p);
+                              if (!status.running) {
+                                validateSelection(p);
+                                const info = await api<{ consecutiveSkips: number }>(`/projects/${p.projectId}/start-info`);
+                                if (info.consecutiveSkips > 0) {
+                                  setStartConfirmation({ ...p, count: info.consecutiveSkips, requestKey: requestId() });
+                                  return;
+                                }
+                              }
                               await api(
                                 `/projects/${p.projectId}/${status.running ? "stop" : "start"}`,
                                 { requestKey: requestId() },
@@ -423,6 +432,28 @@ export function Projects({ tick }: { tick: number }) {
             </section>
           )}
         </>
+      )}
+      {startConfirmation && (
+        <Modal titleId="start-reset-title" onClose={() => { if (!starting) setStartConfirmation(null); }}>
+          <h2 id="start-reset-title">{t("Сбросить счётчик и запустить?", "Reset counter and start?")}</h2>
+          <p>{startConfirmation.displayName || startConfirmation.repositoryPath}</p>
+          <p>{t("Пропусков подряд:", "Consecutive skips:")} {startConfirmation.count}.
+            {" "}{t("При запуске счётчик сбросится до 0, и проверка продолжится. Ранее пропущенные коммиты автоматически перепроверяться не будут.",
+              "Starting resets the counter to 0 and resumes review. Previously skipped commits will not be rechecked automatically.")}</p>
+          <div className="buttons">
+            <button autoFocus disabled={starting} onClick={() => setStartConfirmation(null)}>{t("Отмена", "Cancel")}</button>
+            <Action onClick={async () => {
+              setStarting(true);
+              try {
+                await api(`/projects/${startConfirmation.projectId}/start`, {
+                  requestKey: startConfirmation.requestKey, resetSkipCounter: true,
+                });
+                setStartConfirmation(null);
+                await load();
+              } finally { setStarting(false); }
+            }}>{t("Сбросить и запустить", "Reset and start")}</Action>
+          </div>
+        </Modal>
       )}
       {deleting && (
         <Modal titleId="delete-project-title" onClose={() => setDeleting(null)}>

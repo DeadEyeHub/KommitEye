@@ -289,8 +289,8 @@ public partial class MainWindow : Window
             "Генерация и лимиты ревью (для каждого профиля). Нажмите «Применить изменения» или OK. Изменения применятся к следующей проверке, не к текущей. Дробные числа: точка или запятая. Диапазоны указаны в скобках.");
         ParametersGrid.Items.Refresh();
         Title = Localization.Format(
-            "KommitEye {0}",
-            "Проверка Git {0}",
+            "KommitEye {0} experimental",
+            "Проверка Git {0} experimental",
             AppVersion);
         ProjectTab.Header = Localization.Text("Project", "Проект");
         ModelsTab.Header = Localization.Text("Models", "Модели");
@@ -1073,6 +1073,18 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException(Localization.Text("Repository selection changed. Start again.", "Выбор репозитория изменился. Запустите снова."));
             await ReserveProjectScopeAsync(settings);
             if (_exitRequested) return;
+            var identity = await _git.GetRepositoryIdentityAsync(settings.RepositoryPath, CancellationToken.None);
+            var skips = await _stateStore.GetConsecutiveBudgetSkipsAsync(identity.CommonGitDirectory, settings.BranchRef, CancellationToken.None);
+            if (skips > 0)
+            {
+                var answer = System.Windows.MessageBox.Show(this, Localization.Format(
+                    "Consecutive skips: {0}. Starting will reset the counter to 0 and resume review. Previously skipped commits will not be rechecked automatically. Reset and start?",
+                    "Пропусков подряд: {0}. При запуске счётчик сбросится до 0, и проверка продолжится. Ранее пропущенные коммиты автоматически перепроверяться не будут. Сбросить счётчик и запустить?", skips),
+                    Localization.Text("Reset skip counter", "Сброс счётчика пропусков"), MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+                if (answer != MessageBoxResult.Yes) return;
+                await _stateStore.ResetBudgetSkipsAsync(identity.CommonGitDirectory, settings.BranchRef, CancellationToken.None);
+                _activeRuntime.Journal.Append($"Manual start confirmed: consecutive skip counter reset from {skips} to 0.");
+            }
             if (!_runner.Start(settings, profile))
                 throw new InvalidOperationException(Localization.Text(
                     "Another review operation is already running.",
@@ -1089,6 +1101,7 @@ public partial class MainWindow : Window
         finally
         {
             _startingReview = false;
+            SetRunningControls(_runner.IsRunning);
             UpdateStartCommitButton();
         }
     }

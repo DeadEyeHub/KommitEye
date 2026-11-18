@@ -39,6 +39,7 @@ public sealed class ReviewRunner
     }
     private DailyModelSchedule _schedule = new(new AppSettings());
     private readonly Func<DateTime> _localNow;
+    private readonly Action<CommitReviewed>? _queueSkipNotice;
     public event Action<int?>? RemainingChanged;
     public event Action<DateTimeOffset?>? NextRunChanged;
     public event Action<(string Repository, string Sha, TokenUsage? Usage)>? UsageReceived;
@@ -69,7 +70,8 @@ public sealed class ReviewRunner
         ConfigurationStore configuration,
         StateStore stateStore,
         ReportWriter reportWriter,
-        Func<DateTime>? localNow = null)
+        Func<DateTime>? localNow = null,
+        Action<CommitReviewed>? queueSkipNotice = null)
     {
         _git = git;
         _model = model;
@@ -77,6 +79,7 @@ public sealed class ReviewRunner
         _stateStore = stateStore;
         _reportWriter = reportWriter;
         _localNow = localNow ?? (() => DateTime.Now);
+        _queueSkipNotice = queueSkipNotice;
         Log += message => _failureDiagnostics.Append("journal", message);
         ModelLog += message => _failureDiagnostics.Append("model", message);
         _git.Diagnostic += message => _failureDiagnostics.Append("git", message);
@@ -152,6 +155,8 @@ public sealed class ReviewRunner
             var result = await AnalyzeAndReportAsync(
                 repositoryPath, identity.CommonGitDirectory, branch, sha, profile.Clone(), true, cancellationToken);
             Complete(repositoryPath, branch, sha, profile, result, true, cancellationToken);
+            if (result.Failure is null && result.UnstructuredResponse is null)
+                await _stateStore.ResetBudgetSkipsAsync(identity.CommonGitDirectory, branch, cancellationToken);
             StatusChanged?.Invoke(Localization.Text("Manual review completed", "Ручная проверка завершена"));
             Log?.Invoke(Localization.Format(
                 "Selected commit {0} reviewed, findings: {1}.",
@@ -429,6 +434,7 @@ public sealed class ReviewRunner
         bool updateSubmodulesAfterAdvance = true)
     {
         lock (_lifecycleLock) if (!_manualReviewActive) profile = _updatedProfile?.Clone() ?? profile;
+        var skips = await _stateStore.GetConsecutiveBudgetSkipsAsync(repositoryIdentity, branch, cancellationToken);
         var result = await AnalyzeAndReportAsync(
             repositoryPath, repositoryIdentity, branch, sha, profile, false, cancellationToken);
         if (advanceFrom is not null)
@@ -440,7 +446,8 @@ public sealed class ReviewRunner
                 "Локальная ветка {0} продвинута: {1} → {2}.", branch, Short(advanceFrom), Short(sha)));
         }
         Emit(ReviewStage.SavingCursor, profile, sha);
-        await _stateStore.SetCursorAsync(repositoryIdentity, branch, sha, cancellationToken);
+        skips = result.BudgetSkipped ? skips + 1 : result.Failure is null && result.UnstructuredResponse is null ? 0 : skips;
+        await _stateStore.SetCursorAsync(repositoryIdentity, branch, sha, cancellationToken, skips);
         if (result.Failure is not null)
         {
             SetRemaining(Math.Max(0, _remaining - 1));
@@ -482,6 +489,30 @@ public sealed class ReviewRunner
         }
         catch (ModelSchedulePauseException) { throw; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (ReviewBudgetException exception) when (!manualReview)
+        {
+            SaveFailureDiagnostics(profile, exception.ToString(), false);
+            try
+            {
+                _schedule.Check(_localNow());
+                Publish(StatusChanged, Localization.Text("Deciding whether to skip incomplete review", "Решение о пропуске незавершённой проверки"));
+                var decision = await _model.DecideSkipAsync(profile, exception, cancellationToken,
+                    message => Publish(ModelLog, message), usage => Publish(UsageReceived, (repositoryIdentity, sha, usage)));
+                Publish(Log, $"Budget skip decision for {sha}: {decision.Decision}; {decision.Reason}");
+                if (decision.Decision != "SKIP") throw new InvalidOperationException("Model requested STOP: " + decision.Reason);
+                if (await _stateStore.GetConsecutiveBudgetSkipsAsync(repositoryIdentity, branch, cancellationToken) >= 3)
+                    throw new InvalidOperationException("Three consecutive commits have already been skipped. Model proposed another SKIP; project stopped without skipping this commit.");
+                result = new ReviewResult { BudgetSkipped = true, Failure = exception.Message + "\nModel skip decision: " + decision.Reason };
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception decisionError)
+            {
+                var failed = new ReviewResult { Failure = exception.Message + "\nSkip not authorized: " + GitService.SanitizeDiagnostic(decisionError.Message), AnalysisDuration = analysisClock.Elapsed };
+                await _reportWriter.AppendAsync(repositoryPath, branch, commit, failed, false, cancellationToken, repositoryIdentity);
+                PublishFailedReview(repositoryPath, branch, sha, failed, false);
+                throw new InvalidOperationException(failed.Failure, decisionError);
+            }
+        }
         catch (Exception exception)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -506,13 +537,31 @@ public sealed class ReviewRunner
         result.AnalysisDuration = analysisClock.Elapsed;
         await _reportWriter.AppendAsync(
             repositoryPath, branch, commit, result, manualReview, cancellationToken, repositoryIdentity);
+        if (result.BudgetSkipped)
+        {
+            var count = await _stateStore.GetConsecutiveBudgetSkipsAsync(repositoryIdentity, branch, cancellationToken) + 1;
+            try
+            {
+                if (_queueSkipNotice is null) throw new InvalidOperationException("Skip notification queue is unavailable; cursor not advanced.");
+                _queueSkipNotice(new CommitReviewed(repositoryPath, branch, sha, result.Findings.Count, false, false, false,
+                    result.ReportMarkdown + $"\nConsecutive skips: {count}/3." + " Queue will continue; another SKIP at 3/3 stops the project.",
+                    repositoryIdentity, result.AuthorEmail, Failed: true, BudgetSkipped: true));
+            }
+            catch (Exception error)
+            {
+                result.BudgetSkipped = false;
+                result.Failure += "\nSkip not executed: notification could not be queued. " + GitService.SanitizeDiagnostic(error.Message);
+                await _reportWriter.AppendAsync(repositoryPath, branch, commit, result, false, cancellationToken, repositoryIdentity);
+                throw;
+            }
+        }
         if (result.Failure is not null) PublishFailedReview(repositoryPath, branch, sha, result, manualReview);
         return result;
     }
 
     private void PublishFailedReview(string path, string branch, string sha, ReviewResult result, bool manual) =>
         Publish(Reviewed, new CommitReviewed(path, branch, sha, 0, false, false, manual,
-            result.ReportMarkdown, result.RepositoryIdentity, result.AuthorEmail, Failed: true));
+            result.ReportMarkdown, result.RepositoryIdentity, result.AuthorEmail, Failed: true, BudgetSkipped: result.BudgetSkipped));
 
     private async Task<ReviewResult> AnalyzeAsync(string repositoryPath, string branch, string sha,
         ModelProfile profile, string repositoryIdentity, CancellationToken cancellationToken)

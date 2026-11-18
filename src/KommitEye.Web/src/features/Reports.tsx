@@ -14,6 +14,7 @@ type Group = { name: string };
 const pageSize = 50;
 const outcomeLabel = (value: string) => ({
   bug: t("Баг", "Bug"), clean: t("Не баг", "No bug"), failed: t("Ошибка проверки", "Review failed"),
+  skipped: t("Пропущен — проверка не завершена", "Skipped — review incomplete"),
   empty: t("Нет изменений", "Empty diff"), unknown: t("Не определено", "Unknown"),
 }[value] || t("Не определено", "Unknown"));
 
@@ -73,7 +74,7 @@ export function Reports({ tick }: { tick: number }) {
       <label>{t("Баг / Не баг", "Bug / No bug")}
         <select value={outcome} onChange={e => { setOutcome(e.target.value); setOffset(0); }}>
           <option value="">{t("Все результаты", "All results")}</option>
-          {["bug", "clean", "failed", "empty", "unknown"].map(value => <option key={value} value={value}>{outcomeLabel(value)}</option>)}
+          {["bug", "clean", "failed", "skipped", "empty", "unknown"].map(value => <option key={value} value={value}>{outcomeLabel(value)}</option>)}
         </select>
       </label>
       <label>{t("Сортировка", "Sort by")}

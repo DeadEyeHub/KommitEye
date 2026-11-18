@@ -277,7 +277,11 @@ public sealed partial class ModelClient
                         }
                         output += result.Length;
                         log?.Invoke($"Tool result {callId}: {result}");
-                        if (output > parameters.ToolOutputLimit) throw new InvalidDataException($"Git tool output budget exhausted (limit {parameters.ToolOutputLimit}); review incomplete.");
+                        if (output > parameters.ToolOutputLimit)
+                        {
+                            if (unresolvedErrors.Count > 0) throw new InvalidDataException("Tool output budget exhausted with unresolved tool errors; skip is not eligible.");
+                            throw new ReviewBudgetException($"Git tool output budget exhausted (limit {parameters.ToolOutputLimit}); review incomplete.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
+                        }
                         messages.Add(new { role = "tool", tool_call_id = callId, content = result });
                     }
                     continue;
@@ -356,7 +360,8 @@ public sealed partial class ModelClient
                 if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: succeeded.");
                 return content;
             }
-            throw new InvalidDataException($"Git agent round budget exhausted: {parameters.MaxRounds} of {parameters.MaxRounds} model requests used; review incomplete.");
+            if (unresolvedErrors.Count > 0) throw new InvalidDataException("Round budget exhausted with unresolved tool errors; skip is not eligible.");
+            throw new ReviewBudgetException($"Git agent round budget exhausted: {parameters.MaxRounds} of {parameters.MaxRounds} model requests used; review incomplete.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
         }
         catch (OperationCanceledException exception) when (!callerToken.IsCancellationRequested && deadline.IsCancellationRequested)
         {

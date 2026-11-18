@@ -3,7 +3,7 @@
     <OutputType>Package</OutputType>
     <InstallerPlatform>x64</InstallerPlatform>
     <OutputName>KommitEye-Service-$(Version)-win-x64</OutputName>
-    <DefineConstants>$(DefineConstants);ServerVersion=$(Version);PayloadDir=$(PayloadDir)</DefineConstants>
+    <DefineConstants>$(DefineConstants);ServerVersion=$([System.String]::Copy('$(Version)').Split('-')[0]);PayloadDir=$(PayloadDir)</DefineConstants>
     <Cultures>en-US</Cultures>
   </PropertyGroup>
   <ItemGroup>

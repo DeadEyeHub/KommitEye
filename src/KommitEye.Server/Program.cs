@@ -160,7 +160,9 @@ api.MapPost("/projects/{id}/start-commit", async (string id, StartRequest reques
 api.MapPost("/projects", async (ProjectUpdate request, ProjectCoordinator coordinator) => { RepositoryApi.ValidateMode(request.Settings); await coordinator.SaveProjectAsync(request.Settings, request.Revision); return Results.Ok(); });
 api.MapPost("/projects/{id}/delete", async (string id, ProjectDelete request, ProjectCoordinator coordinator) => { await coordinator.DeleteProjectAsync(id, request.Revision); return Results.Ok(); });
 api.MapPost("/projects/{id}/start", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
-    Results.Accepted(value: await coordinator.StartAsync(id, null, request.RequestKey)));
+    Results.Accepted(value: await coordinator.StartAsync(id, null, request.RequestKey, manualStart: true, resetSkipCounter: request.ResetSkipCounter)));
+api.MapGet("/projects/{id}/start-info", async (string id, ProjectCoordinator coordinator, CancellationToken token) =>
+    new { consecutiveSkips = await coordinator.GetStartSkipCountAsync(id, token) });
 api.MapPost("/projects/{id}/reviews", async (string id, StartRequest request, ProjectCoordinator coordinator) =>
     Results.Accepted(value: await coordinator.StartAsync(id, request.Sha ?? throw new ArgumentException("SHA required."), request.RequestKey)));
 api.MapPost("/projects/{id}/stop", async (string id, ProjectCoordinator coordinator) => { await coordinator.StopAsync(id); return Results.Ok(); });
@@ -227,6 +229,6 @@ public sealed class EventsHub : Hub;
 public sealed record LoginRequest(string Password);
 public sealed record ProjectUpdate(long Revision, AppSettings Settings);
 public sealed record ProjectDelete(long Revision);
-public sealed record StartRequest(string RequestKey, string? Sha);
+public sealed record StartRequest(string RequestKey, string? Sha, bool ResetSkipCounter = false);
 public sealed record OAuthRequest(string Configuration);
 public sealed record RepositoryRequest(string Path);

@@ -116,6 +116,7 @@ public sealed class StateStore
                 state.Repositories.Add(repositoryIdentity, repository);
             }
             repository.LastReviewedCommits.Remove(branch);
+            repository.ConsecutiveBudgetSkips.Remove(branch);
             repository.PendingStartCommits[branch] = sha;
             await SaveCoreAsync(state, cancellationToken);
         }
@@ -126,7 +127,8 @@ public sealed class StateStore
         string repositoryIdentity,
         string branch,
         string sha,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? consecutiveBudgetSkips = null)
     {
         repositoryIdentity = NormalizeRepositoryPath(repositoryIdentity);
         await _gate.WaitAsync(cancellationToken);
@@ -139,8 +141,31 @@ public sealed class StateStore
                 state.Repositories.Add(repositoryIdentity, repository);
             }
             repository.LastReviewedCommits[branch] = sha;
+            if (consecutiveBudgetSkips is { } count) repository.ConsecutiveBudgetSkips[branch] = count;
             repository.PendingStartCommits.Remove(branch);
             await SaveCoreAsync(state, cancellationToken);
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<int> GetConsecutiveBudgetSkipsAsync(string identity, string branch, CancellationToken token)
+    {
+        var state = await LoadAsync(token);
+        return state.Repositories.TryGetValue(NormalizeRepositoryPath(identity), out var repository)
+            ? repository.ConsecutiveBudgetSkips.GetValueOrDefault(branch) : 0;
+    }
+
+    public async Task ResetBudgetSkipsAsync(string identity, string branch, CancellationToken token)
+    {
+        await _gate.WaitAsync(token);
+        try
+        {
+            var state = await LoadCoreAsync(token);
+            if (state.Repositories.TryGetValue(NormalizeRepositoryPath(identity), out var repository))
+            {
+                repository.ConsecutiveBudgetSkips.Remove(branch);
+                await SaveCoreAsync(state, token);
+            }
         }
         finally { _gate.Release(); }
     }
@@ -199,11 +224,13 @@ public sealed class StateStore
         var state = new RepositoryState();
         foreach (var (path, savedRepository) in savedState.Repositories)
         {
-            if (savedRepository?.LastReviewedCommits is null || savedRepository.PendingStartCommits is null)
+            if (savedRepository?.LastReviewedCommits is null || savedRepository.PendingStartCommits is null ||
+                savedRepository.ConsecutiveBudgetSkips is null || savedRepository.ConsecutiveBudgetSkips.Values.Any(count => count is < 0 or > 3))
                 throw new InvalidDataException("Invalid repository state entry.");
             var normalizedPath = NormalizeRepositoryPath(path);
             if (!state.Repositories.TryAdd(normalizedPath, new RepositoryReviewState
             {
+                ConsecutiveBudgetSkips = new Dictionary<string, int>(savedRepository.ConsecutiveBudgetSkips, StringComparer.Ordinal),
                 LastReviewedCommits = new Dictionary<string, string>(
                     savedRepository.LastReviewedCommits,
                     StringComparer.Ordinal),
@@ -244,6 +271,8 @@ public sealed class StateStore
                 throw new InvalidDataException("Worktree states contain conflicting review positions.");
         MergeValues(target.LastReviewedCommits, source.LastReviewedCommits);
         MergeValues(target.PendingStartCommits, source.PendingStartCommits);
+        foreach (var (branch, count) in source.ConsecutiveBudgetSkips)
+            target.ConsecutiveBudgetSkips[branch] = Math.Max(target.ConsecutiveBudgetSkips.GetValueOrDefault(branch), count);
     }
 
     private static void MergeValues(Dictionary<string, string> target, Dictionary<string, string> source)

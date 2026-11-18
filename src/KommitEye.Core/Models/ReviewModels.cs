@@ -30,6 +30,7 @@ public sealed record GitRepositoryIdentity(
 
 public sealed class ReviewResult
 {
+    public bool BudgetSkipped { get; set; }
     public string? Failure { get; set; }
     public TimeSpan? AnalysisDuration { get; set; }
     public string ReportMarkdown { get; set; } = "";
@@ -50,6 +51,7 @@ public sealed class RepositoryState
 
 public sealed class RepositoryReviewState
 {
+    public Dictionary<string, int> ConsecutiveBudgetSkips { get; set; } = new(StringComparer.Ordinal);
     public Dictionary<string, string> LastReviewedCommits { get; set; } =
         new(StringComparer.Ordinal);
     public Dictionary<string, string> PendingStartCommits { get; set; } =
@@ -62,4 +64,4 @@ public sealed record ReviewProgress(ReviewStage Stage, string Model, string Comm
 
 public sealed record CommitReviewed(string RepositoryPath, string BranchRef, string Sha,
     int FindingCount, bool HasUnstructuredResponse, bool EmptyDiff, bool Manual,
-    string ReportMarkdown = "", string RepositoryIdentity = "", string AuthorEmail = "", bool Failed = false);
+    string ReportMarkdown = "", string RepositoryIdentity = "", string AuthorEmail = "", bool Failed = false, bool BudgetSkipped = false);

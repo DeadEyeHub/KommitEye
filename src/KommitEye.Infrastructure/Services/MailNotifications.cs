@@ -238,6 +238,7 @@ public sealed partial class MailNotifications : IAsyncDisposable
 
     public void Enqueue(CommitReviewed review)
     {
+        if (review.BudgetSkipped) return; // Already queued through the required durable path.
         if (review.HasUnstructuredResponse && !review.Failed) { _log("Mail: incomplete review skipped: " + review.Sha); return; }
         lock (_gate)
         {
@@ -276,6 +277,31 @@ public sealed partial class MailNotifications : IAsyncDisposable
                 _log(Localization.Text("Mail: report queued: ", "Почта: отчёт поставлен в очередь: ") + Describe(job));
             }
             catch (Exception e) { _log("Mail: cannot queue report (" + e.GetType().Name + "). Review is saved."); }
+        }
+    }
+    // Required durable notification for advancing past an unreviewed commit. Never swallow failures.
+    public void EnqueueBudgetSkip(CommitReviewed review)
+    {
+        lock (_gate)
+        {
+            if (LoadError is not null) throw new InvalidOperationException(LoadError);
+            if (!_settings.Enabled) throw new InvalidOperationException("Enable email notifications before skipping commits.");
+            _settings.Validate(_protector);
+            var recipients = _settings.Addresses();
+            if (recipients.Count == 0) throw new InvalidOperationException("Configure explicit recipients for skipped-commit notifications.");
+            if (string.IsNullOrWhiteSpace(review.ReportMarkdown)) throw new InvalidDataException("Skip report is unavailable.");
+            var identity = Path.GetFullPath(review.RepositoryIdentity);
+            if (OperatingSystem.IsWindows()) identity = identity.ToUpperInvariant();
+            var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity + "\n" + review.BranchRef + "\n" + review.Sha + "\nbudget-skip")));
+            if (_jobs.Any(j => j.Key == key)) return;
+            var job = new MailJob { Key = key, MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(),
+                Provider = _settings.Provider, AccountId = _settings.AccountId, AttachmentFormat = _settings.AttachmentFormat,
+                Subject = Clean($"[KommitEye experimental] Skipped — review incomplete: {Path.GetFileName(review.RepositoryPath)} / {review.BranchRef} / {review.Sha}"),
+                Report = review.ReportMarkdown, From = _settings.From,
+                Recipients = string.Join(";", recipients.Select(r => r.ToString())), NextAttempt = _now() };
+            _jobs.Add(job);
+            try { Save(_queuePath, _jobs); } catch { _jobs.Remove(job); throw; }
+            _log("Mail: incomplete-review skip notification durably queued: " + review.Sha);
         }
     }
     // Operational alerts go to configured recipients, never to commit authors.

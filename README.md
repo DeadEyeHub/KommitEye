@@ -395,3 +395,31 @@ termination cannot send a notification at the moment of interruption.
 
 In the web Reports page, **Open review** and **Open** for a full branch report open an inline dialog.
 Close it with **Close** or Escape; Markdown and HTML downloads remain available.
+
+## 3.8.2-experimental: budget-limited review skips
+
+Automatic review may request one separate model decision after exhausting the tool-output
+character budget or model-round budget. The request contains bounded file numstats and diff
+coverage, never the full exhausted conversation. Only a valid SKIP with a reason permits
+continuation. STOP, malformed responses, timeouts, API errors, unresolved tool errors and
+notification/storage failures stop the project. Manual reviews do not automatically skip.
+
+Skipped reviews have a separate `skipped` outcome (never `clean`). The report and a durable
+email notification to explicitly configured recipients must be saved before branch/cursor
+advancement. Enable email and configure recipients to use this feature; temporary delivery
+failures are retried by the existing mail queue. No validated findings exist before the agent
+produces its final report; internal reasoning is not promoted to confirmed findings.
+
+Three consecutive budget skips are allowed. The next commit is still reviewed normally.
+If the model proposes another SKIP while the counter is three, the project stops and that
+commit remains pending. A successful complete review resets the counter. The counter is
+stored in state.json alongside the cursor, outside the reports database, and survives restart.
+A skipped commit can be reviewed manually without rewinding the queue.
+Manual Start with a nonzero skip counter asks for confirmation in Web and Desktop.
+Confirming resets the counter; cancel leaves it unchanged. Autostart never resets it.
+
+Reports retain schema version 2: no additional columns are needed. The skipped status uses
+an explicit marker in the existing failure text, so older versions can read reports and
+replace them normally. Databases produced by 3.8.0-experimental are converted back to schema
+2 automatically, preserving reports and skipped statuses.
+Validation: `dotnet run --project checks/BudgetSkip/BudgetSkip.csproj`.

@@ -496,7 +496,26 @@ public sealed class ReviewRunner
         ReviewResult result;
         try
         {
-            result = await AnalyzeAsync(repositoryPath, branch, sha, profile, repositoryIdentity, checkpoint, cancellationToken);
+            var lastRetriedPacket = 0;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                _schedule.Check(_localNow());
+                try
+                {
+                    result = await AnalyzeAsync(repositoryPath, branch, sha, profile, repositoryIdentity, checkpoint, cancellationToken);
+                    break;
+                }
+                catch (Exception error) when (error is ReviewFormatException or EmptyReviewResponseException &&
+                    (manualReview ? _diagnosticSettings : _updatedSettings ?? _diagnosticSettings)?.RetryPartialReview == true &&
+                    checkpoint.CompletedPackets > lastRetriedPacket)
+                {
+                    lastRetriedPacket = checkpoint.CompletedPackets;
+                    SaveFailureDiagnostics(profile, error.ToString(), manualReview);
+                    Publish(Log, Localization.Format("Retrying {0} automatically from {1} saved packets: {2}",
+                        "Автоповтор {0} с {1} сохранённых пакетов: {2}", Short(sha), lastRetriedPacket, error.Message));
+                }
+            }
         }
         catch (ModelSchedulePauseException) { throw; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }

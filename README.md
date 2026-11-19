@@ -439,3 +439,12 @@ checks the structure of consecutive literal rows and supplies their count, sampl
 and duplicate count. The underlying values remain accessible through Git tools.
 Submodule changes and patches beyond the planner's local size limits use the
 existing paged review protocol.
+
+### Resuming packet reviews
+
+Desktop and Service save each validated packet before starting the next one. The
+project setting **Retry model response errors after saving packet progress** is
+off by default. Enable it to retry a malformed or empty model response once
+from the last saved packet. A further automatic retry requires another validated
+packet. The same rule applies to the final cross-file review. Manual Stop,
+scheduled pauses, and Git or configuration errors keep their existing behavior.

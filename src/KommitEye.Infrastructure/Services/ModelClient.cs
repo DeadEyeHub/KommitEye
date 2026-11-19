@@ -163,6 +163,7 @@ public sealed partial class ModelClient
             var packetIndex = 0;
             var beginPacket = plan != null;
             var repeatingPacket = false;
+            string? retrySearch = null;
             var retriedTextToolCall = false;
             var verifyingVerdict = false;
             var reports = new List<string>();
@@ -209,10 +210,13 @@ public sealed partial class ModelClient
                           "Return additional confirmed findings. Use tools when evidence is missing.";
                     if (repeatingPacket)
                         task += " Review the evidence afresh. Your final answer must be exactly NO_BUGS or complete BUG blocks. Omit JSON, Markdown and review summaries.";
+                    if (retrySearch != null)
+                        task += " The host has already searched the reviewed commit for the packet symbol. Inspect reference_search. " +
+                            "Use native tools for further evidence if needed; an announcement of intent is not a verdict.";
                     var evidence = JsonSerializer.Serialize(new { reviewed_sha = tools.Sha, parent_sha = plan.Parent, branch, map = plan.Map, packet,
                         related_lines = packet == null ? string.Join('\n', plan.Packets.SelectMany(p => p.References.Split('\n'))
                             .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().Take(12).Select(s => s[..Math.Min(200, s.Length)])) : null,
-                        follow_up = packet == null ? questions.ToArray() : null });
+                        follow_up = packet == null ? questions.ToArray() : null, reference_search = retrySearch });
                     output += evidence.Length;
                     if (output > parameters.ToolOutputLimit)
                     {
@@ -426,7 +430,7 @@ public sealed partial class ModelClient
                 }
                 var reportContent = TrimReportSurroundingText(unwrapped);
                 if (reportContent.Length < unwrapped.Length)
-                    log?.Invoke($"Report surrounding text removed ({unwrapped.Length - reportContent.Length} characters); complete report format validated.");
+                    log?.Invoke($"Report surrounding text removed ({unwrapped.Length - reportContent.Length} characters); checking extracted report fields.");
                 content = reportContent;
                 var formatErrors = GetReportFormatErrors(content);
                 if (formatErrors.Count > 0)
@@ -451,6 +455,12 @@ public sealed partial class ModelClient
                         if (repeatingPacket || round >= roundLimit)
                             throw new ReviewFormatException($"Cannot obtain a structured verdict for {plan.Packets[packetIndex].Path} within the packet retry budget. Diagnostic: {diagnosticPath}");
                         log?.Invoke($"Repeating review of packet {packetIndex + 1}/{plan.Packets.Count} with original evidence after a free-form response.");
+                        if (!content.StartsWith('{') && calls < parameters.MaxToolCalls)
+                        {
+                            calls++;
+                            retrySearch = await tools.SearchPacketReferencesAsync(plan.Packets[packetIndex].Path, cancellationToken);
+                            log?.Invoke($"Supplied symbol search at {tools.Sha} for {plan.Packets[packetIndex].Path}.");
+                        }
                         repeatingPacket = true;
                         beginPacket = true;
                         continue;
@@ -530,13 +540,15 @@ public sealed partial class ModelClient
                         }
                         beginPacket = true;
                         repeatingPacket = false;
+                        retrySearch = null;
                         retriedTextToolCall = false;
                         verifyingVerdict = false;
                         emptyRecoveries = 0;
                         continue;
                     }
+                    content = await AuditPacketFindingsAsync(reports, plan, tools, profile, roundLimit - round,
+                        parameters.ToolOutputLimit - output, parameters.MaxToolCalls - calls, cancellationToken, log, usage, beforeRequest);
                     tools.FinishPlan();
-                    content = reports.Count == 0 ? "NO_BUGS" : string.Join("\n\n", reports.Distinct(StringComparer.Ordinal));
                     checkpoint?.SetFinal(content);
                 }
                 log?.Invoke("Git agent: completed");
@@ -793,7 +805,7 @@ public sealed partial class ModelClient
         var surroundingLines = (content[..reportStart] + "\n" + content[reportEnd..]).Split('\n', StringSplitOptions.TrimEntries);
         if (surroundingLines.Any(line => IsReportMarker(line) && !(noBugs && line == "NO_BUGS"))) return content;
         var candidate = content[reportStart..reportEnd].Trim();
-        return GetReportFormatErrors(candidate).Count == 0 ? candidate : content;
+        return GetReportFormatErrors(candidate).Count == 0 || FindInvalidLines(candidate).Count > 0 ? candidate : content;
     }
 
     private static string NormalizeFieldSpacing(string content) =>

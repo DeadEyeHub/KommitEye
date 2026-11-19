@@ -150,6 +150,8 @@ foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (
     Console.WriteLine($"PASS checkpoint after packet {interruptAfter}/8, changed prompt={changePrompt}");
 }
 
+await NovemberReplay.Run(args[0], args[3]);
+
 sealed class FinalSearchHandler(int limit) : DelegatingHandler(new PacketHandler())
 {
     public int Requests;

@@ -9,15 +9,17 @@ namespace KommitEye.Services;
 public sealed class PacketCheckpoint(string project, string repository, string branch, string sha) : IDisposable
 {
     internal sealed record PacketResult(string Report, string? FollowUp);
-    private sealed record Snapshot(string Fingerprint, List<PacketResult> Packets, int FinalBudget, string? FinalReport);
+    private sealed record Snapshot(string Fingerprint, List<PacketResult> Packets, int FinalBudget, string? FinalReport, int FinalVersion = 0);
     private readonly string _path = Path.Combine(AppPaths.DataDirectory, "review-progress",
         Hash(new { project, repository, branch, sha }) + ".json");
     private FileStream? _lease;
     private Snapshot? _state;
     internal IReadOnlyList<PacketResult> Packets => _state!.Packets;
     internal int FinalBudget => _state!.FinalBudget;
-    internal string? FinalReport => _state!.FinalReport;
+    // Retain validated 3.8.12 packets, but re-run its older final aggregation.
+    internal string? FinalReport => _state!.FinalVersion == 1 ? _state.FinalReport : null;
     public bool HasProgress => _state?.Packets.Count > 0;
+    public int CompletedPackets => _state?.Packets.Count ?? 0;
     public Action<string>? Progress { get; init; }
 
     private static string Hash<T>(T value) =>
@@ -26,7 +28,7 @@ public sealed class PacketCheckpoint(string project, string repository, string b
     internal void Open(CommitReviewPlan plan, ModelProfile profile, string prompt)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        _lease = new FileStream(_path + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite,
+        _lease ??= new FileStream(_path + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite,
             FileShare.None, 1, FileOptions.DeleteOnClose);
         var fingerprint = Hash(new { protocol = 1, plan, profile.Name, profile.Model, profile.Endpoint,
             profile.Parameters, prompt, Localization.Language });
@@ -57,7 +59,7 @@ public sealed class PacketCheckpoint(string project, string repository, string b
 
     internal void SetFinal(string report)
     {
-        _state = _state! with { FinalReport = report };
+        _state = _state! with { FinalReport = report, FinalVersion = 1 };
         Save();
     }
 

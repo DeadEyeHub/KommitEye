@@ -438,11 +438,7 @@ public sealed partial class GitToolSession : IDisposable
         if (data.ExitCode != 0) throw new GitException("Cannot read Git blob bytes. " + data.Error);
         var expected = (int)Math.Min(count, size - offset);
         if (data.Output.Length != expected * 2) throw new GitException("Git blob byte range is incomplete.");
-        var bom = header.Output.StartsWith("0000FEFF", StringComparison.Ordinal) ? "UTF-32BE"
-            : header.Output.StartsWith("FFFE0000", StringComparison.Ordinal) ? "UTF-32LE"
-            : header.Output.StartsWith("EFBBBF", StringComparison.Ordinal) ? "UTF-8"
-            : header.Output.StartsWith("FEFF", StringComparison.Ordinal) ? "UTF-16BE"
-            : header.Output.StartsWith("FFFE", StringComparison.Ordinal) ? "UTF-16LE" : "none";
+        var bom = DetectBom(header.Output);
         return JsonSerializer.Serialize(new
         {
             status = "ok",
@@ -459,6 +455,13 @@ public sealed partial class GitToolSession : IDisposable
             note = "Original committed bytes. BOM identifies a signature only; no BOM does not imply UTF-8. Byte offsets are not text or line offsets."
         });
     }
+
+    private static string DetectBom(string hex) =>
+        hex.StartsWith("0000FEFF", StringComparison.Ordinal) ? "UTF-32BE" :
+        hex.StartsWith("FFFE0000", StringComparison.Ordinal) ? "UTF-32LE" :
+        hex.StartsWith("EFBBBF", StringComparison.Ordinal) ? "UTF-8" :
+        hex.StartsWith("FEFF", StringComparison.Ordinal) ? "UTF-16BE" :
+        hex.StartsWith("FFFE", StringComparison.Ordinal) ? "UTF-16LE" : "none";
 
     private static string ReadSnapshot(FileStream snapshot, int offset, int count)
     {

@@ -4,6 +4,6 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../src/KommitEye.Infrastructure/KommitEye.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/KommitEye.Engine/KommitEye.Engine.csproj" />
   </ItemGroup>
 </Project>

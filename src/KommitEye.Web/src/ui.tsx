@@ -88,6 +88,7 @@ const labels: Record<string, [string, string]> = {
     "Интервал проверки, секунд",
     "Polling interval, seconds",
   ],
+  retryPartialReview: ["Автоповтор после ошибки ответа модели при сохранённых пакетах", "Retry model response errors after saving packet progress"],
   autoStart: ["Запускать проект при старте сервера", "Start this project when the server starts"],
   pullEnabled: ["Получать изменения из remote", "Fetch remote changes"],
   fetchSubmodules: ["Получать сабмодули", "Fetch submodules"],

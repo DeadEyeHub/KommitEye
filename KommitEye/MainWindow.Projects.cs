@@ -93,6 +93,7 @@ public partial class MainWindow
             PullEnabled = PullEnabledCheckBox.IsChecked == true,
             FetchSubmodules = FetchSubmodulesCheckBox.IsChecked == true,
             FetchSubmodulesAlways = FetchSubmodulesAlwaysCheckBox.IsChecked == true,
+            RetryPartialReview = RetryPartialReviewCheckBox.IsChecked == true,
             UpdateSubmodulesAfterAdvance = UpdateSubmodulesCheckBox.IsChecked == true,
             QuietHoursEnabled = QuietHoursCheckBox.IsChecked == true,
             QuietHoursStart = QuietStartTextBox.Text.Trim(), QuietHoursEnd = QuietEndTextBox.Text.Trim(),

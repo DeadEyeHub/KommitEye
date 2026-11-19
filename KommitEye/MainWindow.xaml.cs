@@ -255,6 +255,7 @@ public partial class MainWindow : Window
         PullEnabledCheckBox.IsChecked = settings.PullEnabled;
         FetchSubmodulesCheckBox.IsChecked = settings.FetchSubmodules;
         FetchSubmodulesAlwaysCheckBox.IsChecked = settings.FetchSubmodulesAlways;
+        RetryPartialReviewCheckBox.IsChecked = settings.RetryPartialReview;
         UpdateSubmodulesCheckBox.IsChecked = settings.UpdateSubmodulesAfterAdvance;
         QuietHoursCheckBox.IsChecked = settings.QuietHoursEnabled;
         QuietStartTextBox.Text = settings.QuietHoursStart;
@@ -310,6 +311,7 @@ public partial class MainWindow : Window
         BrowseButton.Content = Localization.Text("Browse...", "Обзор...");
         IntervalLabel.Text = Localization.Text("Interval, seconds", "Интервал, секунд");
         ReceiveChangesLabel.Text = Localization.Text("Receive changes", "Получение изменений");
+        RetryPartialReviewCheckBox.Content = Localization.Text("Retry model response errors after saving packet progress", "Автоповтор после ошибки ответа модели при сохранённых пакетах");
         UpdateSubmodulesCheckBox.Content = Localization.Text("Update submodules after branch advancement", "Обновлять сабмодули после продвижения ветки");
         UpdateSubmodulesCheckBox.ToolTip = Localization.Text("Fast-forward only, not rebase. Enabled by default: local recursive checkout without fetch or force. If disabled, modules stay at old SHAs; later advancement may require manual alignment. Dirty-file protection remains enabled.", "Только fast-forward, не rebase. По умолчанию включено: локальный рекурсивный checkout без fetch и force. Если выключить, сабмодули останутся на старых SHA; следующее продвижение может потребовать ручного обновления. Защита изменённых файлов сохраняется.");
         QuietHoursCheckBox.Content = Localization.Text("Do not run model (local time):", "Не запускать модель (местное время):");
@@ -1136,6 +1138,7 @@ public partial class MainWindow : Window
             PullEnabled = PullEnabledCheckBox.IsChecked == true,
             FetchSubmodules = FetchSubmodulesCheckBox.IsChecked == true,
             FetchSubmodulesAlways = FetchSubmodulesAlwaysCheckBox.IsChecked == true,
+            RetryPartialReview = RetryPartialReviewCheckBox.IsChecked == true,
             UpdateSubmodulesAfterAdvance = UpdateSubmodulesCheckBox.IsChecked == true,
             QuietHoursEnabled = QuietHoursCheckBox.IsChecked == true,
             QuietHoursStart = QuietStartTextBox.Text.Trim(), QuietHoursEnd = QuietEndTextBox.Text.Trim(),

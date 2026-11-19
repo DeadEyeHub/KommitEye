@@ -88,6 +88,7 @@ public sealed class ConfigurationStore
                 case "poll_interval_seconds" when int.TryParse(value, out var seconds):
                     settings.PollIntervalSeconds = Math.Clamp(seconds, 5, 86_400);
                     break;
+                case "retry_partial_review" when bool.TryParse(value, out var retryPartial): settings.RetryPartialReview = retryPartial; break;
                 case "auto_start" when bool.TryParse(value, out var autoStart): settings.AutoStart = autoStart; break;
                 case "pull_enabled" when bool.TryParse(value, out var enabled):
                     settings.PullEnabled = enabled;
@@ -143,6 +144,7 @@ public sealed class ConfigurationStore
             .AppendLine($"pull_enabled={settings.PullEnabled.ToString().ToLowerInvariant()}")
             .AppendLine($"fetch_submodules={settings.FetchSubmodules.ToString().ToLowerInvariant()}")
             .AppendLine($"fetch_submodules_always={settings.FetchSubmodulesAlways.ToString().ToLowerInvariant()}")
+            .AppendLine($"retry_partial_review={settings.RetryPartialReview.ToString().ToLowerInvariant()}")
             .AppendLine($"update_submodules_after_advance={settings.UpdateSubmodulesAfterAdvance.ToString().ToLowerInvariant()}")
             .AppendLine($"quiet_hours_enabled={settings.QuietHoursEnabled.ToString().ToLowerInvariant()}")
             .AppendLine($"quiet_hours_start={settings.QuietHoursStart}")

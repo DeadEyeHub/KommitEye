@@ -65,6 +65,7 @@ export function Projects({ tick }: { tick: number }) {
   const fields = [
     "pollIntervalSeconds",
     "autoStart",
+    "retryPartialReview",
     "pullEnabled",
     "updateSubmodulesAfterAdvance",
     "quietHoursEnabled",
@@ -80,6 +81,7 @@ export function Projects({ tick }: { tick: number }) {
       branchRef: "",
       pollIntervalSeconds: 60,
       autoStart: false,
+      retryPartialReview: false,
       pullEnabled: true,
       fetchSubmodules: false,
       fetchSubmodulesAlways: false,

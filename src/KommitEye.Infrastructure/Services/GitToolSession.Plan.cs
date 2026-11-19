@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace KommitEye.Services;
@@ -9,6 +10,58 @@ internal sealed record CommitReviewPlan(string? Parent, string Map, List<ReviewP
 public sealed partial class GitToolSession
 {
     private const int PacketSize = 6000;
+    internal async Task<string> SearchPacketReferencesAsync(string path, CancellationToken token)
+    {
+        var symbol = Path.GetFileNameWithoutExtension(path);
+        if (symbol.Length is 0 or > 128 || symbol.Any(char.IsControl)) return "No searchable filename symbol.";
+        var result = await GitService.ReadPageAsync(_repository, 0, 2000, token, "grep", "-n", "-I", "-w", "-F",
+            "-e", symbol, Sha, "--");
+        if (result.ExitCode is not (0 or 1)) throw new GitException("Cannot verify packet references: " + result.Error);
+        return JsonSerializer.Serialize(new { commit = Sha, query = symbol, matches = result.Output, truncated = result.HasMore });
+    }
+
+    internal sealed record ByteFacts(string Commit, string Path, string Bom, string? Endings);
+
+    internal async Task<ByteFacts?> ReadByteFactsAsync(string commit, string path, CancellationToken token)
+    {
+        ValidateModulePath(path);
+        if (!_commits.Contains(commit)) throw new ArgumentException("Unexpected evidence revision.");
+        var result = await GitService.ReadBytesAsync(_repository, 0, 1_048_576, token, null, "cat-file", "blob", commit + ":" + path);
+        if (result.ExitCode != 0) return null;
+        var bytes = Convert.FromHexString(result.Output);
+        var bom = DetectBom(result.Output);
+        // Do not infer file-wide line endings from a prefix or misinterpret multibyte text.
+        string? endings = null;
+        if (!result.HasMore)
+        {
+            var encoding = bom switch
+            {
+                "UTF-32BE" => (Encoding)new UTF32Encoding(true, true, true),
+                "UTF-32LE" => new UTF32Encoding(false, true, true),
+                "UTF-16BE" => new UnicodeEncoding(true, true, true),
+                "UTF-16LE" => new UnicodeEncoding(false, true, true),
+                _ => new UTF8Encoding(false, true)
+            };
+            try
+            {
+                var text = encoding.GetString(bytes);
+                if (!text.Contains('\0'))
+                {
+                    var crlf = text.Contains("\r\n", StringComparison.Ordinal);
+                    var rest = text.Replace("\r\n", "");
+                    var cr = rest.Contains('\r');
+                    var lf = rest.Contains('\n');
+                    endings = (crlf, cr, lf) switch
+                    {
+                        (true, false, false) => "CRLF", (false, true, false) => "CR",
+                        (false, false, true) => "LF", (false, false, false) => "none", _ => "mixed"
+                    };
+                }
+            }
+            catch (DecoderFallbackException) { /* File encoding unknown. Only the signature is usable. */ }
+        }
+        return new(commit, path, bom, endings);
+    }
     internal int ValidatedPackets { get; private set; }
     internal int PlannedPackets { get; private set; }
 

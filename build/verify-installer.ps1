@@ -23,7 +23,9 @@ try {
     Assert ($properties['MSIRESTARTMANAGERCONTROL'] -eq 'DisableShutdown') 'Restart Manager detects locked files without automatically shutting down applications'
     Assert ($properties['MsiLogging'] -eq 'voicewarmup') 'installation and removal generate diagnostic logs'
     $tables = @(Read-Rows 'SELECT `Name` FROM `_Tables`') | ForEach-Object { $_[0] }
-    Assert ($tables -notcontains 'ServiceInstall' -and $tables -notcontains 'ServiceControl') 'service registration and lifecycle delegated to executable'
+    Assert ($tables -notcontains 'ServiceInstall') 'service registration delegated to executable'
+    $serviceControl = @(Read-Rows 'SELECT `Name`, `Event`, `Wait`, `Component_` FROM `ServiceControl`' 4)
+    Assert ($serviceControl.Count -eq 1 -and ($serviceControl[0] -join '|') -eq 'KommitEye|2|1|ServerService') 'MSI identifies only its own service for stop during installation'
     foreach ($table in @('MsiLockPermissionsEx','LockPermissions','Wix4SecureObject','Wix4User')) {
         Assert ($tables -notcontains $table) "no permission/account manipulation table: $table"
     }
@@ -33,6 +35,9 @@ try {
     Assert ($files -contains 'index.html' -and @($files | Where-Object { $_ -like '*.js' }).Count -gt 0) 'compiled React UI included'
     Assert (@($files | Where-Object { $_ -like 'client_secret*' -or $_ -in @('admin.json','server.db','models.conf','settings.conf') }).Count -eq 0) 'no user data or OAuth secrets included'
     $controls = @(Read-Rows 'SELECT `Dialog_`, `Control`, `Type`, `Property`, `Attributes` FROM `Control`' 5)
+    foreach ($dialog in @('MsiRMFilesInUse','FilesInUse')) {
+        Assert (@($controls | Where-Object { $_[0] -eq $dialog -and $_[2] -eq 'ListBox' }).Count -eq 1) "$dialog lists applications holding files"
+    }
     Assert (@($controls | Where-Object { $_[0] -eq 'ServiceAccountDlg' -or $_[3] -eq 'SERVICEPASSWORD' }).Count -eq 0) 'no legacy account or password dialog'
     foreach ($dialog in @('ServerOptionsDlg','NetworkOptionsDlg','ServiceOptionsDlg','ServerReadyDlg')) {
         Assert (@($controls | Where-Object { $_[0] -eq $dialog }).Count -gt 0) "wizard includes $dialog"
@@ -57,6 +62,7 @@ try {
     Assert ($sequence['ValidateExecute'] -lt $sequence['InstallInitialize']) 'preflight runs before changes begin'
     Assert ($sequence['BeginServiceTransaction'] -gt $sequence['InstallInitialize'] -and $sequence['BeginServiceTransaction'] -lt $sequence['RemoveExistingProducts']) 'snapshot and stop precede old-product removal inside transaction'
     Assert ($sequence['RollbackServiceTransaction'] -lt $sequence['BeginServiceTransaction']) 'original service restored after file rollback'
+    Assert ($sequence['BeginServiceTransaction'] -lt $sequence['StopServices'] -and $sequence['StopServices'] -lt $sequence['InstallFiles']) 'service state captured before native stop and file replacement'
     Assert ($sequence['WriteServiceConfig'] -gt $sequence['InstallFiles'] -and $sequence['RegisterServer'] -gt $sequence['WriteServiceConfig']) 'executable initializes configuration before registration'
     Assert ($sequence['RollbackNewService'] -gt $sequence['InstallFiles'] -and $sequence['RollbackNewService'] -lt $sequence['RegisterServer'] -and $sequence['RegisterServer'] -gt $sequence['RemoveExistingProducts'] -and $sequence['InstallExecuteAgain'] -gt $sequence['RegisterServer']) 'failed registration/start is undone before file rollback'
     Assert (($components['PersistentConfigurationFolder'] -band 16) -ne 0) 'configuration survives uninstall'

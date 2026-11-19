@@ -47,6 +47,7 @@
       </Component>
       <Component Id="ServerService" Guid="D1D05A03-D1F1-43AC-8FF1-E77B225D547F" Bitness="always64">
         <File Id="ServerExe" Source="$(PayloadDir)\KommitEye.Server.exe" KeyPath="yes" />
+        <ServiceControl Id="StopKommitEye" Name="KommitEye" Stop="install" Wait="yes" />
       </Component>
       <Component Id="SavedSettings" Guid="FA49F4C2-CAAA-44C6-BD06-9AFFC395D72A" Bitness="always64" Permanent="yes">
         <RegistryKey Root="HKLM" Key="SOFTWARE\KommitEye\Server">

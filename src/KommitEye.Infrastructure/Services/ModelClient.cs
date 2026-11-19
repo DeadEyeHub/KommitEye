@@ -382,7 +382,7 @@ public sealed partial class ModelClient
                     followUp = plan.Packets[packetIndex].Path + ": " + content[10..newline].Trim();
                     content = content[(newline + 1)..].Trim();
                 }
-                var unwrapped = UnwrapReport(content);
+                var unwrapped = NormalizeFieldSpacing(UnwrapReport(content));
                 var verdictLines = unwrapped.Split('\n', StringSplitOptions.TrimEntries);
                 if (verdictLines.Contains("BUG", StringComparer.OrdinalIgnoreCase) &&
                     verdictLines.Contains("NO_BUGS", StringComparer.OrdinalIgnoreCase))
@@ -400,8 +400,8 @@ public sealed partial class ModelClient
                     continue;
                 }
                 var reportContent = TrimReportSurroundingText(unwrapped);
-                if (reportContent.Length != content.Length)
-                    log?.Invoke($"Report surrounding text removed ({content.Length - reportContent.Length} characters); complete report format validated.");
+                if (reportContent.Length < unwrapped.Length)
+                    log?.Invoke($"Report surrounding text removed ({unwrapped.Length - reportContent.Length} characters); complete report format validated.");
                 content = reportContent;
                 var formatErrors = GetReportFormatErrors(content);
                 if (formatErrors.Count > 0)
@@ -437,6 +437,7 @@ public sealed partial class ModelClient
                             throw new ReviewFormatException("Model request budget exhausted before format repair.");
                         var repaired = await RepairReportAsync(profile, originalContent, formatErrors,
                             cancellationToken, log, usage, beforeRequest);
+                        repaired = NormalizeFieldSpacing(repaired);
                         var repairedErrors = GetReportFormatErrors(repaired);
                         if (repairedErrors.Count > 0)
                             throw new ReviewFormatException("Invalid repaired report: " + string.Join(" ", repairedErrors));
@@ -705,6 +706,9 @@ public sealed partial class ModelClient
         var candidate = content[reportStart..reportEnd].Trim();
         return GetReportFormatErrors(candidate).Count == 0 ? candidate : content;
     }
+
+    private static string NormalizeFieldSpacing(string content) =>
+        System.Text.RegularExpressions.Regex.Replace(content, @"(?m)^([ \t]*(?:FILE|LINE|SIDE|DESCRIPTION):)[ \t]*(?=\S)", "$1 ");
 
     private static List<string> GetReportFormatErrors(string content)
     {

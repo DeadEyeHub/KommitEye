@@ -30,6 +30,11 @@ const string diagnostic9 = """
 var cases = new (string Name, string Original, string Repair, bool Fails, int Repairs, bool ToolCall)[]
 {
     ("valid", finding, "", false, 0, false),
+    ("compact fields", finding.Replace(": ", ":"), "", false, 0, false),
+    ("mixed field spacing with surrounding prose", "Confirmed.\n" + finding.Replace("FILE: ", "FILE:").Replace("LINE: ", "LINE:\t"), "", false, 0, false),
+    ("compact fields in repaired response", incomplete, finding.Replace(": ", ":"), false, 1, false),
+    ("compact invalid line zero", finding.Replace("LINE: 1", "LINE:0"), finding, true, 1, false),
+    ("compact invalid line N/A", finding.Replace("LINE: 1", "LINE:N/A"), finding, true, 1, false),
     ("no bugs", "NO_BUGS", "", false, 0, false),
     ("diagnostic 9 duplicate verdict", diagnostic9, "", false, 0, false),
     ("duplicate verdict with finding field", "NO_BUGS\r\nLINE: 4\r\nNO_BUGS", "NO_BUGS", true, 1, false),

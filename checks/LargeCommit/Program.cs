@@ -64,6 +64,65 @@ using (var http = new HttpClient(new PacketHandler()))
     }
 }
 
+foreach (var verdict in new[] { "NO_BUGS", PacketHandler.Finding, ConflictingVerdictHandler.Conflict })
+{
+    using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
+    var handler = new ConflictingVerdictHandler(verdict);
+    using var http = new HttpClient(handler);
+    var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
+    try
+    {
+        var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
+        if (report != verdict || verdict == ConflictingVerdictHandler.Conflict || !session.ReadyForFinal ||
+            handler.PacketVisits.Count != 8 || handler.Verifications != 1 || handler.SynthesisCount != 1)
+            throw new Exception("Incorrect result after verdict verification.");
+    }
+    catch (ReviewFormatException) when (verdict == ConflictingVerdictHandler.Conflict &&
+        handler.Verifications == 1 && !session.ReadyForFinal && handler.SynthesisCount == 0) { }
+    Console.WriteLine("PASS conflicting verdict verification: " + verdict.Split('\n')[0] +
+        (verdict == ConflictingVerdictHandler.Conflict ? " and NO_BUGS rejected" : " accepted"));
+}
+
+sealed class ConflictingVerdictHandler(string verdict) : HttpMessageHandler
+{
+    public const string Conflict = PacketHandler.Finding + "\n\nNO_BUGS";
+    public readonly Dictionary<string, int> PacketVisits = new();
+    public int Verifications, SynthesisCount;
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+    {
+        using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+        var messages = body.RootElement.GetProperty("messages");
+        using var evidence = JsonDocument.Parse(messages[1].GetProperty("content").GetString()!);
+        var packet = evidence.RootElement.GetProperty("packet");
+        var answer = "NO_BUGS";
+        if (packet.ValueKind == JsonValueKind.Null) SynthesisCount++;
+        else
+        {
+            var path = packet.GetProperty("Path").GetString()!;
+            var visit = PacketVisits[path] = PacketVisits.GetValueOrDefault(path) + 1;
+            if (path == "Fixtures/Dataset03.cs")
+            {
+                if (visit == 1) answer = "No errors detected.";
+                else if (visit == 2) answer = Conflict;
+                else
+                {
+                    if (visit != 3 || messages[2].GetProperty("content").GetString() != Conflict ||
+                        !messages[3].GetProperty("content").GetString()!.Contains("Verify each candidate") ||
+                        !packet.GetProperty("References").GetString()!.Contains("Program.cs:4:") ||
+                        !body.RootElement.TryGetProperty("tools", out _))
+                        throw new Exception("Verdict verification lost the claim, tools or original packet evidence.");
+                    Verifications++;
+                    answer = verdict;
+                }
+            }
+            else if (visit != 1) throw new Exception("Verdict verification repeated an unrelated packet.");
+        }
+        var json = JsonSerializer.Serialize(new { choices = new[] { new { message = new { content = answer }, finish_reason = "stop" } } });
+        return new(HttpStatusCode.OK) { Content = new StringContent(json) };
+    }
+}
+
 sealed class PacketHandler(bool disableThinking = false, int freeFormAttempts = 0) : HttpMessageHandler
 {
     public const string Finding = "BUG\nFILE: Program.cs\nLINE: 4\nSIDE: NEW\nDESCRIPTION: Program refers to the deleted Dataset03.Rows.\nEND";

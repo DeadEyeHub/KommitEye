@@ -162,6 +162,7 @@ public sealed partial class ModelClient
             var packetIndex = 0;
             var beginPacket = plan != null;
             var repeatingPacket = false;
+            var verifyingVerdict = false;
             var reports = new List<string>();
             var questions = new List<string>();
             var definitions = plan == null ? GitToolSession.Definitions : GitToolSession.Definitions
@@ -363,7 +364,24 @@ public sealed partial class ModelClient
                     followUp = plan.Packets[packetIndex].Path + ": " + content[10..newline].Trim();
                     content = content[(newline + 1)..].Trim();
                 }
-                var reportContent = TrimReportSurroundingText(UnwrapReport(content));
+                var unwrapped = UnwrapReport(content);
+                var verdictLines = unwrapped.Split('\n', StringSplitOptions.TrimEntries);
+                if (verdictLines.Contains("BUG", StringComparer.OrdinalIgnoreCase) &&
+                    verdictLines.Contains("NO_BUGS", StringComparer.OrdinalIgnoreCase))
+                {
+                    if (verifyingVerdict || round + 1 >= parameters.MaxRounds)
+                        throw new ReviewFormatException("Conflicting BUG and NO_BUGS verdicts remain unresolved; review incomplete.");
+                    verifyingVerdict = true;
+                    // Keep this packet's patch, context and tool results available for factual verification.
+                    messages.Add(new { role = "assistant", content = originalContent });
+                    messages.Add(new { role = "user", content =
+                        "Your answer contains both BUG and NO_BUGS. Verify each candidate finding against the evidence for this change. " +
+                        "Use the available Git tools to check disputed facts at the reviewed SHA or its parent. " +
+                        "Return complete BUG blocks only for findings supported by the evidence, or exactly NO_BUGS if none are supported. Choose one verdict." });
+                    log?.Invoke("Rechecking conflicting BUG and NO_BUGS verdicts against the current review evidence.");
+                    continue;
+                }
+                var reportContent = TrimReportSurroundingText(unwrapped);
                 if (reportContent.Length != content.Length)
                     log?.Invoke($"Report surrounding text removed ({content.Length - reportContent.Length} characters); complete report format validated.");
                 content = reportContent;
@@ -385,6 +403,8 @@ public sealed partial class ModelClient
                     log?.Invoke($"Report format rejected: {reason} Original response saved: {diagnosticPath}");
                     if (plan != null && packetIndex < plan.Packets.Count && !content.Split('\n').Any(IsReportMarker))
                     {
+                        if (verifyingVerdict)
+                            throw new ReviewFormatException($"Verdict verification returned no structured verdict. Diagnostic: {diagnosticPath}");
                         if (repeatingPacket || round + 1 >= parameters.MaxRounds)
                             throw new ReviewFormatException($"Cannot obtain a structured verdict for {plan.Packets[packetIndex].Path} within the packet retry budget. Diagnostic: {diagnosticPath}");
                         log?.Invoke($"Repeating review of packet {packetIndex + 1}/{plan.Packets.Count} with original evidence after a free-form response.");
@@ -428,6 +448,7 @@ public sealed partial class ModelClient
                         packetIndex++;
                         beginPacket = true;
                         repeatingPacket = false;
+                        verifyingVerdict = false;
                         emptyRecoveries = 0;
                         continue;
                     }

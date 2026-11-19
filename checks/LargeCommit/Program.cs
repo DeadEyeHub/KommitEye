@@ -7,9 +7,23 @@ if (args.Length != 4) throw new ArgumentException("Expected repository, addition
 for (var i = 1; i < args.Length; i++)
 {
     using var session = await GitToolSession.CreateAsync(args[0], args[i], default);
-    var handler = new PacketHandler();
+    if (i == 1)
+    {
+        const string directory = """{"path":"Fixtures"}""";
+        try
+        {
+            await session.ExecuteAsync("git_file", directory, default);
+            throw new Exception("Directory was accepted as a file.");
+        }
+        catch (GitToolQueryException error) when (error.Message.Contains("git_tree", StringComparison.Ordinal)) { }
+        var listing = await session.ExecuteAsync("git_tree", directory, default);
+        if (!listing.Contains("Dataset03.cs", StringComparison.Ordinal))
+            throw new Exception("Suggested directory listing did not contain Dataset03.cs.");
+    }
+    var handler = new PacketHandler(disableThinking: i != 1);
     using var http = new HttpClient(handler);
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
+    profile.Parameters.DisableThinking = i != 1;
     var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
     if (!session.ReadyForFinal || handler.Paths.Count != 8 || handler.SynthesisCount != 1 ||
         handler.MaxEvidence > 8500 || (i == 3 ? report != PacketHandler.Finding : report != "NO_BUGS"))
@@ -33,7 +47,7 @@ using (var http = new HttpClient(new PacketHandler()))
     }
 }
 
-sealed class PacketHandler : HttpMessageHandler
+sealed class PacketHandler(bool disableThinking = false) : HttpMessageHandler
 {
     public const string Finding = "BUG\nFILE: Program.cs\nLINE: 4\nSIDE: NEW\nDESCRIPTION: Program refers to the deleted Dataset03.Rows.\nEND";
     public readonly HashSet<string> Paths = [];
@@ -43,6 +57,9 @@ sealed class PacketHandler : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
     {
         using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+        var hasOverride = body.RootElement.TryGetProperty("chat_template_kwargs", out var template);
+        if (hasOverride != disableThinking || (hasOverride && template.GetProperty("enable_thinking").GetBoolean()))
+            throw new Exception("Unexpected thinking mode in the model request.");
         var messages = body.RootElement.GetProperty("messages");
         if (messages.GetArrayLength() > 3 || messages.EnumerateArray().Any(m => m.GetProperty("role").GetString() == "assistant"))
             throw new Exception("Expected a fresh packet context.");

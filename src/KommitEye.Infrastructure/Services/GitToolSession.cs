@@ -260,6 +260,10 @@ public sealed partial class GitToolSession : IDisposable
                     path,
                     message = "This path does not exist in this commit. Inspect git_tree at the reviewed SHA or its immediate first parent. Do not investigate older history or substitute working-copy content. Absence alone is not a bug."
                 });
+            if (entry.Output.StartsWith("040000 tree ", StringComparison.Ordinal))
+                throw new GitToolQueryException($"'{path}' is a directory. Use git_tree with the same commit and path to list its entries, then git_file with a file path.");
+            if (entry.Output.StartsWith("160000 commit ", StringComparison.Ordinal))
+                throw new GitToolQueryException($"'{path}' is a submodule. Use git_diff to inspect the gitlink or the submodule argument for a changed submodule.");
             _verifiedFiles.Add(commit + ":" + path);
         }
         if (format == "hex") return await ReadHexAsync(commit, path!, byteOffset, byteCount, token, trace);
@@ -325,7 +329,8 @@ public sealed partial class GitToolSession : IDisposable
         }
         else
             result = await GitService.ReadPageAsync(_repository, offset, PageSize, token, trace, command);
-        if (result.ExitCode != 0) throw new GitException("Git could not read that local object/path; review is incomplete. No network fetch is permitted.");
+        if (result.ExitCode != 0)
+            throw new GitException($"{name} failed at {commit} (exit {result.ExitCode}): {GitService.SanitizeDiagnostic(result.Error.Trim())}");
         if (result.HasMore && name == "git_metadata")
             throw new GitException("Metadata output limit exceeded; review is incomplete.");
         var next = offset + result.Output.Length;

@@ -145,6 +145,16 @@ export function Models() {
                 "Use this model and its parameters for reviews in all projects. The selection applies after saving; the current review keeps its existing settings.",
               )}
             </p>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={!!profile.parameters.disableThinking}
+                onChange={(e) => setProfile({
+                  ...profile, parameters: { ...profile.parameters, disableThinking: e.target.checked },
+                })}
+              />
+              {t("Отключить размышления модели", "Disable model thinking")}
+            </label>
             <details>
               <summary>
                 {t(
@@ -156,7 +166,7 @@ export function Models() {
                 <ObjectFields
                   value={profile.parameters}
                   set={(parameters) => setProfile({ ...profile, parameters })}
-                  keys={Object.keys(profile.parameters)}
+                  keys={Object.keys(profile.parameters).filter((key) => key !== "disableThinking")}
                 />
               </div>
             </details>

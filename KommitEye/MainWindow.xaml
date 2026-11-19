@@ -247,6 +247,7 @@
 
                     <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2">
                         <TextBlock x:Name="ModelStatusTextBlock" TextWrapping="Wrap" Foreground="#444" />
+                        <CheckBox x:Name="DisableThinkingCheckBox" Margin="0,8,0,0" Content="Disable model thinking" />
                         <TextBlock x:Name="ParametersHelpText" Margin="0,8" TextWrapping="Wrap" />
                         <DataGrid x:Name="ParametersGrid" AutoGenerateColumns="False" CanUserAddRows="False"
                                   CanUserDeleteRows="False" CanUserSortColumns="False" HeadersVisibility="None">

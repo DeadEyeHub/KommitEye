@@ -205,7 +205,7 @@ public sealed partial class ModelClient
                         "The last request must return the report with all required evidence." });
                 using var request = new HttpRequestMessage(HttpMethod.Post, ResolveEndpoint(profile.Endpoint))
                 {
-                    Content = JsonContent.Create(new Dictionary<string, object>
+                    Content = ChatContent(parameters, new Dictionary<string, object>
                     {
                         ["model"] = profile.Model,
                         ["temperature"] = parameters.Temperature,
@@ -506,7 +506,7 @@ public sealed partial class ModelClient
             ["stream_options"] = new { include_usage = true }
         };
         if (profile.Parameters.MaxTokens > 0) payload["max_tokens"] = profile.Parameters.MaxTokens;
-        request.Content = JsonContent.Create(payload);
+        request.Content = ChatContent(profile.Parameters, payload);
         var apiKey = ResolveApiKey(profile);
         if (apiKey.Length > 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         using var document = await SendReviewRequestAsync(request, profile, token, log, usage, beforeRequest);
@@ -678,7 +678,7 @@ public sealed partial class ModelClient
 
         using var request = new HttpRequestMessage(HttpMethod.Post, ResolveEndpoint(profile.Endpoint))
         {
-            Content = JsonContent.Create(payload)
+            Content = ChatContent(profile.Parameters, payload)
         };
         var apiKey = ResolveApiKey(profile);
         if (apiKey.Length > 0)
@@ -737,6 +737,13 @@ public sealed partial class ModelClient
             throw new ReviewApiException(ReviewApiErrorKind.Configuration,
                 ReviewApiException.Sanitize(error.Message, ResolveApiKey(profile)), inner: error);
         }
+    }
+
+    private static JsonContent ChatContent(ModelParameters parameters, Dictionary<string, object> payload)
+    {
+        if (parameters.DisableThinking)
+            payload["chat_template_kwargs"] = new { enable_thinking = false };
+        return JsonContent.Create(payload);
     }
 
     public static Uri ResolveEndpoint(string text, bool models = false)

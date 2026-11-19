@@ -27,10 +27,10 @@ public sealed partial class ModelClient
         decisionProfile.Parameters.TransportLimit = 1_000_000;
         using var request = new HttpRequestMessage(HttpMethod.Post, ResolveEndpoint(profile.Endpoint))
         {
-            Content = JsonContent.Create(new {
-                model = profile.Model, temperature = 0, max_tokens = 2048, stream = true,
-                stream_options = new { include_usage = true },
-                messages = new[] {
+            Content = ChatContent(decisionProfile.Parameters, new Dictionary<string, object> {
+                ["model"] = profile.Model, ["temperature"] = 0, ["max_tokens"] = 2048, ["stream"] = true,
+                ["stream_options"] = new { include_usage = true },
+                ["messages"] = new[] {
                     new { role = "system", content = """
                         Decide whether to leave this commit explicitly UNREVIEWED and continue the queue after
                         a review budget limit, or stop for operator attention. This is not a safety verdict.

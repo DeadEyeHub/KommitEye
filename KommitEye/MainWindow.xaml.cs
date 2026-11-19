@@ -123,8 +123,9 @@ public partial class MainWindow : Window
     private void ShowParameters(ModelParameters parameters)
     {
         _editingParameters = parameters.Clone();
+        DisableThinkingCheckBox.IsChecked = parameters.DisableThinking;
         ParametersGrid.ItemsSource = typeof(ModelParameters).GetProperties()
-            .Where(p => p.Name is not nameof(ModelParameters.MaxTokens) and not nameof(ModelParameters.SnapshotMb))
+            .Where(p => p.Name is not nameof(ModelParameters.MaxTokens) and not nameof(ModelParameters.SnapshotMb) and not nameof(ModelParameters.DisableThinking))
             .Select(p => new ParameterRow
             { Property = p, Value = Convert.ToString(p.GetValue(parameters), CultureInfo.InvariantCulture)! }).ToList();
     }
@@ -134,6 +135,7 @@ public partial class MainWindow : Window
         ParametersGrid.CommitEdit(DataGridEditingUnit.Cell, true);
         ParametersGrid.CommitEdit(DataGridEditingUnit.Row, true);
         var result = _editingParameters.Clone();
+        result.DisableThinking = DisableThinkingCheckBox.IsChecked == true;
         foreach (var row in ParametersGrid.Items.OfType<ParameterRow>())
         {
             try { row.Property.SetValue(result, Convert.ChangeType(row.Value.Trim().Replace(',', '.'), row.Property.PropertyType, CultureInfo.InvariantCulture)); }
@@ -278,6 +280,7 @@ public partial class MainWindow : Window
 
     private void ApplyLanguage()
     {
+        DisableThinkingCheckBox.Content = Localization.Text("Disable model thinking", "Отключить размышления модели");
         RefreshSettingsMenu();
         RenderProjectButtons();
         SaveCustomPromptButton.Content = Localization.Text("Save custom prompt", "Сохранить свой промпт");

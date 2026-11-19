@@ -21,6 +21,7 @@ public sealed class ModelProfile
 
 public sealed class ModelParameters
 {
+    public bool DisableThinking { get; set; }
     [Range(1, 240), Display(Name = "Review timeout (minutes)", Description = "Время проверки коммита (минуты)")]
     public int ReviewMinutes { get; set; } = 15;
     [Range(1, 1440), Display(Name = "Response inactivity threshold (minutes)", Description = "Порог отсутствия ответов (минуты)")]

@@ -7,6 +7,11 @@ public static class RepositoryApi
 {
     public static void Map(RouteGroupBuilder api)
     {
+        api.MapPost("/repositories/trust", async (RepositoryRequest request, CancellationToken token) =>
+        {
+            await GitService.TrustRepositoryAsync(request.Path, token);
+            return Results.NoContent();
+        });
         // Administrator-only metadata browsing. File contents (including keys) never leave the server.
         api.MapPost("/repositories/browse", (BrowseRequest request) =>
         {

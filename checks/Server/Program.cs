@@ -124,6 +124,7 @@ try
     Check((await http.PostAsJsonAsync("login",new {password="1"})).StatusCode == HttpStatusCode.Forbidden,"cross-site form commands blocked");
     http.DefaultRequestHeaders.Add("X-KommitEye-Client","web");
     Check((await http.PostAsJsonAsync("repositories/browse",new {path=repo})).StatusCode == HttpStatusCode.Unauthorized,"server file browsing requires authentication");
+    Check((await http.PostAsJsonAsync("repositories/trust",new {path=repo})).StatusCode == HttpStatusCode.Unauthorized,"repository trust requires administrator authentication");
     Check((await http.PostAsJsonAsync("login",new {password="incorrect"})).StatusCode == HttpStatusCode.Unauthorized,"wrong password denied");
     await Post("setup",new {password="1"});
     Check(!(await Get("setup"))["required"]!.GetValue<bool>(),"one-character password is accepted during setup");

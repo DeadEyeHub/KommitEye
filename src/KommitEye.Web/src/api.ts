@@ -1,3 +1,9 @@
+export class ApiError extends Error {
+  constructor(message: string, readonly code?: string) {
+    super(message);
+  }
+}
+
 export async function api<T = any>(path: string, body?: unknown): Promise<T> {
   const response = await fetch("/api/v1" + path, {
     credentials: "same-origin",
@@ -12,11 +18,12 @@ export async function api<T = any>(path: string, body?: unknown): Promise<T> {
     const result = await response.json().catch(() => ({}));
     if (response.status === 401)
       window.dispatchEvent(new Event("session-expired"));
-    throw new Error(
+    throw new ApiError(
       result.error ||
         (response.status === 401
           ? "Войдите в систему / Sign in required"
           : `HTTP ${response.status}`),
+      result.code,
     );
   }
   if (response.status === 204 || response.headers.get("content-length") === "0")

@@ -68,6 +68,30 @@ public sealed class GitService
     public async Task<string> GetRepositoryRootAsync(string repositoryPath, CancellationToken cancellationToken)
         => (await GetRepositoryIdentityAsync(repositoryPath, cancellationToken)).WorkTreeRoot;
 
+    public static bool IsDubiousOwnership(string message) =>
+        message.StartsWith("fatal: detected dubious ownership in repository at ", StringComparison.Ordinal);
+
+    public static async Task TrustRepositoryAsync(string path, CancellationToken token)
+    {
+        if (!Path.IsPathFullyQualified(path) || path.Any(char.IsControl) || path.Contains('*'))
+            throw new ArgumentException("Select the absolute path of one repository.");
+        var root = NormalizePath(path);
+        var gitPath = root.Replace(Path.DirectorySeparatorChar, '/');
+        var probe = await RunAsync(root, token, "rev-parse", "--show-toplevel");
+        if (probe.ExitCode != 0 && !IsDubiousOwnership(probe.Error))
+            throw new GitException(probe.Error.Trim());
+
+        // Confirm Git resolves this exact worktree before persisting trust in the service account.
+        var resolved = probe.ExitCode == 0 ? probe.Output :
+            await RunRequiredAsync(root, token, "-c", "safe.directory=" + gitPath, "rev-parse", "--show-toplevel");
+        if (!string.Equals(root, NormalizePath(resolved.TrimEnd('\r', '\n')),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            throw new ArgumentException("Select the repository root folder.");
+        if (probe.ExitCode != 0)
+            await RunRequiredAsync(AppContext.BaseDirectory, token, "config", "--global", "--fixed-value",
+                "--replace-all", "safe.directory", gitPath, gitPath);
+    }
+
     public async Task ValidateRepositoryAsync(string repositoryPath, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(repositoryPath))
@@ -407,6 +431,8 @@ public sealed class GitService
             CreateNoWindow = true
         };
         startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        // Ownership diagnostics are classified by the connection API.
+        if (operation is "for-each-ref" or "rev-parse") startInfo.Environment["LC_ALL"] = "C";
         if (page is not null)
         {
             foreach (var key in startInfo.Environment.Keys.Where(key => key.StartsWith("GIT_", StringComparison.Ordinal)).ToArray())

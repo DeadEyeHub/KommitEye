@@ -113,6 +113,11 @@ app.Use(async (context, next) =>
         (!Uri.TryCreate(origins[0], UriKind.Absolute, out var origin) || !string.Equals(origin.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase)))
     { context.Response.StatusCode = 403; return; }
     try { await next(); }
+    catch (GitException error) when (GitService.IsDubiousOwnership(error.Message))
+    {
+        context.Response.StatusCode = StatusCodes.Status409Conflict;
+        await context.Response.WriteAsJsonAsync(new { code = "repository_ownership", error = GitService.SanitizeDiagnostic(error.Message) });
+    }
     catch (Exception error) when (error is ArgumentException or InvalidOperationException or KeyNotFoundException or GitException or System.ComponentModel.DataAnnotations.ValidationException)
     {
         context.Response.StatusCode = error is KeyNotFoundException ? 404 : error is InvalidOperationException ? 409 : 400;

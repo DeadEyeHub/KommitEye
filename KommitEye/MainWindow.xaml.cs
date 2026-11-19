@@ -84,8 +84,11 @@ public partial class MainWindow : Window
                 "Limits token sampling to candidates whose cumulative probability reaches this value. 1 does not narrow the candidate set. Usually adjust either Temperature or Top P, not both at once.",
                 "Ограничивает выбор токенов набором с указанной суммарной вероятностью. Значение 1 не сужает набор. Обычно меняют либо температуру, либо Top P, а не оба параметра одновременно."),
             nameof(ModelParameters.MaxRounds) => Localization.Text(
-                "Maximum number of model requests for one commit, including follow-up requests and report corrections. One request may contain several tool calls. Exhausting this limit fails an unfinished review.",
-                "Максимальное число запросов к модели на один коммит, включая продолжения и исправления отчёта. В одном запросе может быть несколько вызовов инструментов. При исчерпании лимита незавершённая проверка останавливается."),
+                "Model requests for the commit or, in a partitioned review, for all packets combined. Includes follow-ups and report corrections.",
+                "Запросы к модели на коммит или, при разбиении, на все пакеты вместе. Включает уточнения и исправления отчёта."),
+            nameof(ModelParameters.CrossFileMaxRounds) => Localization.Text(
+                "Separate request limit for checking cross-file interactions after all packets have been reviewed.",
+                "Отдельный лимит запросов на проверку связей между файлами после завершения всех пакетов."),
             nameof(ModelParameters.ReminderRequests) => Localization.Text(
                 "When this many requests or fewer remain, each request reminds the model of its remaining budget and asks it to prepare the final report. The count includes the current request.",
                 "Когда остаётся столько запросов или меньше, каждый запрос напоминает модели об остатке и необходимости подготовить итоговый отчёт. Текущий запрос включён в остаток."),

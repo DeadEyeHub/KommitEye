@@ -168,8 +168,11 @@ public sealed partial class ModelClient
             var questions = new List<string>();
             var definitions = plan == null ? GitToolSession.Definitions : GitToolSession.Definitions
                 .Where((_, i) => GitToolSession.Names[i] != "git_diff").ToArray();
-            for (var round = 0; round < parameters.MaxRounds; round++)
+            var roundLimit = parameters.MaxRounds;
+            var round = 0;
+            while (round < roundLimit)
             {
+                round++;
                 cancellationToken.ThrowIfCancellationRequested();
                 if (beginPacket && plan != null)
                 {
@@ -203,9 +206,9 @@ public sealed partial class ModelClient
                 }
                 // Reminders belong to the outgoing request, not the persistent conversation.
                 var requestMessages = messages.ToList();
-                if (parameters.MaxRounds - round <= parameters.ReminderRequests)
+                if (roundLimit - round + 1 <= parameters.ReminderRequests)
                     requestMessages.Add(new { role = "user", content =
-                        $"Review budget reminder: {parameters.MaxRounds - round} model requests remain INCLUDING this request (request {round + 1} of {parameters.MaxRounds}). " +
+                        $"Review budget reminder: {roundLimit - round + 1} model requests remain INCLUDING this request (request {round} of {roundLimit}). " +
                         "Prioritize essential evidence and reserve a response for the final report. " +
                         "The last request must return the report with all required evidence." });
                 using var request = new HttpRequestMessage(HttpMethod.Post, ResolveEndpoint(profile.Endpoint))
@@ -228,7 +231,7 @@ public sealed partial class ModelClient
                 var apiKey = ResolveApiKey(profile);
                 if (apiKey.Length > 0) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
                 log?.Invoke("API request body: " + await request.Content.ReadAsStringAsync(cancellationToken));
-                log?.Invoke($"Review request round {round + 1}/{parameters.MaxRounds}; empty recovery attempts={emptyRecoveries}.");
+                log?.Invoke($"Review request round {round}/{roundLimit}; empty recovery attempts={emptyRecoveries}.");
                 progress?.Invoke(ReviewStage.Request);
                 progress?.Invoke(ReviewStage.Waiting);
                 using var document = await SendReviewRequestAsync(request, profile, cancellationToken, log, usage, beforeRequest);
@@ -236,7 +239,7 @@ public sealed partial class ModelClient
                 var choice = document.RootElement.GetProperty("choices")[0];
                 var finish = choice.GetProperty("finish_reason").GetString();
                 var message = choice.GetProperty("message");
-                log?.Invoke($"Review round {round + 1}/{parameters.MaxRounds}; empty recovery attempts={emptyRecoveries}; " +
+                log?.Invoke($"Review round {round}/{roundLimit}; empty recovery attempts={emptyRecoveries}; " +
                     ModelResponseReader.DescribeResponse(document.RootElement));
                 if (message.TryGetProperty("tool_calls", out var toolCalls) && toolCalls.ValueKind != JsonValueKind.Null && toolCalls.GetArrayLength() > 0)
                 {
@@ -332,9 +335,9 @@ public sealed partial class ModelClient
                 var originalContent = message.TryGetProperty("content", out var finalContent) ? finalContent.GetString() ?? "" : "";
                 if (string.IsNullOrWhiteSpace(originalContent))
                 {
-                    if (emptyRecoveries >= 1 || round + 1 >= parameters.MaxRounds)
+                    if (emptyRecoveries >= 1 || round >= roundLimit)
                     {
-                        log?.Invoke($"Empty report recovery failed: attempts={emptyRecoveries}; requests={round + 1}/{parameters.MaxRounds}.");
+                        log?.Invoke($"Empty report recovery failed: attempts={emptyRecoveries}; requests={round}/{roundLimit}.");
                         throw new EmptyReviewResponseException(Localization.Text(
                             "The model finished its response without a final report.",
                             "Модель завершила ответ без финального отчёта."));
@@ -355,7 +358,7 @@ public sealed partial class ModelClient
                     var step = packetIndex < plan.Packets.Count ? plan.Packets[packetIndex].Path : "cross-file review";
                     if (retriedTextToolCall)
                         throw new ReviewFormatException($"Model returned tool_calls as text twice during {step}; review incomplete.");
-                    if (round + 1 >= parameters.MaxRounds)
+                    if (round >= roundLimit)
                         throw new ReviewFormatException($"Model returned tool_calls as text during {step}; no requests remain for a retry.");
                     retriedTextToolCall = true;
                     log?.Invoke($"Retrying {step} after tool_calls in content (1/1).");
@@ -384,7 +387,7 @@ public sealed partial class ModelClient
                 if (verdictLines.Contains("BUG", StringComparer.OrdinalIgnoreCase) &&
                     verdictLines.Contains("NO_BUGS", StringComparer.OrdinalIgnoreCase))
                 {
-                    if (verifyingVerdict || round + 1 >= parameters.MaxRounds)
+                    if (verifyingVerdict || round >= roundLimit)
                         throw new ReviewFormatException("Conflicting BUG and NO_BUGS verdicts remain unresolved; review incomplete.");
                     verifyingVerdict = true;
                     // Keep this packet's patch, context and tool results available for factual verification.
@@ -420,7 +423,7 @@ public sealed partial class ModelClient
                     {
                         if (verifyingVerdict)
                             throw new ReviewFormatException($"Verdict verification returned no structured verdict. Diagnostic: {diagnosticPath}");
-                        if (repeatingPacket || round + 1 >= parameters.MaxRounds)
+                        if (repeatingPacket || round >= roundLimit)
                             throw new ReviewFormatException($"Cannot obtain a structured verdict for {plan.Packets[packetIndex].Path} within the packet retry budget. Diagnostic: {diagnosticPath}");
                         log?.Invoke($"Repeating review of packet {packetIndex + 1}/{plan.Packets.Count} with original evidence after a free-form response.");
                         repeatingPacket = true;
@@ -430,7 +433,7 @@ public sealed partial class ModelClient
                     activity?.Invoke(ReviewStage.FormatCorrection, "1/1");
                     try
                     {
-                        if (round + 1 >= parameters.MaxRounds)
+                        if (round >= roundLimit)
                             throw new ReviewFormatException("Model request budget exhausted before format repair.");
                         var repaired = await RepairReportAsync(profile, originalContent, formatErrors,
                             cancellationToken, log, usage, beforeRequest);
@@ -440,7 +443,7 @@ public sealed partial class ModelClient
                         if (!PreservesFindings(originalContent, repaired))
                             throw new ReviewFormatException("Report repair changed findings, or their preservation could not be verified.");
                         content = repaired;
-                        if (plan != null) round++; // Repairs share the commit-wide request limit.
+                        if (plan != null) round++; // Repairs consume a request from the current phase.
                     }
                     catch (OperationCanceledException) { throw; }
                     catch (ModelSchedulePauseException) { throw; }
@@ -461,6 +464,12 @@ public sealed partial class ModelClient
                         if (followUp != null) questions.Add(followUp);
                         log?.Invoke($"Validated packet {packetIndex + 1}/{plan.Packets.Count}: {plan.Packets[packetIndex].Path}");
                         packetIndex++;
+                        if (packetIndex == plan.Packets.Count)
+                        {
+                            log?.Invoke($"Packet review completed in {round}/{roundLimit} requests. Cross-file review budget: {parameters.CrossFileMaxRounds} requests.");
+                            round = 0;
+                            roundLimit = parameters.CrossFileMaxRounds;
+                        }
                         beginPacket = true;
                         repeatingPacket = false;
                         retriedTextToolCall = false;
@@ -475,9 +484,11 @@ public sealed partial class ModelClient
                 if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: succeeded.");
                 return content;
             }
-            if (unresolvedErrors.Count > 0) throw new InvalidDataException("Round budget exhausted with unresolved tool errors; skip is not eligible.");
-            if (reports.Count > 0) throw new InvalidDataException("Round budget exhausted with confirmed packet findings; review cannot be skipped.");
-            throw new ReviewBudgetException($"Git agent round budget exhausted: {parameters.MaxRounds} of {parameters.MaxRounds} model requests used; review incomplete.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
+            var phase = plan == null ? "Git agent" : packetIndex == plan.Packets.Count ? "Cross-file review" : "Packet review";
+            var exhausted = $"{phase} round budget exhausted ({round}/{roundLimit})";
+            if (unresolvedErrors.Count > 0) throw new InvalidDataException($"{exhausted} with unresolved tool errors; skip is not eligible.");
+            if (reports.Count > 0) throw new InvalidDataException($"{exhausted} with confirmed packet findings; review cannot be skipped.");
+            throw new ReviewBudgetException($"{exhausted}; review incomplete.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
         }
         catch (OperationCanceledException exception) when (!callerToken.IsCancellationRequested && deadline.IsCancellationRequested)
         {

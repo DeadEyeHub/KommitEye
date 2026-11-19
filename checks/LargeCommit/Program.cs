@@ -52,7 +52,7 @@ using (var session = await GitToolSession.CreateAsync(args[0], args[1], default)
 using (var http = new HttpClient(new PacketHandler()))
 {
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
-        Parameters = new ModelParameters { MaxRounds = 8, ReminderRequests = 1 } };
+        Parameters = new ModelParameters { MaxRounds = 7, ReminderRequests = 1 } };
     try
     {
         await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
@@ -62,6 +62,24 @@ using (var http = new HttpClient(new PacketHandler()))
     {
         Console.WriteLine("PASS exhausted budget before cross-file pass leaves review incomplete");
     }
+}
+
+foreach (var finalLimit in new[] { 2, new ModelParameters().CrossFileMaxRounds })
+{
+    using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
+    var handler = new FinalSearchHandler(finalLimit);
+    using var http = new HttpClient(handler);
+    var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
+        Parameters = new ModelParameters { MaxRounds = 8, CrossFileMaxRounds = finalLimit } };
+    try
+    {
+        var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
+        if (finalLimit != 6 || handler.Requests != 3 || !session.ReadyForFinal || report != PacketHandler.Finding)
+            throw new Exception("Final review lost packet findings or its independent budget.");
+    }
+    catch (InvalidDataException e) when (finalLimit == 2 && handler.Requests == 2 && !session.ReadyForFinal &&
+        e.Message.Contains("confirmed packet findings")) { }
+    Console.WriteLine($"PASS diagnostic 11: exhausted packet budget, separate final limit {finalLimit}");
 }
 
 foreach (var verdict in new[] { "NO_BUGS", PacketHandler.Finding, ConflictingVerdictHandler.Conflict })
@@ -100,6 +118,33 @@ foreach (var (packetFailures, finalFailures) in new[] { (1, 1), (2, 0), (0, 2) }
         ((packetFailures == 2 && handler.Dataset07Requests == 2 && handler.SynthesisCount == 0) ||
          (finalFailures == 2 && handler.Dataset07Requests == 1 && handler.SynthesisCount == 2))) { }
     Console.WriteLine($"PASS diagnostic 10: packet failures {packetFailures}, final failures {finalFailures}");
+}
+
+sealed class FinalSearchHandler(int limit) : DelegatingHandler(new PacketHandler())
+{
+    public int Requests;
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+    {
+        using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+        var messages = body.RootElement.GetProperty("messages");
+        using var evidence = JsonDocument.Parse(messages[1].GetProperty("content").GetString()!);
+        if (evidence.RootElement.GetProperty("packet").ValueKind != JsonValueKind.Null)
+            return await base.SendAsync(request, token);
+        Requests++;
+        if (!messages[messages.GetArrayLength() - 1].GetProperty("content").GetString()!.Contains($"request {Requests} of {limit}"))
+            throw new Exception("Reminder did not use the separate cross-file budget.");
+        var json = Requests switch
+        {
+            1 => """{"choices":[{"finish_reason":"stop","message":{"content":""}}]}""",
+            2 => """{"choices":[{"finish_reason":"tool_calls","message":{"tool_calls":[{"id":"search","type":"function","function":{"name":"git_search","arguments":"{\"path\":\"Program.cs\",\"query\":\"Dataset03\"}"}}]}}]}""",
+            3 when messages.EnumerateArray().Any(m => m.GetProperty("role").GetString() == "tool" &&
+                m.GetProperty("content").GetString()!.Contains("Fixtures.Dataset03.Rows")) =>
+                """{"choices":[{"finish_reason":"stop","message":{"content":"NO_BUGS"}}]}""",
+            _ => throw new Exception("Missing search evidence or unexpected final request.")
+        };
+        return new(HttpStatusCode.OK) { Content = new StringContent(json) };
+    }
 }
 
 sealed class ConflictingVerdictHandler(string verdict) : HttpMessageHandler
@@ -161,7 +206,8 @@ sealed class PacketHandler(bool disableThinking = false, int freeFormAttempts = 
         if (hasOverride != disableThinking || (hasOverride && template.GetProperty("enable_thinking").GetBoolean()))
             throw new Exception("Unexpected thinking mode in the model request.");
         var messages = body.RootElement.GetProperty("messages");
-        if (messages.GetArrayLength() > 3 || messages.EnumerateArray().Any(m => m.GetProperty("role").GetString() == "assistant"))
+        if (messages.EnumerateArray().Count(m => !m.GetProperty("content").GetString()!.StartsWith("Review budget reminder:")) > 3 ||
+            messages.EnumerateArray().Any(m => m.GetProperty("role").GetString() == "assistant"))
             throw new Exception("Expected a fresh packet context.");
         var text = messages[1].GetProperty("content").GetString()!;
         MaxEvidence = Math.Max(MaxEvidence, text.Length);

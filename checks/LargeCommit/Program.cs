@@ -83,6 +83,25 @@ foreach (var verdict in new[] { "NO_BUGS", PacketHandler.Finding, ConflictingVer
         (verdict == ConflictingVerdictHandler.Conflict ? " and NO_BUGS rejected" : " accepted"));
 }
 
+foreach (var (packetFailures, finalFailures) in new[] { (1, 1), (2, 0), (0, 2) })
+{
+    using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
+    var handler = new PacketHandler(packetToolText: packetFailures, finalToolText: finalFailures);
+    using var http = new HttpClient(handler);
+    var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
+    try
+    {
+        var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
+        if (packetFailures != 1 || finalFailures != 1 || handler.Dataset07Requests != 2 ||
+            handler.SynthesisCount != 2 || !session.ReadyForFinal || report != PacketHandler.Finding)
+            throw new Exception("Diagnostic 10 retry lost coverage, the original finding or its retry bound.");
+    }
+    catch (ReviewFormatException error) when (error.Message.Contains("tool_calls as text twice") && !session.ReadyForFinal &&
+        ((packetFailures == 2 && handler.Dataset07Requests == 2 && handler.SynthesisCount == 0) ||
+         (finalFailures == 2 && handler.Dataset07Requests == 1 && handler.SynthesisCount == 2))) { }
+    Console.WriteLine($"PASS diagnostic 10: packet failures {packetFailures}, final failures {finalFailures}");
+}
+
 sealed class ConflictingVerdictHandler(string verdict) : HttpMessageHandler
 {
     public const string Conflict = PacketHandler.Finding + "\n\nNO_BUGS";
@@ -123,8 +142,11 @@ sealed class ConflictingVerdictHandler(string verdict) : HttpMessageHandler
     }
 }
 
-sealed class PacketHandler(bool disableThinking = false, int freeFormAttempts = 0) : HttpMessageHandler
+sealed class PacketHandler(bool disableThinking = false, int freeFormAttempts = 0, int packetToolText = 0, int finalToolText = 0) : HttpMessageHandler
 {
+    private const string Diagnostic10 = """
+        {"reasoning":"The host has already supplied the patch and coverage for this change. The diff deletes the fixture files Dataset01..08.cs under Fixtures/. The related line shows Program.cs still references LargeCommitFixture.Fixtures.Dataset03.Rows.Length. I must confirm whether this causes a compile error by checking whether Dataset03 still exists or whether the referenced member still exists after this change.\n","tool_calls":[{"name":"git_changed_files","arguments":{"commit":"5996471121f7c628912a81e342bb37daf0a5c6b1","offset":0}}]}
+        """;
     public const string Finding = "BUG\nFILE: Program.cs\nLINE: 4\nSIDE: NEW\nDESCRIPTION: Program refers to the deleted Dataset03.Rows.\nEND";
     public readonly HashSet<string> Paths = [];
     public int SynthesisCount;
@@ -149,6 +171,12 @@ sealed class PacketHandler(bool disableThinking = false, int freeFormAttempts = 
         if (packet.ValueKind == JsonValueKind.Null)
         {
             SynthesisCount++;
+            if (finalToolText > 0)
+            {
+                if (!evidence.RootElement.GetProperty("related_lines").GetString()!.Contains("Fixtures.Dataset03.Rows"))
+                    throw new Exception("Cross-file evidence lost the Dataset03 reference.");
+                if (SynthesisCount <= finalToolText) answer = Diagnostic10;
+            }
             if (Paths.Count != 8) throw new Exception("Premature synthesis.");
             if (evidence.RootElement.GetProperty("follow_up").GetArrayLength() != 0)
                 throw new Exception("Discarded packet contributed a follow-up.");
@@ -162,10 +190,11 @@ sealed class PacketHandler(bool disableThinking = false, int freeFormAttempts = 
             {
                 Dataset07Requests++;
                 if (firstVisit) firstDataset07Evidence = text;
-                else if (text != firstDataset07Evidence || Paths.Count != 7 || Dataset07Requests != 2 || freeFormAttempts == 0)
+                else if (text != firstDataset07Evidence || Paths.Count != 7 || Dataset07Requests != 2 || (freeFormAttempts == 0 && packetToolText == 0))
                     throw new Exception("Unexpected packet retry or changed retry evidence.");
                 if (Dataset07Requests <= freeFormAttempts)
                     answer = "FOLLOW_UP: Discard this unvalidated question.\n{\"file\":\"Fixtures/Dataset07.cs\",\"diff\":\"No bugs detected.\"}";
+                if (Dataset07Requests <= packetToolText) answer = Diagnostic10;
             }
             else if (!firstVisit) throw new Exception("An already accepted packet was repeated.");
             if (!patch.Contains("1099 consecutive literal rows") || !patch.Contains("static readonly string[] Rows"))

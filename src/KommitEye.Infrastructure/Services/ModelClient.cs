@@ -162,6 +162,7 @@ public sealed partial class ModelClient
             var packetIndex = 0;
             var beginPacket = plan != null;
             var repeatingPacket = false;
+            var retriedTextToolCall = false;
             var verifyingVerdict = false;
             var reports = new List<string>();
             var questions = new List<string>();
@@ -349,6 +350,20 @@ public sealed partial class ModelClient
                 }
                 if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: received nonempty content; validating evidence and report.");
                 var content = originalContent.Trim();
+                if (plan != null && HasTextToolCalls(content))
+                {
+                    var step = packetIndex < plan.Packets.Count ? plan.Packets[packetIndex].Path : "cross-file review";
+                    if (retriedTextToolCall)
+                        throw new ReviewFormatException($"Model returned tool_calls as text twice during {step}; review incomplete.");
+                    if (round + 1 >= parameters.MaxRounds)
+                        throw new ReviewFormatException($"Model returned tool_calls as text during {step}; no requests remain for a retry.");
+                    retriedTextToolCall = true;
+                    log?.Invoke($"Retrying {step} after tool_calls in content (1/1).");
+                    messages.Add(new { role = "user", content =
+                        "The tool call in your previous response was sent as text and did not run. " +
+                        "Use a native tool call if you need more evidence. Otherwise return NO_BUGS or complete BUG blocks based on the current evidence." });
+                    continue;
+                }
                 if ((plan == null && !tools.ReadyForFinal) || unresolvedErrors.Count > 0)
                 {
                     messages.Add(new { role = "assistant", content });
@@ -448,6 +463,7 @@ public sealed partial class ModelClient
                         packetIndex++;
                         beginPacket = true;
                         repeatingPacket = false;
+                        retriedTextToolCall = false;
                         verifyingVerdict = false;
                         emptyRecoveries = 0;
                         continue;
@@ -554,6 +570,19 @@ public sealed partial class ModelClient
             (message.TryGetProperty("function_call", out var function) && function.ValueKind != JsonValueKind.Null))
             throw new ReviewFormatException("Repair must be a complete text response without tool calls.");
         return (message.GetProperty("content").GetString() ?? "").Trim();
+    }
+
+    private static bool HasTextToolCalls(string content)
+    {
+        if (!content.Contains("\"tool_calls\"", StringComparison.Ordinal)) return false;
+        try
+        {
+            using var json = JsonDocument.Parse(UnwrapReport(content));
+            return json.RootElement.ValueKind == JsonValueKind.Object &&
+                json.RootElement.TryGetProperty("tool_calls", out var calls) &&
+                calls.ValueKind == JsonValueKind.Array && calls.GetArrayLength() > 0;
+        }
+        catch (JsonException) { return false; }
     }
 
     private static string UnwrapReport(string content)

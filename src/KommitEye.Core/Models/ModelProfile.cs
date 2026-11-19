@@ -38,7 +38,7 @@ public sealed class ModelParameters
     public int MaxTokens { get; set; }
     [Range(1, 500), Display(Name = "Model request rounds", Description = "Количество раундов запросов модели")]
     public int MaxRounds { get; set; } = 60;
-    [Range(1, 500), Display(Name = "Final cross-file review requests", Description = "Запросов на финальную проверку связей")]
+    [Range(1, 500), Display(Name = "Extra requests for final cross-file review", Description = "Дополнительные запросы на финальную проверку связей")]
     public int CrossFileMaxRounds { get; set; } = 6;
     [Range(1, 500), Display(Name = "Remind when requests remaining", Description = "Напоминать, когда осталось запросов")]
     public int ReminderRequests { get; set; } = 20;

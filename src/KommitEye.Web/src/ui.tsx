@@ -54,7 +54,7 @@ const labels: Record<string, [string, string]> = {
   temperature: ["Температура", "Temperature"],
   topP: ["Top P", "Top P"],
   maxRounds: ["Раундов запросов модели", "Model request rounds"],
-  crossFileMaxRounds: ["Запросов на финальную проверку связей", "Final cross-file review requests"],
+  crossFileMaxRounds: ["Дополнительные запросы на финальную проверку связей", "Extra requests for final cross-file review"],
   reminderRequests: [
     "Напоминать при остатке запросов",
     "Remind when requests remain",

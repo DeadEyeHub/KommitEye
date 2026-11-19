@@ -64,22 +64,22 @@ using (var http = new HttpClient(new PacketHandler()))
     }
 }
 
-foreach (var finalLimit in new[] { 2, new ModelParameters().CrossFileMaxRounds })
+foreach (var (packetLimit, reserve, finalLimit) in new[] { (8, 2, 2), (8, new ModelParameters().CrossFileMaxRounds, 6), (9, 2, 3), (107, 6, 105) })
 {
     using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
     var handler = new FinalSearchHandler(finalLimit);
     using var http = new HttpClient(handler);
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
-        Parameters = new ModelParameters { MaxRounds = 8, CrossFileMaxRounds = finalLimit } };
+        Parameters = new ModelParameters { MaxRounds = packetLimit, CrossFileMaxRounds = reserve, ReminderRequests = 120 } };
     try
     {
         var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
-        if (finalLimit != 6 || handler.Requests != 3 || !session.ReadyForFinal || report != PacketHandler.Finding)
+        if (finalLimit < 3 || handler.Requests != 3 || !session.ReadyForFinal || report != PacketHandler.Finding)
             throw new Exception("Final review lost packet findings or its independent budget.");
     }
     catch (InvalidDataException e) when (finalLimit == 2 && handler.Requests == 2 && !session.ReadyForFinal &&
         e.Message.Contains("confirmed packet findings")) { }
-    Console.WriteLine($"PASS diagnostic 11: exhausted packet budget, separate final limit {finalLimit}");
+    Console.WriteLine($"PASS final budget: {packetLimit - 8} unused packet requests plus {reserve} reserved gives {finalLimit}");
 }
 
 foreach (var verdict in new[] { "NO_BUGS", PacketHandler.Finding, ConflictingVerdictHandler.Conflict })

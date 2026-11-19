@@ -87,8 +87,8 @@ public partial class MainWindow : Window
                 "Model requests for the commit or, in a partitioned review, for all packets combined. Includes follow-ups and report corrections.",
                 "Запросы к модели на коммит или, при разбиении, на все пакеты вместе. Включает уточнения и исправления отчёта."),
             nameof(ModelParameters.CrossFileMaxRounds) => Localization.Text(
-                "Separate request limit for checking cross-file interactions after all packets have been reviewed.",
-                "Отдельный лимит запросов на проверку связей между файлами после завершения всех пакетов."),
+                "These requests are added to the unused packet budget for the final cross-file review.",
+                "Эти запросы прибавляются к остатку бюджета пакетов для финальной проверки связей."),
             nameof(ModelParameters.ReminderRequests) => Localization.Text(
                 "When this many requests or fewer remain, each request reminds the model of its remaining budget and asks it to prepare the final report. The count includes the current request.",
                 "Когда остаётся столько запросов или меньше, каждый запрос напоминает модели об остатке и необходимости подготовить итоговый отчёт. Текущий запрос включён в остаток."),

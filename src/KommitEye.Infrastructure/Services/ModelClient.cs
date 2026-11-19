@@ -466,9 +466,10 @@ public sealed partial class ModelClient
                         packetIndex++;
                         if (packetIndex == plan.Packets.Count)
                         {
-                            log?.Invoke($"Packet review completed in {round}/{roundLimit} requests. Cross-file review budget: {parameters.CrossFileMaxRounds} requests.");
+                            var remaining = roundLimit - round;
+                            log?.Invoke($"Packet review completed in {round}/{roundLimit} requests. Cross-file review budget: {remaining} remaining + {parameters.CrossFileMaxRounds} reserved.");
+                            roundLimit = remaining + parameters.CrossFileMaxRounds;
                             round = 0;
-                            roundLimit = parameters.CrossFileMaxRounds;
                         }
                         beginPacket = true;
                         repeatingPacket = false;

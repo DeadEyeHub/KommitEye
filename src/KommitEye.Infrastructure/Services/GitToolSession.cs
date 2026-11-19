@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace KommitEye.Services;
 
 // Only this dispatcher translates model arguments into Git arguments. No revision expressions or disk reads.
-public sealed class GitToolSession : IDisposable
+public sealed partial class GitToolSession : IDisposable
 {
     public const int PageSize = 16_000;
     private const int RangeInputLimit = 512_000;
@@ -54,6 +54,7 @@ public sealed class GitToolSession : IDisposable
             if (listing.ExitCode != 0) throw new GitException("Cannot collect skip-decision evidence: " + listing.Error);
             remaining -= listing.Output.Length + 512;
             modules.Add(new { path = session._modulePath, sha = session.Sha, diff_complete = session.DiffComplete,
+                validated_packets = session.ValidatedPackets, total_packets = session.PlannedPackets,
                 next_offsets = session._nextOffsets.Take(10).Select(p => new { key = p.Key[..Math.Min(256, p.Key.Length)], offset = p.Value }).ToArray(), files_numstat = listing.Output,
                 listing_truncated = listing.HasMore, submodules_discovered = session._links.Count });
             foreach (var child in session._submodules.Values) await Visit(child);

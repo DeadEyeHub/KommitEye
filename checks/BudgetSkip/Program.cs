@@ -178,7 +178,7 @@ sealed class FixtureHandler(string mode) : HttpMessageHandler {
             finish = "stop";
         } else {
             Reviews++;
-            if (mode == "clean" && Reviews == 2)
+            if ((mode == "clean" && Reviews == 2) || body.Contains("Mandatory partitioned review protocol"))
                 return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new { choices = new[] { new { message = new { role = "assistant", content = "NO_BUGS" }, finish_reason = "stop" } } }), System.Text.Encoding.UTF8, "application/json") };
             if (mode == "api-failure") return new(HttpStatusCode.Unauthorized) { Content = new StringContent("bad key") };
             message = new { role = "assistant", content = "", tool_calls = new[] { new { id = "call-1", type = "function", function = new { name = "git_diff", arguments = "{\"offset\":0}" } } } };

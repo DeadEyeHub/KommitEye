@@ -423,3 +423,19 @@ an explicit marker in the existing failure text, so older versions can read repo
 replace them normally. Databases produced by 3.8.0-experimental are converted back to schema
 2 automatically, preserving reports and skipped statuses.
 Validation: `dotnet run --project checks/BudgetSkip/BudgetSkip.csproj`.
+
+## 3.8.3-experimental — large commit reviews
+
+Desktop and Service automatically plan patches exceeding 16,000 characters. Each
+review packet includes the changed-path map, a hunk or bounded patch fragment and
+literal symbol matches from the reviewed commit, including unchanged callers.
+The model can request additional committed source. Each packet starts a fresh
+conversation. The host counts validated packets and runs a final cross-file pass
+with outstanding questions before accepting a report. Requests, time and evidence
+share the configured commit budget.
+
+For added and deleted C# string arrays with a recognized initializer, the host
+checks the structure of consecutive literal rows and supplies their count, samples
+and duplicate count. The underlying values remain accessible through Git tools.
+Submodule changes and patches beyond the planner's local size limits use the
+existing paged review protocol.

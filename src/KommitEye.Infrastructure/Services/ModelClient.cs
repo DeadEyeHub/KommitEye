@@ -161,6 +161,7 @@ public sealed partial class ModelClient
             var plan = await tools.CreateReviewPlanAsync(cancellationToken);
             var packetIndex = 0;
             var beginPacket = plan != null;
+            var repeatingPacket = false;
             var reports = new List<string>();
             var questions = new List<string>();
             var definitions = plan == null ? GitToolSession.Definitions : GitToolSession.Definitions
@@ -176,6 +177,8 @@ public sealed partial class ModelClient
                           "If a cross-file question needs a later pass, prepend a single FOLLOW_UP: question line to your report."
                         : "All assigned changes have individual reports. Check interactions across the map and resolve all follow-up questions. " +
                           "Return additional confirmed findings. Use tools when evidence is missing.";
+                    if (repeatingPacket)
+                        task += " Review the evidence afresh. Your final answer must be exactly NO_BUGS or complete BUG blocks. Omit JSON, Markdown and review summaries.";
                     var evidence = JsonSerializer.Serialize(new { reviewed_sha = tools.Sha, parent_sha = plan.Parent, branch, map = plan.Map, packet,
                         related_lines = packet == null ? string.Join('\n', plan.Packets.SelectMany(p => p.References.Split('\n'))
                             .Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().Take(12).Select(s => s[..Math.Min(200, s.Length)])) : null,
@@ -351,12 +354,13 @@ public sealed partial class ModelClient
                     messages.Add(new { role = "user", content = plan != null ? "Correct invalid tool arguments before returning the packet report." : "Review incomplete. Read the full git_diff through all its next_offset pages, including git_diff with submodule for EACH changed submodule listed by previous results (and nested entries); correct invalid tool arguments before returning the report. Auxiliary pages are optional. Providers must support native tool_calls (vLLM: auto tool choice and a model-specific tool-call parser)." });
                     continue;
                 }
+                string? followUp = null;
                 if (plan != null && content.StartsWith("FOLLOW_UP:", StringComparison.Ordinal))
                 {
                     var newline = content.IndexOf('\n');
                     if (packetIndex == plan.Packets.Count || newline < 11 || newline > 1000 || questions.Sum(q => q.Length) + newline > 4000)
                         throw new InvalidDataException("Unresolved cross-file questions exceed the packet review limits.");
-                    questions.Add(plan.Packets[packetIndex].Path + ": " + content[10..newline].Trim());
+                    followUp = plan.Packets[packetIndex].Path + ": " + content[10..newline].Trim();
                     content = content[(newline + 1)..].Trim();
                 }
                 var reportContent = TrimReportSurroundingText(UnwrapReport(content));
@@ -373,12 +377,21 @@ public sealed partial class ModelClient
                     {
                         reviewed_sha = tools.Sha,
                         model = profile.Model,
-                        attempt = 1,
+                        attempt = repeatingPacket ? 2 : 1,
                         errors = formatErrors,
                         content = originalContent
                     }, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
                     var reason = string.Join(" ", formatErrors);
                     log?.Invoke($"Report format rejected: {reason} Original response saved: {diagnosticPath}");
+                    if (plan != null && packetIndex < plan.Packets.Count && !content.Split('\n').Any(IsReportMarker))
+                    {
+                        if (repeatingPacket || round + 1 >= parameters.MaxRounds)
+                            throw new ReviewFormatException($"Cannot obtain a structured verdict for {plan.Packets[packetIndex].Path} within the packet retry budget. Diagnostic: {diagnosticPath}");
+                        log?.Invoke($"Repeating review of packet {packetIndex + 1}/{plan.Packets.Count} with original evidence after a free-form response.");
+                        repeatingPacket = true;
+                        beginPacket = true;
+                        continue;
+                    }
                     activity?.Invoke(ReviewStage.FormatCorrection, "1/1");
                     try
                     {
@@ -410,9 +423,11 @@ public sealed partial class ModelClient
                     if (packetIndex < plan.Packets.Count)
                     {
                         tools.AcceptPacket(packetIndex);
+                        if (followUp != null) questions.Add(followUp);
                         log?.Invoke($"Validated packet {packetIndex + 1}/{plan.Packets.Count}: {plan.Packets[packetIndex].Path}");
                         packetIndex++;
                         beginPacket = true;
+                        repeatingPacket = false;
                         emptyRecoveries = 0;
                         continue;
                     }
@@ -592,6 +607,13 @@ public sealed partial class ModelClient
         return Finish() ? findings : null;
     }
 
+    private static bool IsReportMarker(string raw)
+    {
+        var marker = raw.Trim().ToUpperInvariant();
+        return marker is "BUG" or "NO_BUGS" or "END" || marker.StartsWith("FILE:") ||
+            marker.StartsWith("LINE:") || marker.StartsWith("SIDE:") || marker.StartsWith("DESCRIPTION:");
+    }
+
     private static string TrimReportSurroundingText(string content)
     {
         // Keep all blocks, from the first marker through the last END. Never
@@ -615,14 +637,7 @@ public sealed partial class ModelClient
         }
         if (reportStart < 0 || reportEnd < 0) return content;
         // Protocol-looking text outside the candidate may be a lost or incomplete finding.
-        foreach (var raw in (content[..reportStart] + "\n" + content[reportEnd..]).Split('\n'))
-        {
-            var line = raw.Trim();
-            var marker = line.ToUpperInvariant();
-            if (marker is "BUG" or "NO_BUGS" or "END" ||
-                marker.StartsWith("FILE:") || marker.StartsWith("LINE:") ||
-                marker.StartsWith("SIDE:") || marker.StartsWith("DESCRIPTION:")) return content;
-        }
+        if ((content[..reportStart] + "\n" + content[reportEnd..]).Split('\n').Any(IsReportMarker)) return content;
         var candidate = content[reportStart..reportEnd].Trim();
         return GetReportFormatErrors(candidate).Count == 0 ? candidate : content;
     }

@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../FixtureAuditHandler.cs" Link="FixtureAuditHandler.cs" />
     <ProjectReference Include="../../src/KommitEye.Engine/KommitEye.Engine.csproj" />
   </ItemGroup>
 </Project>

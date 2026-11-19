@@ -9,7 +9,7 @@ internal sealed class NovemberReplay(bool broken, bool persistError, bool contra
     private readonly Dictionary<string, int> visits = [];
     private int audits, lineRepairs, suppliedSearches;
 
-    public static async Task Run(string repo, string deletion)
+    public static async Task<string> Run(string repo, string deletion)
     {
         using var session = await GitToolSession.CreateAsync(repo, deletion, default);
         using var metadata = JsonDocument.Parse(await session.ExecuteAsync("git_metadata", "{}", default));
@@ -33,7 +33,7 @@ internal sealed class NovemberReplay(bool broken, bool persistError, bool contra
                 var result = await runner.ReviewSingleCommitAsync(settings,
                     new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" }, sha, default);
                 if (persistent || result.Findings.Count != (sha == deletion ? 1 : 0) ||
-                    sha == deletion && (result.Findings[0].File != "Program.cs" || handler.lineRepairs != 1) || handler.audits != 1)
+                    sha == deletion && (result.Findings[0].File != "Program.cs" || handler.lineRepairs != 1) || handler.audits != (sha == deletion ? 2 : 1))
                     throw new Exception("Unexpected final audit result.");
             }
             catch (ReviewFormatException e) when (persistent && e.Message.Contains("retry budget")) { }
@@ -41,6 +41,7 @@ internal sealed class NovemberReplay(bool broken, bool persistError, bool contra
                 !contradiction && handler.suppliedSearches == 0) throw new Exception("Retry lost progress or evidence.");
             Console.WriteLine($"PASS replay {sha[..8]} auto={retry} retries={retries} persistent={persistent} bytesConflict={contradiction}");
         }
+        return restored;
     }
 
     private static string Block(string file, int line, string side, string description) =>
@@ -102,10 +103,10 @@ internal sealed class NovemberReplay(bool broken, bool persistError, bool contra
                     bytes.GetProperty("Path").GetString() != "Fixtures/Dataset04.cs") throw new Exception("Wrong byte evidence.");
             }
             answer = broken
-                ? """[{"id":1,"action":"unsupported","evidence":"No consumer identified"},{"id":2,"action":"duplicate","duplicateOf":3,"evidence":"Same missing definition breaks Program.cs:4"},{"id":3,"action":"keep","evidence":"Program.cs:4 uses deleted Dataset03"}]"""
+                ? """[{"id":1,"action":"uncertain","evidence":"No consumer identified"},{"id":2,"action":"duplicate","duplicateOf":3,"evidence":"Same missing definition breaks Program.cs:4"},{"id":3,"action":"correct","file":"Program.cs","side":"NEW","line":4,"quote":"Dataset03.Rows.Length","condition":"When Program is compiled","consequence":"Missing type prevents compilation","contradicted":false,"evidence":"Program.cs:4 uses deleted Dataset03"}]"""
                 : contradictBytes
-                    ? """[{"id":1,"action":"unsupported","evidence":"Legal C# comment"},{"id":2,"action":"keep","expectedBom":"UTF-8","expectedEndings":"CRLF","evidence":"Claimed by model"}]"""
-                    : """[{"id":1,"action":"unsupported","evidence":"Comment is legal between elements"},{"id":2,"action":"unsupported","evidence":"Committed bytes have LF and no BOM"}]""";
+                    ? """[{"id":1,"action":"unsupported","file":"Fixtures/Dataset02.cs","side":"NEW","line":1107,"quote":"// xxxxxxxx","contradicted":true,"evidence":"Legal C# comment"},{"id":2,"action":"keep","file":"Fixtures/Dataset04.cs","line":5,"side":"NEW","quote":"{","condition":"Reading the file","consequence":"Invalid values","contradicted":false,"expectedBom":"UTF-8","expectedEndings":"CRLF","evidence":"Claimed by model"}]"""
+                    : """[{"id":1,"action":"unsupported","file":"Fixtures/Dataset02.cs","side":"NEW","line":1107,"quote":"// xxxxxxxx","contradicted":true,"evidence":"Comment is legal between elements"},{"id":2,"action":"unsupported","expectedBom":"UTF-8","expectedEndings":"CRLF","contradicted":true,"evidence":"Committed bytes have LF and no BOM"}]""";
         }
         return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new {
             choices = new[] { new { finish_reason = "stop", message = new { content = answer } } }

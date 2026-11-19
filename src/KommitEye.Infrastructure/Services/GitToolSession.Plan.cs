@@ -22,6 +22,17 @@ public sealed partial class GitToolSession
 
     internal sealed record ByteFacts(string Commit, string Path, string Bom, string? Endings);
 
+    internal async Task<(GitToolSession Session, string Path)> LocateAuditFileAsync(string path, CancellationToken token)
+    {
+        ValidateModulePath(path);
+        var module = _links.Keys.FirstOrDefault(link => path.StartsWith(link + "/", StringComparison.Ordinal));
+        if (module == null) return (this, path);
+        var child = await ResolveSubmoduleAsync(module, token, null);
+        return await child.LocateAuditFileAsync(path[(module.Length + 1)..], token);
+    }
+
+    internal string? AuditRevision(string side) => side == "OLD" ? _parent : _deleted ? null : Sha;
+
     internal async Task<ByteFacts?> ReadByteFactsAsync(string commit, string path, CancellationToken token)
     {
         ValidateModulePath(path);

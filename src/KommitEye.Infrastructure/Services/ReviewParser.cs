@@ -17,10 +17,10 @@ public static class ReviewParser
         foreach (var rawLine in normalized.Split('\n'))
         {
             var line = rawLine.Trim();
-            if (line.Equals("BUG", StringComparison.OrdinalIgnoreCase))
+            if (line.Equals("BUG", StringComparison.OrdinalIgnoreCase) || line == "VERIFY")
             {
                 AddCurrent(result, current);
-                current = new FindingBuilder();
+                current = new FindingBuilder { Pending = line == "VERIFY" };
                 foundBlock = true;
                 continue;
             }
@@ -86,7 +86,7 @@ public static class ReviewParser
         if (current.Description.Length == 0)
             return;
 
-        result.Findings.Add(new Finding(
+        (current.Pending ? result.NeedsVerification : result.Findings).Add(new Finding(
             current.File.Length == 0
                 ? Localization.Text("unknown file", "неизвестный файл")
                 : current.File,
@@ -97,6 +97,7 @@ public static class ReviewParser
 
     private sealed class FindingBuilder
     {
+        public bool Pending { get; init; }
         public string File { get; set; } = string.Empty;
         public int? Line { get; set; }
         public string Side { get; set; } = string.Empty;

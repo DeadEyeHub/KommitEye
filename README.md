@@ -448,3 +448,11 @@ off by default. Enable it to retry a malformed or empty model response once
 from the last saved packet. A further automatic retry requires another validated
 packet. The same rule applies to the final cross-file review. Manual Stop,
 scheduled pauses, and Git or configuration errors keep their existing behavior.
+
+In 3.8.14 each draft finding goes through a separate final check against the
+committed source on both sides of the change. A nonempty draft gets one audit
+request and at most one clarification request within the review deadline. The
+auditor can request a specific file and line, correct the location, merge a
+duplicate, or withdraw a claim. An unresolved claim is listed under **Needs
+verification** and is excluded from the confirmed finding count. A clean draft
+requires no audit request.

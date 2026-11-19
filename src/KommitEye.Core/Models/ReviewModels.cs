@@ -37,6 +37,7 @@ public sealed class ReviewResult
     public string RepositoryIdentity { get; set; } = "";
     public string AuthorEmail { get; set; } = "";
     public List<Finding> Findings { get; } = [];
+    public List<Finding> NeedsVerification { get; } = [];
     public string? UnstructuredResponse { get; set; }
     public bool EmptyDiff { get; set; }
 }
@@ -64,4 +65,5 @@ public sealed record ReviewProgress(ReviewStage Stage, string Model, string Comm
 
 public sealed record CommitReviewed(string RepositoryPath, string BranchRef, string Sha,
     int FindingCount, bool HasUnstructuredResponse, bool EmptyDiff, bool Manual,
-    string ReportMarkdown = "", string RepositoryIdentity = "", string AuthorEmail = "", bool Failed = false, bool BudgetSkipped = false);
+    string ReportMarkdown = "", string RepositoryIdentity = "", string AuthorEmail = "", bool Failed = false, bool BudgetSkipped = false,
+    int NeedsVerificationCount = 0);

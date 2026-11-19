@@ -1482,6 +1482,9 @@ public partial class MainWindow : Window
             ? Localization.Text("Review failed; inspect the report.", "Проверка завершилась с ошибкой; смотрите отчёт.")
             : reviewed.EmptyDiff
             ? Localization.Text("Empty diff; no model request.", "Пустой diff; без запроса к модели.")
+            : reviewed.NeedsVerificationCount > 0
+            ? Localization.Format("Confirmed: {0}, needs verification: {1}.", "Подтверждено: {0}, требует проверки: {1}.",
+                reviewed.FindingCount, reviewed.NeedsVerificationCount)
             : reviewed.HasUnstructuredResponse
                 ? Localization.Text("Unstructured response; inspect the report.", "Неструктурированный ответ; проверьте отчет.")
                 : Localization.Format("Findings: {0}.", "Замечаний: {0}.", reviewed.FindingCount);
@@ -1489,7 +1492,7 @@ public partial class MainWindow : Window
         {
             _trayIcon.ShowBalloonTip(5000, Localization.Text("Commit review completed", "Проверка коммита завершена"),
                 $"{reviewed.Sha[..Math.Min(8, reviewed.Sha.Length)]} | {reviewed.BranchRef}\n{result}",
-                reviewed.Failed || reviewed.HasUnstructuredResponse ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info);
+                reviewed.Failed || reviewed.HasUnstructuredResponse || reviewed.NeedsVerificationCount > 0 ? Forms.ToolTipIcon.Warning : Forms.ToolTipIcon.Info);
         }
         catch (Exception) { /* Notifications are best-effort and must not affect persisted reviews. */ }
     }

@@ -41,6 +41,13 @@ public static class ReportRenderer
                 .AppendLine();
         }
 
+        if (result.NeedsVerification.Count > 0)
+        {
+            text.AppendLine(Localization.Text("### Needs verification", "### Требует проверки")).AppendLine();
+            foreach (var item in result.NeedsVerification)
+                text.AppendLine($"- `{Escape(item.File)}:{item.Line} ({Escape(item.Side)})` — {Escape(item.Description)}");
+            text.AppendLine();
+        }
         if (result.UnstructuredResponse is not null)
         {
             text.AppendLine(Localization.Text(
@@ -68,6 +75,9 @@ public static class ReportRenderer
             return Localization.Text("review failed; skipped: ", "проверка не выполнена; пропущен: ") + Escape(result.Failure);
         if (result.EmptyDiff)
             return Localization.Text("empty diff; no model request", "пустой diff; запрос к модели не выполнялся");
+        if (result.NeedsVerification.Count > 0)
+            return Localization.Format("confirmed: {0}, needs verification: {1}", "подтверждено: {0}, требует проверки: {1}",
+                result.Findings.Count, result.NeedsVerification.Count);
         if (result.Findings.Count > 0)
             return Localization.Format(
                 "potential bugs: {0}",

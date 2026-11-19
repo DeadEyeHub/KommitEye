@@ -14,7 +14,8 @@ static class EmptyResponseChecks
             profile.Parameters.MaxRounds = mode == "budget" ? 2 : 3;
             var clock = new EmptyClock();
             var handler = new EmptyHandler(mode, finding, clock);
-            using var http = new HttpClient(handler);
+            var audit = new FixtureAuditHandler(handler);
+            using var http = new HttpClient(audit);
             using var tools = await GitToolSession.CreateAsync(repo, sha, default);
             var logs = new List<string>();
             var requests = 0;
@@ -31,7 +32,7 @@ static class EmptyResponseChecks
             else if (mode == "repair-budget") Check(failure is ReviewFormatException, "format repair obeys shared request limit");
             else if (mode == "deadline") Check(failure is ReviewComplexityException, "recovery obeys original deadline");
             else Check(failure is null && result == finding, mode + ": recovered original findings: " + failure);
-            Check(handler.Requests == (mode == "budget" ? 2 : 3) && requests == handler.Requests, mode + ": bounded requests");
+            Check(handler.Requests == (mode == "budget" ? 2 : 3) && requests == handler.Requests + audit.Audits, mode + ": bounded requests");
             Check(logs.Any(x => x.Contains("Review round 2/") && x.Contains("empty-id") && x.Contains("finish_reason")), mode + ": round diagnostics");
             Check(logs.Any(x => x.Contains("Empty report recovery")), mode + ": recovery diagnostics");
             Check(usage > 0, mode + ": usage retained");

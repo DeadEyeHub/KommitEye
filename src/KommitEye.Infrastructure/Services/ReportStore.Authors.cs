@@ -42,7 +42,7 @@ public sealed partial class ReportStore
         SELECT r.id,g.repository_key,g.name,g.branch,r.commit_sha,r.subject,r.reviewed_at,
             CASE WHEN r.failure IS NOT NULL THEN 'failed' WHEN r.empty_diff=1 THEN 'empty'
             WHEN EXISTS(SELECT 1 FROM findings f WHERE f.review_id=r.id) THEN 'bug'
-            WHEN r.unstructured_response IS NOT NULL OR r.reviewed_at IS NULL THEN 'unknown' ELSE 'clean' END,
+            WHEN r.unstructured_response IS NOT NULL OR r.reviewed_at IS NULL OR EXISTS(SELECT 1 FROM pending_review_checks p WHERE p.review_id=r.id) THEN 'unknown' ELSE 'clean' END,
             (SELECT count(*) FROM findings f WHERE f.review_id=r.id),
             (SELECT count(*) FROM findings f WHERE f.review_id=r.id AND NOT EXISTS
                 (SELECT 1 FROM author_feedback a WHERE a.review_id=f.review_id AND a.ordinal=f.ordinal AND a.status<>'pending'))
@@ -67,6 +67,7 @@ public sealed partial class ReportStore
         using var command = Command(db, null, AuthorSelect + """
             AND ($filter='' OR ($filter='bug' AND EXISTS(SELECT 1 FROM findings f WHERE f.review_id=r.id))
             OR ($filter='clean' AND r.failure IS NULL AND r.unstructured_response IS NULL AND r.reviewed_at IS NOT NULL
+                AND NOT EXISTS(SELECT 1 FROM pending_review_checks p WHERE p.review_id=r.id)
                 AND NOT EXISTS(SELECT 1 FROM findings f WHERE f.review_id=r.id))
             OR ($filter='pending' AND EXISTS(SELECT 1 FROM findings f WHERE f.review_id=r.id AND NOT EXISTS
                 (SELECT 1 FROM author_feedback a WHERE a.review_id=f.review_id AND a.ordinal=f.ordinal AND a.status<>'pending'))))

@@ -22,7 +22,7 @@ for (var i = 1; i < args.Length; i++)
             throw new Exception("Suggested directory listing did not contain Dataset03.cs.");
     }
     var handler = new PacketHandler(disableThinking: i != 1, freeFormAttempts: i == 3 ? 1 : 0);
-    using var http = new HttpClient(handler);
+    using var http = new HttpClient(new FixtureAuditHandler(handler));
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
     profile.Parameters.DisableThinking = i != 1;
     var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
@@ -35,7 +35,7 @@ for (var i = 1; i < args.Length; i++)
 using (var session = await GitToolSession.CreateAsync(args[0], args[1], default))
 {
     var handler = new PacketHandler(freeFormAttempts: 2);
-    using var http = new HttpClient(handler);
+    using var http = new HttpClient(new FixtureAuditHandler(handler));
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
     try
     {
@@ -49,7 +49,7 @@ using (var session = await GitToolSession.CreateAsync(args[0], args[1], default)
 }
 
 using (var session = await GitToolSession.CreateAsync(args[0], args[1], default))
-using (var http = new HttpClient(new PacketHandler()))
+using (var http = new HttpClient(new FixtureAuditHandler(new PacketHandler())))
 {
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
         Parameters = new ModelParameters { MaxRounds = 7, ReminderRequests = 1 } };
@@ -68,7 +68,7 @@ foreach (var (packetLimit, reserve, finalLimit) in new[] { (8, 2, 2), (8, new Mo
 {
     using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
     var handler = new FinalSearchHandler(finalLimit);
-    using var http = new HttpClient(handler);
+    using var http = new HttpClient(new FixtureAuditHandler(handler));
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
         Parameters = new ModelParameters { MaxRounds = packetLimit, CrossFileMaxRounds = reserve, ReminderRequests = 120 } };
     try
@@ -86,7 +86,7 @@ foreach (var verdict in new[] { "NO_BUGS", PacketHandler.Finding, ConflictingVer
 {
     using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
     var handler = new ConflictingVerdictHandler(verdict);
-    using var http = new HttpClient(handler);
+    using var http = new HttpClient(new FixtureAuditHandler(handler));
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
     try
     {
@@ -105,7 +105,7 @@ foreach (var (packetFailures, finalFailures) in new[] { (1, 1), (2, 0), (0, 2) }
 {
     using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
     var handler = new PacketHandler(packetToolText: packetFailures, finalToolText: finalFailures);
-    using var http = new HttpClient(handler);
+    using var http = new HttpClient(new FixtureAuditHandler(handler));
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
     try
     {
@@ -125,7 +125,7 @@ foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (
     var project = Guid.NewGuid().ToString();
     var handler = new PacketHandler();
     using var cancellation = new CancellationTokenSource();
-    using var http = new HttpClient(handler);
+    using var http = new HttpClient(new FixtureAuditHandler(handler));
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
     using (var checkpoint = new PacketCheckpoint(project, args[0], "test", args[3]) {
         Progress = message => { if (message.StartsWith($"Saved packet {interruptAfter}/")) cancellation.Cancel(); }
@@ -140,7 +140,7 @@ foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
     }
     using var resumed = new PacketCheckpoint(project, args[0], "test", args[3]);
-    using var freshHttp = new HttpClient(new PacketHandler());
+    using var freshHttp = new HttpClient(new FixtureAuditHandler(new PacketHandler()));
     using var freshSession = await GitToolSession.CreateAsync(args[0], args[3], default);
     var report = await new ModelClient(changePrompt ? freshHttp : http).ReviewAsync(profile, freshSession, "test",
         changePrompt ? "Changed instructions" : "Review", default, checkpoint: resumed);
@@ -150,7 +150,8 @@ foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (
     Console.WriteLine($"PASS checkpoint after packet {interruptAfter}/8, changed prompt={changePrompt}");
 }
 
-await NovemberReplay.Run(args[0], args[3]);
+var restored = await NovemberReplay.Run(args[0], args[3]);
+await FinalReportReplay.Run(args[0], args[1], args[2], restored, args[3]);
 
 sealed class FinalSearchHandler(int limit) : DelegatingHandler(new PacketHandler())
 {

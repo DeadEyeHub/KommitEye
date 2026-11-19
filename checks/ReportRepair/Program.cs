@@ -12,7 +12,7 @@ Directory.CreateDirectory(repo);
 await Git("init", "-b", "main");
 await Git("config", "user.name", "Fixture");
 await Git("config", "user.email", "fixture@example.invalid");
-await File.WriteAllTextAsync(Path.Combine(repo, "file.txt"), "first\n");
+await File.WriteAllTextAsync(Path.Combine(repo, "file.txt"), "first\nsecond\n");
 await Git("add", ".");
 await Git("commit", "-m", "Repair fixture");
 var sha = await Git("rev-parse", "HEAD");
@@ -36,7 +36,7 @@ var cases = new (string Name, string Original, string Repair, bool Fails, int Re
     ("compact invalid line zero", finding.Replace("LINE: 1", "LINE:0"), finding, true, 1, false),
     ("compact invalid line N/A", finding.Replace("LINE: 1", "LINE:N/A"), finding, true, 1, false),
     ("repair only line", finding.Replace("LINE: 1", "LINE: 1-3"), "1", false, 1, false),
-    ("line beyond diff", finding.Replace("LINE: 1", "LINE: ?"), "2", true, 1, false),
+    ("line beyond diff", finding.Replace("LINE: 1", "LINE: ?"), "3", true, 1, false),
     ("line on absent side", finding.Replace("LINE: 1", "LINE: ?").Replace("SIDE: NEW", "SIDE: OLD"), "1", true, 0, false),
     ("multiple findings line repair", finding + "\n\n" + second.Replace("LINE: 2", "LINE: unknown").Replace("technical claim", "second claim"), "1", false, 1, false),
     ("no bugs", "NO_BUGS", "", false, 0, false),
@@ -66,7 +66,7 @@ var cases = new (string Name, string Original, string Repair, bool Fails, int Re
 foreach (var test in cases)
 {
     var handler = new RepairHandler(test.Original, test.Repair, test.ToolCall);
-    using var http = new HttpClient(handler);
+    using var http = new HttpClient(new FixtureAuditHandler(handler));
     using var tools = await GitToolSession.CreateAsync(repo, sha, default);
     try
     {

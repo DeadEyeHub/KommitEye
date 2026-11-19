@@ -663,9 +663,12 @@ public sealed class ReviewRunner
         cancellationToken.ThrowIfCancellationRequested();
         SetRemaining(Math.Max(0, _remaining - 1));
         Emit(ReviewStage.Completed, profile, sha);
+        if (result.NeedsVerification.Count > 0)
+            Publish(Log, Localization.Format("Commit {0}: {1} findings need verification.", "Коммит {0}: требуют проверки — {1}.",
+                Short(sha), result.NeedsVerification.Count));
         Publish(Reviewed, new CommitReviewed(path, branch, sha, result.Findings.Count,
             result.UnstructuredResponse is not null, result.EmptyDiff, manual,
-            result.ReportMarkdown, result.RepositoryIdentity, result.AuthorEmail));
+            result.ReportMarkdown, result.RepositoryIdentity, result.AuthorEmail, NeedsVerificationCount: result.NeedsVerification.Count));
     }
 
     private static void Publish<T>(Action<T>? handlers, T value)

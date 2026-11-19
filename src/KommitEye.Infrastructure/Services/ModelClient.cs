@@ -190,7 +190,8 @@ public sealed partial class ModelClient
                     roundLimit = checkpoint.FinalBudget;
                     if (checkpoint.FinalReport is { } final)
                     {
-                        if (GetReportFormatErrors(final).Count != 0) throw new InvalidDataException("Invalid final checkpoint report.");
+                        if (GetReportFormatErrors(System.Text.RegularExpressions.Regex.Replace(final, @"(?m)^VERIFY\r?$", "BUG")).Count != 0)
+                            throw new InvalidDataException("Invalid final checkpoint report.");
                         tools.FinishPlan();
                         return final;
                     }
@@ -546,8 +547,12 @@ public sealed partial class ModelClient
                         emptyRecoveries = 0;
                         continue;
                     }
-                    content = await AuditPacketFindingsAsync(reports, plan, tools, profile, roundLimit - round,
-                        parameters.ToolOutputLimit - output, parameters.MaxToolCalls - calls, cancellationToken, log, usage, beforeRequest);
+                }
+                else AddFindings(reports, content);
+                content = await AuditFindingsAsync(reports, plan, tools, profile,
+                    parameters.ToolOutputLimit - output, parameters.MaxToolCalls - calls, cancellationToken, log, usage, beforeRequest);
+                if (plan != null)
+                {
                     tools.FinishPlan();
                     checkpoint?.SetFinal(content);
                 }
@@ -774,7 +779,7 @@ public sealed partial class ModelClient
     private static bool IsReportMarker(string raw)
     {
         var marker = raw.Trim().ToUpperInvariant();
-        if (marker is "BUG" or "NO_BUGS" or "END") return true;
+        if (marker is "BUG" or "NO_BUGS" or "END" or "VERIFY") return true;
         var colon = marker.IndexOf(':');
         return colon >= 0 && marker[..colon].TrimEnd() is ("FILE" or "LINE" or "SIDE" or "DESCRIPTION");
     }

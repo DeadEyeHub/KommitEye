@@ -92,7 +92,7 @@ public sealed partial class ReportStore
                         WHEN r.failure IS NOT NULL THEN 'failed'
                         WHEN r.empty_diff=1 THEN 'empty'
                         WHEN EXISTS(SELECT 1 FROM findings f WHERE f.review_id=r.id) THEN 'bug'
-                        WHEN r.unstructured_response IS NOT NULL THEN 'unknown'
+                        WHEN r.unstructured_response IS NOT NULL OR EXISTS(SELECT 1 FROM pending_review_checks p WHERE p.review_id=r.id) THEN 'unknown'
                         ELSE 'clean'
                     END AS outcome
                 FROM reviews r JOIN report_groups g ON g.id=r.group_id WHERE g.archived=0

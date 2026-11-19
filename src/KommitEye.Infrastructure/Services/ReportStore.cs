@@ -57,6 +57,8 @@ public sealed partial class ReportStore
                 CREATE TABLE IF NOT EXISTS legacy_imports(
                     name TEXT PRIMARY KEY, original_markdown TEXT NOT NULL,
                     imported_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS pending_review_checks(
+                    review_id INTEGER PRIMARY KEY REFERENCES reviews(id) ON DELETE CASCADE);
                 PRAGMA user_version=2;
                 """);
             schema.ExecuteNonQuery();
@@ -217,6 +219,10 @@ public sealed partial class ReportStore
             ("$now", now), ("$manual", manual), ("$failure", result.BudgetSkipped ? "[budget-skip] " + result.Failure : result.Failure), ("$empty", result.EmptyDiff),
             ("$duration", result.AnalysisDuration?.Ticks), ("$raw", result.UnstructuredResponse), ("$markdown", markdown));
         var reviewId = (long)save.ExecuteScalar()!;
+        using (var pending = Command(db, transaction, result.NeedsVerification.Count > 0
+            ? "INSERT OR IGNORE INTO pending_review_checks(review_id) VALUES($id)"
+            : "DELETE FROM pending_review_checks WHERE review_id=$id", ("$id", reviewId)))
+            pending.ExecuteNonQuery();
         using (var clear = Command(db, transaction, "DELETE FROM findings WHERE review_id=$id", ("$id", reviewId)))
             clear.ExecuteNonQuery();
         for (var i = 0; i < result.Findings.Count; i++)

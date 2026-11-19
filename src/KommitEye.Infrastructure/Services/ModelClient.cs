@@ -631,8 +631,9 @@ public sealed partial class ModelClient
     private static bool IsReportMarker(string raw)
     {
         var marker = raw.Trim().ToUpperInvariant();
-        return marker is "BUG" or "NO_BUGS" or "END" || marker.StartsWith("FILE:") ||
-            marker.StartsWith("LINE:") || marker.StartsWith("SIDE:") || marker.StartsWith("DESCRIPTION:");
+        if (marker is "BUG" or "NO_BUGS" or "END") return true;
+        var colon = marker.IndexOf(':');
+        return colon >= 0 && marker[..colon].TrimEnd() is ("FILE" or "LINE" or "SIDE" or "DESCRIPTION");
     }
 
     private static string TrimReportSurroundingText(string content)
@@ -658,7 +659,8 @@ public sealed partial class ModelClient
         }
         if (reportStart < 0 || reportEnd < 0) return content;
         // Protocol-looking text outside the candidate may be a lost or incomplete finding.
-        if ((content[..reportStart] + "\n" + content[reportEnd..]).Split('\n').Any(IsReportMarker)) return content;
+        var surroundingLines = (content[..reportStart] + "\n" + content[reportEnd..]).Split('\n', StringSplitOptions.TrimEntries);
+        if (surroundingLines.Any(line => IsReportMarker(line) && !(noBugs && line == "NO_BUGS"))) return content;
         var candidate = content[reportStart..reportEnd].Trim();
         return GetReportFormatErrors(candidate).Count == 0 ? candidate : content;
     }

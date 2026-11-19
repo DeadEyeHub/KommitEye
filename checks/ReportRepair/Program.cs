@@ -20,10 +20,21 @@ var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.
 const string finding = "BUG\nFILE: file.txt\nLINE: 1\nSIDE: NEW\nDESCRIPTION: A technical claim with a concrete trigger.\nEND";
 var incomplete = finding[..^4];
 var second = finding.Replace("LINE: 1", "LINE: 2");
+const string diagnostic9 = """
+    NO_BUGS
+
+    The change adds a new synthetic fixture file `Fixtures/Dataset02.cs` containing 1100 literal rows with consistent field layout. I verified the structure (start rows, wraparound region at record 00997→00998 where value restarts at 000—matching the pattern in the other datasets, ending at record 01098 with value 101). There is no executable logic, no computation, and no behavioral code affected in this file; the data is internally consistent.
+
+    NO_BUGS
+    """;
 var cases = new (string Name, string Original, string Repair, bool Fails, int Repairs, bool ToolCall)[]
 {
     ("valid", finding, "", false, 0, false),
     ("no bugs", "NO_BUGS", "", false, 0, false),
+    ("diagnostic 9 duplicate verdict", diagnostic9, "", false, 0, false),
+    ("duplicate verdict with finding field", "NO_BUGS\r\nLINE: 4\r\nNO_BUGS", "NO_BUGS", true, 1, false),
+    ("duplicate verdict with loosely formatted field", "NO_BUGS\nfile : Program.cs\nNO_BUGS", "NO_BUGS", true, 1, false),
+    ("duplicate verdict with block terminator", "NO_BUGS\nNO_BUGS\nEND", "NO_BUGS", true, 1, false),
     ("evidence summary", "I completed evidence gathering:\n1. Read diff.\n2. Checked files.\n\n" + finding, "", false, 0, false),
     ("Markdown wrapper", "```text\n" + finding + "\n```", "", false, 0, false),
     ("JSON wrapper", JsonSerializer.Serialize(new { report = finding }), "", false, 0, false),
@@ -52,7 +63,7 @@ foreach (var test in cases)
     {
         var result = await new ModelClient(http).ReviewAsync(profile, tools, "main", "Review", default);
         Check(!test.Fails, test.Name + ": unexpectedly accepted");
-        var expected = test.Name == "no bugs" ? "NO_BUGS" : test.Name == "multiple findings" ? finding + "\n\n" + second : finding;
+        var expected = test.Name is "no bugs" or "diagnostic 9 duplicate verdict" ? "NO_BUGS" : test.Name == "multiple findings" ? finding + "\n\n" + second : finding;
         Check(result == expected, test.Name + ": changed original findings");
     }
     catch (ReviewFormatException) when (test.Fails) { }

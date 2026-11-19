@@ -35,6 +35,10 @@ var cases = new (string Name, string Original, string Repair, bool Fails, int Re
     ("compact fields in repaired response", incomplete, finding.Replace(": ", ":"), false, 1, false),
     ("compact invalid line zero", finding.Replace("LINE: 1", "LINE:0"), finding, true, 1, false),
     ("compact invalid line N/A", finding.Replace("LINE: 1", "LINE:N/A"), finding, true, 1, false),
+    ("repair only line", finding.Replace("LINE: 1", "LINE: 1-3"), "1", false, 1, false),
+    ("line beyond diff", finding.Replace("LINE: 1", "LINE: ?"), "2", true, 1, false),
+    ("line on absent side", finding.Replace("LINE: 1", "LINE: ?").Replace("SIDE: NEW", "SIDE: OLD"), "1", true, 0, false),
+    ("multiple findings line repair", finding + "\n\n" + second.Replace("LINE: 2", "LINE: unknown").Replace("technical claim", "second claim"), "1", false, 1, false),
     ("no bugs", "NO_BUGS", "", false, 0, false),
     ("diagnostic 9 duplicate verdict", diagnostic9, "", false, 0, false),
     ("duplicate verdict with finding field", "NO_BUGS\r\nLINE: 4\r\nNO_BUGS", "NO_BUGS", true, 1, false),
@@ -69,6 +73,7 @@ foreach (var test in cases)
         var result = await new ModelClient(http).ReviewAsync(profile, tools, "main", "Review", default);
         Check(!test.Fails, test.Name + ": unexpectedly accepted");
         var expected = test.Name is "no bugs" or "diagnostic 9 duplicate verdict" ? "NO_BUGS" : test.Name == "multiple findings" ? finding + "\n\n" + second : finding;
+        if (test.Name == "multiple findings line repair") expected = test.Original.Replace("LINE: unknown", "LINE: 1");
         Check(result == expected, test.Name + ": changed original findings");
     }
     catch (ReviewFormatException) when (test.Fails) { }
@@ -138,7 +143,12 @@ sealed class RepairHandler(string original, string repair, bool toolCall) : Http
         if (messages.GetArrayLength() != 2 || messages[0].GetProperty("role").GetString() != "system" || messages[1].GetProperty("role").GetString() != "user")
             throw new Exception("Repair was not isolated");
         using var envelope = JsonDocument.Parse(messages[1].GetProperty("content").GetString()!);
-        if (envelope.RootElement.GetProperty("original_response").GetString() != original || envelope.RootElement.GetProperty("validation_errors").GetArrayLength() == 0)
+        if (envelope.RootElement.TryGetProperty("candidates", out var candidates))
+        {
+            if (candidates.GetProperty("1").GetString() != "+first" || envelope.RootElement.GetProperty("file").GetString() != "file.txt")
+                throw new Exception("Missing immutable line evidence.");
+        }
+        else if (envelope.RootElement.GetProperty("original_response").GetString() != original || envelope.RootElement.GetProperty("validation_errors").GetArrayLength() == 0)
             throw new Exception("Original response or validation errors missing");
         if (toolCall) return Json(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = "stop", message = new { content = repair, tool_calls = new[] { new { id = "illegal", type = "function", function = new { name = "git_diff", arguments = "{}" } } } } } } }));
         return Final(repair);

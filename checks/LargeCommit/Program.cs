@@ -120,6 +120,36 @@ foreach (var (packetFailures, finalFailures) in new[] { (1, 1), (2, 0), (0, 2) }
     Console.WriteLine($"PASS diagnostic 10: packet failures {packetFailures}, final failures {finalFailures}");
 }
 
+foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (4, true) })
+{
+    var project = Guid.NewGuid().ToString();
+    var handler = new PacketHandler();
+    using var cancellation = new CancellationTokenSource();
+    using var http = new HttpClient(handler);
+    var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1" };
+    using (var checkpoint = new PacketCheckpoint(project, args[0], "test", args[3]) {
+        Progress = message => { if (message.StartsWith($"Saved packet {interruptAfter}/")) cancellation.Cancel(); }
+    })
+    using (var session = await GitToolSession.CreateAsync(args[0], args[3], default))
+    {
+        try
+        {
+            await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", cancellation.Token, checkpoint: checkpoint);
+            throw new Exception("Review failed to stop at the requested packet.");
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+    }
+    using var resumed = new PacketCheckpoint(project, args[0], "test", args[3]);
+    using var freshHttp = new HttpClient(new PacketHandler());
+    using var freshSession = await GitToolSession.CreateAsync(args[0], args[3], default);
+    var report = await new ModelClient(changePrompt ? freshHttp : http).ReviewAsync(profile, freshSession, "test",
+        changePrompt ? "Changed instructions" : "Review", default, checkpoint: resumed);
+    if (!freshSession.ReadyForFinal || report != PacketHandler.Finding)
+        throw new Exception("Restart lost a confirmed finding or skipped final review.");
+    resumed.Complete();
+    Console.WriteLine($"PASS checkpoint after packet {interruptAfter}/8, changed prompt={changePrompt}");
+}
+
 sealed class FinalSearchHandler(int limit) : DelegatingHandler(new PacketHandler())
 {
     public int Requests;

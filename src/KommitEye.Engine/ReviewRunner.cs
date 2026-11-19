@@ -152,11 +152,13 @@ public sealed class ReviewRunner
             var branch = await _git.ResolveBranchAsync(repositoryPath, settings.BranchRef, cancellationToken);
             var sha = await _git.ResolveCommitAsync(repositoryPath, revision, cancellationToken);
             SetRemaining(1);
+            using var checkpoint = CreateCheckpoint(identity.CommonGitDirectory, branch, sha);
             var result = await AnalyzeAndReportAsync(
-                repositoryPath, identity.CommonGitDirectory, branch, sha, profile.Clone(), true, cancellationToken);
+                repositoryPath, identity.CommonGitDirectory, branch, sha, profile.Clone(), true, checkpoint, cancellationToken);
             Complete(repositoryPath, branch, sha, profile, result, true, cancellationToken);
             if (result.Failure is null && result.UnstructuredResponse is null)
                 await _stateStore.ResetBudgetSkipsAsync(identity.CommonGitDirectory, branch, cancellationToken);
+            checkpoint.Complete();
             StatusChanged?.Invoke(Localization.Text("Manual review completed", "Ручная проверка завершена"));
             Log?.Invoke(Localization.Format(
                 "Selected commit {0} reviewed, findings: {1}.",
@@ -435,8 +437,9 @@ public sealed class ReviewRunner
     {
         lock (_lifecycleLock) if (!_manualReviewActive) profile = _updatedProfile?.Clone() ?? profile;
         var skips = await _stateStore.GetConsecutiveBudgetSkipsAsync(repositoryIdentity, branch, cancellationToken);
+        using var checkpoint = CreateCheckpoint(repositoryIdentity, branch, sha);
         var result = await AnalyzeAndReportAsync(
-            repositoryPath, repositoryIdentity, branch, sha, profile, false, cancellationToken);
+            repositoryPath, repositoryIdentity, branch, sha, profile, false, checkpoint, cancellationToken);
         if (advanceFrom is not null)
         {
             await _git.AdvanceBranchAsync(repositoryPath, branch, advanceFrom, sha, cancellationToken, updateSubmodulesAfterAdvance);
@@ -448,6 +451,7 @@ public sealed class ReviewRunner
         Emit(ReviewStage.SavingCursor, profile, sha);
         skips = result.BudgetSkipped ? skips + 1 : result.Failure is null && result.UnstructuredResponse is null ? 0 : skips;
         await _stateStore.SetCursorAsync(repositoryIdentity, branch, sha, cancellationToken, skips);
+        checkpoint.Complete();
         if (result.Failure is not null)
         {
             SetRemaining(Math.Max(0, _remaining - 1));
@@ -463,6 +467,12 @@ public sealed class ReviewRunner
             Short(sha), result.Findings.Count));
     }
 
+    private PacketCheckpoint CreateCheckpoint(string repository, string branch, string sha) =>
+        new(_diagnosticSettings?.ProjectId ?? "", repository, branch, sha)
+        {
+            Progress = message => Publish(Log, message)
+        };
+
     private async Task<ReviewResult> AnalyzeAndReportAsync(
         string repositoryPath,
         string repositoryIdentity,
@@ -470,6 +480,7 @@ public sealed class ReviewRunner
         string sha,
         ModelProfile profile,
         bool manualReview,
+        PacketCheckpoint checkpoint,
         CancellationToken cancellationToken)
     {
         _activeCommit = sha;
@@ -485,7 +496,7 @@ public sealed class ReviewRunner
         ReviewResult result;
         try
         {
-            result = await AnalyzeAsync(repositoryPath, branch, sha, profile, repositoryIdentity, cancellationToken);
+            result = await AnalyzeAsync(repositoryPath, branch, sha, profile, repositoryIdentity, checkpoint, cancellationToken);
         }
         catch (ModelSchedulePauseException) { throw; }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -516,7 +527,7 @@ public sealed class ReviewRunner
         catch (Exception exception)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (manualReview || exception is not ReviewApiException { IsTransient: true })
+            if (manualReview || checkpoint.HasProgress || exception is not ReviewApiException { IsTransient: true })
             {
                 var failed = new ReviewResult { Failure = GitService.SanitizeDiagnostic(exception.Message), AnalysisDuration = analysisClock.Elapsed };
                 try
@@ -564,7 +575,7 @@ public sealed class ReviewRunner
             result.ReportMarkdown, result.RepositoryIdentity, result.AuthorEmail, Failed: true, BudgetSkipped: result.BudgetSkipped));
 
     private async Task<ReviewResult> AnalyzeAsync(string repositoryPath, string branch, string sha,
-        ModelProfile profile, string repositoryIdentity, CancellationToken cancellationToken)
+        ModelProfile profile, string repositoryIdentity, PacketCheckpoint checkpoint, CancellationToken cancellationToken)
     {
         Emit(ReviewStage.PreparingDiff, profile, sha);
         using var tools = await GitToolSession.CreateAsync(repositoryPath, sha, cancellationToken, profile.Parameters.SnapshotMb);
@@ -576,7 +587,7 @@ public sealed class ReviewRunner
                     ? profile.Parameters.ReviewMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture) : ""), message =>
                     Publish(ModelLog, message), (stage, detail) => Emit(stage, profile, sha, detail),
                 usage => Publish(UsageReceived, (repositoryIdentity, sha, usage)),
-                beforeRequest: () => _schedule.Check(_localNow()));
+                beforeRequest: () => _schedule.Check(_localNow()), checkpoint: checkpoint);
             Emit(ReviewStage.Parsing, profile, sha);
             result = ReviewParser.Parse(response);
         }

@@ -28,6 +28,48 @@ public sealed partial class GitToolSession
     private static readonly Regex LiteralRow = new("""^[+-][ \t]*"([a-zA-Z0-9|=_ .:/-]{1,512})",[ \t]*$""");
     private static readonly Regex VariableField = new(@"[a-f0-9]{16,}|[0-9]+");
     private static readonly Regex HunkHeader = new(@"^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@");
+    internal async Task<Dictionary<int, string>> GetLineCandidatesAsync(string path, string side, string hint,
+        string description, CancellationToken token)
+    {
+        ValidateModulePath(path);
+        var names = DiffArguments(true).ToList();
+        names.Insert(names.IndexOf("--name-status"), "-z");
+        var listing = await GitService.ReadPageAsync(_repository, 0, 4096, token, [.. names, path]);
+        var fields = listing.Output.Split('\0');
+        if (listing.ExitCode != 0 || listing.HasMore || fields.Length != 3 || fields[1] != path) return [];
+        var patch = await GitService.ReadPageAsync(_repository, 0, 4_000_000, token, [.. DiffArguments(false), path]);
+        if (patch.ExitCode != 0) return [];
+        var hints = Regex.Matches(hint, @"\d+").Select(m => int.TryParse(m.Value, out var n) ? n : 0).Take(8).ToArray();
+        var words = Regex.Matches(description, @"[\p{L}_][\w]{2,}").Select(m => m.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(16).ToArray();
+        var candidates = new List<(int Line, int Score, string Text)>();
+        int old = 0, current = 0;
+        var inHunk = false;
+        var rows = patch.Output.Split('\n');
+        foreach (var row in rows.Take(rows.Length - (patch.HasMore ? 1 : 0)))
+        {
+            if (HunkHeader.Match(row) is { Success: true } header)
+            {
+                old = int.Parse(header.Groups[1].Value);
+                current = int.Parse(header.Groups[2].Value);
+                inHunk = true;
+                continue;
+            }
+            if (!inHunk || row.Length == 0 || row[0] is not ('+' or '-' or ' ')) continue;
+            var useOld = side == "OLD" || (side == "HUNK" && fields[0] == "D");
+            if (row[0] != (useOld ? '+' : '-'))
+            {
+                var number = useOld ? old : current;
+                var excerpt = row[..Math.Min(row.Length, 240)];
+                var score = words.Count(w => excerpt.Contains(w, StringComparison.OrdinalIgnoreCase)) +
+                    (hints.Any(n => Math.Abs((long)n - number) <= 2) ? 20 : 0);
+                candidates.Add((number, score, excerpt));
+            }
+            if (row[0] != '+') old++;
+            if (row[0] != '-') current++;
+        }
+        return candidates.OrderByDescending(c => c.Score).Take(60).OrderBy(c => c.Line).ToDictionary(c => c.Line, c => c.Text);
+    }
     private static readonly Regex Declaration = new(@"^[+-]\s*.*?\b(?:class|interface|struct|enum|record)\s+([A-Za-z_]\w*)\b", RegexOptions.Multiline);
     private static readonly Regex Method = new(@"^[+-]\s*(?:(?:public|private|protected|internal|static|async|override|virtual)\s+)+[\w<>?.\[\],]+\s+(\w+)\s*\(", RegexOptions.Multiline);
     private static readonly Regex ArrayPrefix = new(

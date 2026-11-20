@@ -1,6 +1,6 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:firewall="http://wixtoolset.org/schemas/v4/wxs/firewall">
-  <Package Name="KommitEye Service experimental" Manufacturer="KommitEye" Version="$(ServerVersion)"
+  <Package Name="KommitEye Service" Manufacturer="KommitEye" Version="$(ServerVersion)"
            UpgradeCode="E890EB6F-890F-48B4-A234-5F6278711F5A" Scope="perMachine" InstallerVersion="500" Language="1033">
     <MajorUpgrade DowngradeErrorMessage="A newer KommitEye Service is already installed." Schedule="afterInstallExecute" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />

@@ -296,7 +296,7 @@ public sealed partial class MailNotifications : IAsyncDisposable
             if (_jobs.Any(j => j.Key == key)) return;
             var job = new MailJob { Key = key, MessageId = MimeKit.Utils.MimeUtils.GenerateMessageId(),
                 Provider = _settings.Provider, AccountId = _settings.AccountId, AttachmentFormat = _settings.AttachmentFormat,
-                Subject = Clean($"[KommitEye experimental] Skipped — review incomplete: {Path.GetFileName(review.RepositoryPath)} / {review.BranchRef} / {review.Sha}"),
+                Subject = Clean($"[KommitEye] Skipped — review incomplete: {Path.GetFileName(review.RepositoryPath)} / {review.BranchRef} / {review.Sha}"),
                 Report = review.ReportMarkdown, From = _settings.From,
                 Recipients = string.Join(";", recipients.Select(r => r.ToString())), NextAttempt = _now() };
             _jobs.Add(job);

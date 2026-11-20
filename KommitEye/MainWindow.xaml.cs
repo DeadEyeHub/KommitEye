@@ -296,8 +296,8 @@ public partial class MainWindow : Window
             "Генерация и лимиты ревью (для каждого профиля). Нажмите «Применить изменения» или OK. Изменения применятся к следующей проверке, не к текущей. Дробные числа: точка или запятая. Диапазоны указаны в скобках.");
         ParametersGrid.Items.Refresh();
         Title = Localization.Format(
-            "KommitEye {0} experimental",
-            "Проверка Git {0} experimental",
+            "KommitEye {0}",
+            "Проверка Git {0}",
             AppVersion);
         ProjectTab.Header = Localization.Text("Project", "Проект");
         ModelsTab.Header = Localization.Text("Models", "Модели");

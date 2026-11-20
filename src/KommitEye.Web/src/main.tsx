@@ -131,7 +131,7 @@ function App() {
   if (signed === null || (!signed && setup === null))
     return (
       <main className="login">
-        <h1>KommitEye experimental</h1>
+        <h1>KommitEye</h1>
         {languageMenu}
         <p>{error || t("Подключение к серверу…", "Connecting to server…")}</p>
       </main>
@@ -140,7 +140,7 @@ function App() {
     return (
       <main className="login">
         <div className="brand">
-          KommitEye experimental<span> / web server</span>
+          KommitEye<span> / web server</span>
         </div>
         {languageMenu}
         <h1>
@@ -223,7 +223,7 @@ function App() {
     <div className="shell">
       <aside>
         <div className="brand">
-          KommitEye experimental<span> / web server</span>
+          KommitEye<span> / web server</span>
         </div>
         <nav>
           {[

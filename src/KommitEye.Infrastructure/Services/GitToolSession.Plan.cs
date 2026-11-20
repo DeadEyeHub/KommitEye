@@ -14,7 +14,7 @@ public sealed partial class GitToolSession
     {
         var symbol = Path.GetFileNameWithoutExtension(path);
         if (symbol.Length is 0 or > 128 || symbol.Any(char.IsControl)) return "No searchable filename symbol.";
-        var result = await GitService.ReadPageAsync(_repository, 0, 2000, token, "grep", "-n", "-I", "-w", "-F",
+        var result = await GitService.ReadPageAsync(_repository, 0, 2000, token, null, _parameters.GitSearchTimeoutSeconds, "grep", "-n", "-I", "-w", "-F",
             "-e", symbol, Sha, "--");
         if (result.ExitCode is not (0 or 1)) throw new GitException("Cannot verify packet references: " + result.Error);
         return JsonSerializer.Serialize(new { commit = Sha, query = symbol, matches = result.Output, truncated = result.HasMore });
@@ -37,7 +37,7 @@ public sealed partial class GitToolSession
     {
         ValidateModulePath(path);
         if (!_commits.Contains(commit)) throw new ArgumentException("Unexpected evidence revision.");
-        var result = await GitService.ReadBytesAsync(_repository, 0, 1_048_576, token, null, "cat-file", "blob", commit + ":" + path);
+        var result = await GitService.ReadBytesAsync(_repository, 0, 1_048_576, token, null, _parameters.GitFileTimeoutSeconds, "cat-file", "blob", commit + ":" + path);
         if (result.ExitCode != 0) return null;
         var bytes = Convert.FromHexString(result.Output);
         var bom = DetectBom(result.Output);
@@ -98,10 +98,10 @@ public sealed partial class GitToolSession
         ValidateModulePath(path);
         var names = DiffArguments(true).ToList();
         names.Insert(names.IndexOf("--name-status"), "-z");
-        var listing = await GitService.ReadPageAsync(_repository, 0, 4096, token, [.. names, path]);
+        var listing = await GitService.ReadPageAsync(_repository, 0, 4096, token, null, _parameters.GitChangedFilesTimeoutSeconds, [.. names, path]);
         var fields = listing.Output.Split('\0');
         if (listing.ExitCode != 0 || listing.HasMore || fields.Length != 3 || fields[1] != path) return [];
-        var patch = await GitService.ReadPageAsync(_repository, 0, 4_000_000, token, [.. DiffArguments(false), path]);
+        var patch = await GitService.ReadPageAsync(_repository, 0, 4_000_000, token, null, _parameters.GitDiffTimeoutSeconds, [.. DiffArguments(false), path]);
         if (patch.ExitCode != 0) return [];
         var hints = Regex.Matches(hint, @"\d+").Select(m => int.TryParse(m.Value, out var n) ? n : 0).Take(8).ToArray();
         var words = Regex.Matches(description, @"[\p{L}_][\w]{2,}").Select(m => m.Value)
@@ -142,7 +142,7 @@ public sealed partial class GitToolSession
 
     internal async Task<CommitReviewPlan?> CreateReviewPlanAsync(CancellationToken token)
     {
-        var probe = await GitService.ReadPageAsync(_repository, 0, PageSize, token, DiffArguments(false));
+        var probe = await GitService.ReadPageAsync(_repository, 0, PageSize, token, null, _parameters.GitDiffTimeoutSeconds, DiffArguments(false));
         if (probe.ExitCode != 0) throw new GitException("Cannot measure reviewed patch. " + probe.Error);
         if (!probe.HasMore) return null;
         await LoadSubmodulesAsync(token, null);
@@ -150,7 +150,7 @@ public sealed partial class GitToolSession
 
         var names = DiffArguments(true).ToList();
         names.Insert(names.IndexOf("--name-status"), "-z");
-        var listing = await GitService.ReadPageAsync(_repository, 0, 4000, token, names.ToArray());
+        var listing = await GitService.ReadPageAsync(_repository, 0, 4000, token, null, _parameters.GitChangedFilesTimeoutSeconds, names.ToArray());
         if (listing.ExitCode != 0) throw new GitException("Cannot enumerate review paths. " + listing.Error);
         if (listing.HasMore) return null;
         var fields = listing.Output.Split('\0');
@@ -161,7 +161,7 @@ public sealed partial class GitToolSession
         for (var i = 0; i < fields.Length - 1; i += 2)
         {
             var path = fields[i + 1];
-            var diff = await GitService.ReadPageAsync(_repository, 0, (int)Math.Min(remaining, 4_000_000), token,
+            var diff = await GitService.ReadPageAsync(_repository, 0, (int)Math.Min(remaining, 4_000_000), token, null, _parameters.GitDiffTimeoutSeconds,
                 [.. DiffArguments(false), path]);
             if (diff.ExitCode != 0) throw new GitException("Cannot read patch for " + path);
             if (diff.HasMore || diff.Output.Length == 0) return null;
@@ -174,7 +174,7 @@ public sealed partial class GitToolSession
             var references = "";
             if (symbols.Length > 0)
             {
-                var search = await GitService.ReadPageAsync(_repository, 0, 1500, token,
+                var search = await GitService.ReadPageAsync(_repository, 0, 1500, token, null, _parameters.GitSearchTimeoutSeconds,
                     ["grep", "-n", "-I", "-F", "-w", .. symbols.SelectMany(s => new[] { "-e", s }), Sha, "--"]);
                 if (search.ExitCode is not (0 or 1)) throw new GitException("Cannot search for consumers of " + path);
                 references = search.Output.Replace(Sha + ":", "", StringComparison.Ordinal);

@@ -1,3 +1,4 @@
+using KommitEye.Models;
 using System.Text.Json;
 
 namespace KommitEye.Services;
@@ -8,6 +9,7 @@ public sealed partial class GitToolSession : IDisposable
     public const int PageSize = 16_000;
     private const int RangeInputLimit = 512_000;
     private readonly string _repository;
+    private readonly ModelParameters _parameters;
     private readonly HashSet<string> _commits = new(StringComparer.Ordinal);
     private readonly HashSet<string> _verifiedFiles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _nextOffsets = new(StringComparer.Ordinal);
@@ -49,7 +51,7 @@ public sealed partial class GitToolSession : IDisposable
             var args = session.DiffArguments(false).Select(a => a == "--patch" ? "--numstat" : a).ToArray();
             // Use the same immutable comparison as the reviewed diff, with a bounded file/size listing.
             args = args.Where(a => a != "-p" && !a.StartsWith("--unified=", StringComparison.Ordinal)).ToArray();
-            var listing = await GitService.ReadPageAsync(session._repository, 0, Math.Min(8000, remaining), token,
+            var listing = await GitService.ReadPageAsync(session._repository, 0, Math.Min(8000, remaining), token, null, session._parameters.GitChangedFilesTimeoutSeconds,
                 args);
             if (listing.ExitCode != 0) throw new GitException("Cannot collect skip-decision evidence: " + listing.Error);
             remaining -= listing.Output.Length + 512;
@@ -67,37 +69,44 @@ public sealed partial class GitToolSession : IDisposable
     public bool ReadyForFinal => DiffComplete && _linksLoaded && _links.Keys.All(path =>
         _submodules.TryGetValue(path, out var child) && child.ReadyForFinal);
 
-    private GitToolSession(string repository, string sha, string? parent)
+    private GitToolSession(string repository, string sha, string? parent, ModelParameters parameters)
     {
         _repository = repository;
+        _parameters = parameters;
         Sha = sha;
         _parent = parent;
         _commits.Add(sha);
         if (parent is not null) _commits.Add(parent);
     }
 
-    public static async Task<GitToolSession> CreateAsync(string repository, string sha, CancellationToken token, int snapshotMb = 0)
+    public static Task<GitToolSession> CreateAsync(string repository, string sha, CancellationToken token, int snapshotMb = 0) =>
+        CreateAsync(repository, sha, token, new ModelParameters { SnapshotMb = snapshotMb });
+
+    public static async Task<GitToolSession> CreateAsync(string repository, string sha, CancellationToken token, ModelParameters parameters)
     {
+        var snapshotMb = parameters.SnapshotMb;
         if (snapshotMb is < 0 or > 1024) throw new ArgumentOutOfRangeException(nameof(snapshotMb));
+        parameters = parameters.Clone();
+        parameters.Validate();
         repository = Path.GetFullPath(repository);
-        var root = await GitService.ReadPageAsync(repository, 0, PageSize, token, "rev-parse", "--show-toplevel");
+        var root = await GitService.ReadPageAsync(repository, 0, PageSize, token, null, parameters.GitMetadataTimeoutSeconds, "rev-parse", "--show-toplevel");
         if (root.ExitCode != 0 || root.HasMore) throw new GitException("Select a valid Git working repository.");
         repository = root.Output.EndsWith('\n') ? root.Output[..^1] : root.Output;
         if (OperatingSystem.IsWindows()) repository = repository.TrimEnd('\r');
         if (repository.Length == 0 || repository.Any(char.IsControl))
             throw new GitException("Repository roots containing control characters are not supported.");
         if (sha.Length != 40 || !sha.All(Uri.IsHexDigit)) throw new GitException("A full immutable commit SHA is required.");
-        var type = await GitService.ReadPageAsync(repository, 0, 32, token, "cat-file", "-t", sha);
+        var type = await GitService.ReadPageAsync(repository, 0, 32, token, null, parameters.GitMetadataTimeoutSeconds, "cat-file", "-t", sha);
         if (type.ExitCode != 0 || type.HasMore || type.Output.Trim() != "commit")
             throw new GitException("Reviewed SHA must identify a locally available commit object.");
         // rev-list hides parents at shallow boundaries; raw headers preserve the actual comparison base.
-        var metadata = await GitService.ReadPageAsync(repository, 0, PageSize, token, "cat-file", "commit", sha);
+        var metadata = await GitService.ReadPageAsync(repository, 0, PageSize, token, null, parameters.GitMetadataTimeoutSeconds, "cat-file", "commit", sha);
         var headerEnd = metadata.Output.IndexOf("\n\n", StringComparison.Ordinal);
         if (metadata.ExitCode != 0 || headerEnd < 0) throw new GitException("Cannot read complete commit headers locally.");
         var parents = metadata.Output[..headerEnd].Split('\n').Where(line => line.StartsWith("parent ", StringComparison.Ordinal))
             .Select(line => line[7..]).ToArray();
         if (parents.Any(id => id.Length != 40 || !id.All(Uri.IsHexDigit))) throw new GitException("Invalid commit parent header.");
-        var session = new GitToolSession(repository, sha, parents.FirstOrDefault());
+        var session = new GitToolSession(repository, sha, parents.FirstOrDefault(), parameters);
         if (snapshotMb > 0) session._diskLimit = snapshotMb * 1024L * 1024;
         return session;
     }
@@ -113,7 +122,7 @@ public sealed partial class GitToolSession : IDisposable
 
     public async Task<bool> IsEmptyAsync(CancellationToken token)
     {
-        var result = await GitService.ReadPageAsync(_repository, 0, 1, token, DiffArguments(true));
+        var result = await GitService.ReadPageAsync(_repository, 0, 1, token, null, _parameters.GitChangedFilesTimeoutSeconds, DiffArguments(true));
         if (result.ExitCode != 0) throw new GitException("Cannot inspect changed files locally.");
         return result.Output.Length == 0 && !result.HasMore;
     }
@@ -247,7 +256,7 @@ public sealed partial class GitToolSession : IDisposable
         {
             // Inspect the committed tree, never stderr wording or working-copy existence.
             // A present tree entry with an unavailable blob must still fail when read.
-            var entry = await GitService.ReadPageAsync(_repository, 0, PageSize, token, trace,
+            var entry = await GitService.ReadPageAsync(_repository, 0, PageSize, token, trace, _parameters.GitFileTimeoutSeconds,
                 "ls-tree", "-z", "--full-tree", commit, "--", path!);
             if (entry.ExitCode != 0 || entry.HasMore)
                 throw new GitException("Cannot inspect the requested commit tree; review is incomplete. " + entry.Error);
@@ -278,6 +287,16 @@ public sealed partial class GitToolSession : IDisposable
                 .Concat(path is null ? Array.Empty<string>() : new[] { path }).ToArray(),
             _ => new[] { "cat-file", "blob", commit + ":" + path }
         };
+        var timeoutSeconds = name switch
+        {
+            "git_metadata" => _parameters.GitMetadataTimeoutSeconds,
+            "git_changed_files" => _parameters.GitChangedFilesTimeoutSeconds,
+            "git_diff" => _parameters.GitDiffTimeoutSeconds,
+            "git_file" => _parameters.GitFileTimeoutSeconds,
+            "git_tree" => _parameters.GitTreeTimeoutSeconds,
+            "git_search" => _parameters.GitSearchTimeoutSeconds,
+            _ => throw new ArgumentException("Unknown Git tool.")
+        };
         GitResult result;
         if (name is "git_diff" or "git_changed_files" or "git_tree" or "git_search" || startLine.HasValue)
         {
@@ -291,7 +310,7 @@ public sealed partial class GitToolSession : IDisposable
                     var budget = _budgetRoot ?? this;
                     var available = budget._diskLimit - budget.SnapshotBytes;
                     var captured = await GitService.CaptureSnapshotAsync(_repository, snapshot,
-                        (int)(available / 2), token, trace, command);
+                        (int)(available / 2), token, trace, timeoutSeconds, command);
                     if (captured.HasMore)
                     {
                         var reason = $"Snapshot disk budget exceeded ({_diskLimit} bytes per session; {available} bytes available). Narrow path/query or request a smaller directory. Configure KOMMITEYE_SNAPSHOT_MB (1–1024, default 64) before restarting the application if needed.";
@@ -328,7 +347,7 @@ public sealed partial class GitToolSession : IDisposable
             result = new GitResult(0, content, "", offset + content.Length < characters);
         }
         else
-            result = await GitService.ReadPageAsync(_repository, offset, PageSize, token, trace, command);
+            result = await GitService.ReadPageAsync(_repository, offset, PageSize, token, trace, timeoutSeconds, command);
         if (result.ExitCode != 0)
             throw new GitException($"{name} failed at {commit} (exit {result.ExitCode}): {GitService.SanitizeDiagnostic(result.Error.Trim())}");
         if (result.HasMore && name == "git_metadata")
@@ -371,7 +390,7 @@ public sealed partial class GitToolSession : IDisposable
         if (_linksLoaded) return;
         var before = _parent ?? EmptyTree;
         var after = _deleted ? EmptyTree : Sha;
-        var raw = await GitService.ReadPageAsync(_repository, 0, 2_000_000, token, trace,
+        var raw = await GitService.ReadPageAsync(_repository, 0, 2_000_000, token, trace, _parameters.GitChangedFilesTimeoutSeconds,
             "diff", "--raw", "-z", "--no-abbrev", "--no-renames", "--no-ext-diff", "--no-textconv", "--ignore-submodules=none", before, after, "--");
         if (raw.ExitCode != 0 || raw.HasMore) throw new GitException("Cannot enumerate complete submodule changes locally; review incomplete. " + raw.Error);
         var records = raw.Output.Split('\0');
@@ -404,18 +423,18 @@ public sealed partial class GitToolSession : IDisposable
                 if (!Directory.Exists(directory) || (File.GetAttributes(directory) & FileAttributes.ReparsePoint) != 0)
                     throw new GitException($"Submodule '{prefix}' is not initialized locally or uses a symlink/junction. Initialize it manually and fetch its pinned commits; review incomplete.");
             }
-            var root = await GitService.ReadPageAsync(directory, 0, PageSize, token, trace, "rev-parse", "--show-toplevel");
+            var root = await GitService.ReadPageAsync(directory, 0, PageSize, token, trace, _parameters.GitMetadataTimeoutSeconds, "rev-parse", "--show-toplevel");
             if (root.ExitCode != 0 || root.HasMore || !Path.GetFullPath(root.Output.TrimEnd('\r', '\n')).Equals(Path.GetFullPath(directory),
                 OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
                 throw new GitException($"Submodule '{prefix}' has no initialized Git repository; initialize it manually. No automatic clone is permitted.");
             var link = _links[prefix];
             foreach (var sha in new[] { link.Old, link.New }.Where(s => s is not null).Distinct())
             {
-                var type = await GitService.ReadPageAsync(directory, 0, 32, token, trace, "cat-file", "-t", sha!);
+                var type = await GitService.ReadPageAsync(directory, 0, 32, token, trace, _parameters.GitMetadataTimeoutSeconds, "cat-file", "-t", sha!);
                 if (type.ExitCode != 0 || type.Output.Trim() != "commit")
                     throw new GitException($"Submodule '{prefix}': pinned commit {sha} is unavailable locally. Fetch this submodule manually and retry; review incomplete.");
             }
-            child = new GitToolSession(directory, link.New ?? link.Old!, link.Old) {
+            child = new GitToolSession(directory, link.New ?? link.Old!, link.Old, _parameters) {
                 _rangeDiff = true, _deleted = link.New is null, _depth = _depth + 1, _budgetRoot = _budgetRoot ?? this,
                 _diskLimit = (_budgetRoot ?? this)._diskLimit,
                 _modulePath = _modulePath + prefix + "/"
@@ -428,13 +447,13 @@ public sealed partial class GitToolSession : IDisposable
     private async Task<string> ReadHexAsync(string commit, string path, int offset, int count, CancellationToken token, Action<GitCommandTrace>? trace)
     {
         var objectName = commit + ":" + path;
-        var sizeResult = await GitService.ReadPageAsync(_repository, 0, 64, token, trace, "cat-file", "-s", objectName);
+        var sizeResult = await GitService.ReadPageAsync(_repository, 0, 64, token, trace, _parameters.GitFileTimeoutSeconds, "cat-file", "-s", objectName);
         if (sizeResult.ExitCode != 0 || sizeResult.HasMore || !long.TryParse(sizeResult.Output.Trim(), out var size) || size < 0)
             throw new GitException("Cannot determine Git blob size; review incomplete.");
         if (offset > size) throw new ArgumentException("byte_offset exceeds blob size.");
-        var header = await GitService.ReadBytesAsync(_repository, 0, 4, token, trace, "cat-file", "blob", objectName);
+        var header = await GitService.ReadBytesAsync(_repository, 0, 4, token, trace, _parameters.GitFileTimeoutSeconds, "cat-file", "blob", objectName);
         if (header.ExitCode != 0) throw new GitException("Cannot read Git blob bytes. " + header.Error);
-        var data = await GitService.ReadBytesAsync(_repository, offset, count, token, trace, "cat-file", "blob", objectName);
+        var data = await GitService.ReadBytesAsync(_repository, offset, count, token, trace, _parameters.GitFileTimeoutSeconds, "cat-file", "blob", objectName);
         if (data.ExitCode != 0) throw new GitException("Cannot read Git blob bytes. " + data.Error);
         var expected = (int)Math.Min(count, size - offset);
         if (data.Output.Length != expected * 2) throw new GitException("Git blob byte range is incomplete.");

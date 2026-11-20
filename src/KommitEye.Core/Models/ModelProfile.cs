@@ -56,6 +56,18 @@ public sealed class ModelParameters
     public int TransportLimit { get; set; } = 128000000;
     [Range(0, 1024), Display(Name = "Git snapshots (MiB; 0 = environment/default)", Description = "Git-снимки (МиБ; 0 = окружение/стандарт)")]
     public int SnapshotMb { get; set; }
+    [Range(1, 3600), Display(Name = "git_metadata timeout (seconds)", Description = "Таймаут git_metadata (секунды)")]
+    public int GitMetadataTimeoutSeconds { get; set; } = 30;
+    [Range(1, 3600), Display(Name = "git_changed_files timeout (seconds)", Description = "Таймаут git_changed_files (секунды)")]
+    public int GitChangedFilesTimeoutSeconds { get; set; } = 30;
+    [Range(1, 3600), Display(Name = "git_diff timeout (seconds)", Description = "Таймаут git_diff (секунды)")]
+    public int GitDiffTimeoutSeconds { get; set; } = 30;
+    [Range(1, 3600), Display(Name = "git_file timeout (seconds)", Description = "Таймаут git_file (секунды)")]
+    public int GitFileTimeoutSeconds { get; set; } = 30;
+    [Range(1, 3600), Display(Name = "git_tree timeout (seconds)", Description = "Таймаут git_tree (секунды)")]
+    public int GitTreeTimeoutSeconds { get; set; } = 30;
+    [Range(1, 3600), Display(Name = "git_search timeout (seconds)", Description = "Таймаут git_search (секунды)")]
+    public int GitSearchTimeoutSeconds { get; set; } = 120;
     public ModelParameters Clone() => (ModelParameters)MemberwiseClone();
     public void Validate()
     {

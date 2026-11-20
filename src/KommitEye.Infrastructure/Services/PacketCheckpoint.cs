@@ -31,8 +31,12 @@ public sealed class PacketCheckpoint(string project, string repository, string b
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         _lease ??= new FileStream(_path + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite,
             FileShare.None, 1, FileOptions.DeleteOnClose);
+        // Process deadlines do not change the evidence in an already validated packet.
+        var parameters = JsonSerializer.SerializeToNode(profile.Parameters)!.AsObject();
+        foreach (var key in parameters.Select(p => p.Key).Where(k => k.StartsWith("Git") && k.EndsWith("TimeoutSeconds")).ToArray())
+            parameters.Remove(key);
         var fingerprint = Hash(new { protocol = 1, plan, profile.Name, profile.Model, profile.Endpoint,
-            profile.Parameters, prompt, Localization.Language });
+            Parameters = parameters, prompt, Localization.Language });
         if (File.Exists(_path))
         {
             using var file = File.OpenRead(_path);

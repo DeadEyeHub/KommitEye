@@ -66,14 +66,17 @@ using (var http = new HttpClient(new FixtureAuditHandler(new PacketHandler())))
 
 foreach (var (packetLimit, reserve, finalLimit) in new[] { (8, 2, 2), (8, new ModelParameters().CrossFileMaxRounds, 6), (9, 2, 3), (107, 6, 105) })
 {
-    using var session = await GitToolSession.CreateAsync(args[0], args[3], default);
     var handler = new FinalSearchHandler(finalLimit);
     using var http = new HttpClient(new FixtureAuditHandler(handler));
     var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
-        Parameters = new ModelParameters { MaxRounds = packetLimit, CrossFileMaxRounds = reserve, ReminderRequests = 120 } };
+        Parameters = new ModelParameters { MaxRounds = packetLimit, CrossFileMaxRounds = reserve, ReminderRequests = 120, GitSearchTimeoutSeconds = 137 } };
+    using var session = await GitToolSession.CreateAsync(args[0], args[3], default, profile.Parameters);
+    var sawSearchTimeout = false;
     try
     {
-        var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
+        var report = await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default,
+            log: message => sawSearchTimeout |= message.Contains("Git command for tool") && message.Contains("\"grep\"") && message.Contains("timeout=137s"));
+        if (!sawSearchTimeout) throw new Exception("Search command did not use the configured timeout.");
         if (finalLimit < 3 || handler.Requests != 3 || !session.ReadyForFinal || report != PacketHandler.Finding)
             throw new Exception("Final review lost packet findings or its independent budget.");
     }
@@ -141,7 +144,8 @@ foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (
     }
     using var resumed = new PacketCheckpoint(project, args[0], "test", args[3]);
     using var freshHttp = new HttpClient(new FixtureAuditHandler(new PacketHandler()));
-    using var freshSession = await GitToolSession.CreateAsync(args[0], args[3], default);
+    profile.Parameters.GitSearchTimeoutSeconds = 180;
+    using var freshSession = await GitToolSession.CreateAsync(args[0], args[3], default, profile.Parameters);
     var report = await new ModelClient(changePrompt ? freshHttp : http).ReviewAsync(profile, freshSession, "test",
         changePrompt ? "Changed instructions" : "Review", default, checkpoint: resumed);
     if (!freshSession.ReadyForFinal || report != PacketHandler.Finding)

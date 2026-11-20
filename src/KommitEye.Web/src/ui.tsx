@@ -77,6 +77,12 @@ const labels: Record<string, [string, string]> = {
     "Лимит HTTP-ответа, символов",
     "HTTP response limit, characters",
   ],
+  gitMetadataTimeoutSeconds: ["Таймаут git_metadata (секунды)", "git_metadata timeout (seconds)"],
+  gitChangedFilesTimeoutSeconds: ["Таймаут git_changed_files (секунды)", "git_changed_files timeout (seconds)"],
+  gitDiffTimeoutSeconds: ["Таймаут git_diff (секунды)", "git_diff timeout (seconds)"],
+  gitFileTimeoutSeconds: ["Таймаут git_file (секунды)", "git_file timeout (seconds)"],
+  gitTreeTimeoutSeconds: ["Таймаут git_tree (секунды)", "git_tree timeout (seconds)"],
+  gitSearchTimeoutSeconds: ["Таймаут git_search (секунды)", "git_search timeout (seconds)"],
   snapshotMb: ["Размер Git-снимков, MiB", "Git snapshot size, MiB"],
   displayName: ["Название", "Name"],
   repositoryPath: [

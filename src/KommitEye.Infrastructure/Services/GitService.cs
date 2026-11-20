@@ -389,20 +389,20 @@ public sealed class GitService
         RunCoreAsync(repositoryPath, null, token, (offset, limit), null, arguments);
 
     internal static Task<GitResult> ReadPageAsync(string repositoryPath, int offset, int limit,
-        CancellationToken token, Action<GitCommandTrace>? trace, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, arguments);
+        CancellationToken token, Action<GitCommandTrace>? trace, int timeoutSeconds, params string[] arguments) =>
+        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, null, false, timeoutSeconds, arguments);
 
     internal static Task<GitResult> CaptureSnapshotAsync(string repositoryPath, Stream destination, int characterLimit,
-        CancellationToken token, Action<GitCommandTrace>? trace, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, null, token, (0, characterLimit), trace, destination, false, arguments);
+        CancellationToken token, Action<GitCommandTrace>? trace, int timeoutSeconds, params string[] arguments) =>
+        RunCoreAsync(repositoryPath, null, token, (0, characterLimit), trace, destination, false, timeoutSeconds, arguments);
 
     internal static Task<GitResult> ReadBytesAsync(string repositoryPath, int offset, int limit,
-        CancellationToken token, Action<GitCommandTrace>? trace, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, null, true, arguments);
+        CancellationToken token, Action<GitCommandTrace>? trace, int timeoutSeconds, params string[] arguments) =>
+        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, null, true, timeoutSeconds, arguments);
 
     private static Task<GitResult> RunCoreAsync(string repositoryPath, AppSettings? settings,
         CancellationToken token, (int Offset, int Limit)? page, Action<GitCommandTrace>? trace, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, settings, token, page, trace, null, false, arguments);
+        RunCoreAsync(repositoryPath, settings, token, page, trace, null, false, null, arguments);
 
     private static async Task<GitResult> RunCoreAsync(
         string repositoryPath,
@@ -412,11 +412,12 @@ public sealed class GitService
         Action<GitCommandTrace>? trace,
         Stream? snapshotDestination,
         bool rawBytes,
+        int? toolTimeoutSeconds,
         params string[] arguments)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var isFetch = page is null && arguments.FirstOrDefault() == "fetch";
-        var timeoutSeconds = isFetch ? 3600 : page is null ? 120 : 30;
+        var timeoutSeconds = toolTimeoutSeconds ?? (isFetch ? 3600 : page is null ? 120 : 30);
         timeout.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
         var elapsed = Stopwatch.StartNew();
         var partialError = new System.Text.StringBuilder();

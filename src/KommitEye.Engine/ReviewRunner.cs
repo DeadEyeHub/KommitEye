@@ -597,7 +597,7 @@ public sealed class ReviewRunner
         ModelProfile profile, string repositoryIdentity, PacketCheckpoint checkpoint, CancellationToken cancellationToken)
     {
         Emit(ReviewStage.PreparingDiff, profile, sha);
-        using var tools = await GitToolSession.CreateAsync(repositoryPath, sha, cancellationToken, profile.Parameters.SnapshotMb);
+        using var tools = await GitToolSession.CreateAsync(repositoryPath, sha, cancellationToken, profile.Parameters);
         var result = new ReviewResult { EmptyDiff = await tools.IsEmptyAsync(cancellationToken) };
         if (!result.EmptyDiff)
         {

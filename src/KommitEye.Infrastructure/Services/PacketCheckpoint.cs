@@ -16,8 +16,9 @@ public sealed class PacketCheckpoint(string project, string repository, string b
     private Snapshot? _state;
     internal IReadOnlyList<PacketResult> Packets => _state!.Packets;
     internal int FinalBudget => _state!.FinalBudget;
-    // Retain validated 3.8.12 packets, but re-run its older final aggregation.
-    internal string? FinalReport => _state!.FinalVersion == 2 ? _state.FinalReport : null;
+    // Reuse validated packets when the final audit rules change.
+    private const int CurrentFinalVersion = 3;
+    internal string? FinalReport => _state!.FinalVersion == CurrentFinalVersion ? _state.FinalReport : null;
     public bool HasProgress => _state?.Packets.Count > 0;
     public int CompletedPackets => _state?.Packets.Count ?? 0;
     public Action<string>? Progress { get; init; }
@@ -59,7 +60,7 @@ public sealed class PacketCheckpoint(string project, string repository, string b
 
     internal void SetFinal(string report)
     {
-        _state = _state! with { FinalReport = report, FinalVersion = 2 };
+        _state = _state! with { FinalReport = report, FinalVersion = CurrentFinalVersion };
         Save();
     }
 

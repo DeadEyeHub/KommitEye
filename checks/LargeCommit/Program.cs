@@ -152,6 +152,7 @@ foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (
 
 var restored = await NovemberReplay.Run(args[0], args[3]);
 await FinalReportReplay.Run(args[0], args[1], args[2], restored, args[3]);
+await RecordedAuditReplay.Run(args[0], args[3]);
 
 sealed class FinalSearchHandler(int limit) : DelegatingHandler(new PacketHandler())
 {

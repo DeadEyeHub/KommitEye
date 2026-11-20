@@ -1,0 +1,3 @@
+I'll verify each finding by inspecting the actual code in both commits.
+
+

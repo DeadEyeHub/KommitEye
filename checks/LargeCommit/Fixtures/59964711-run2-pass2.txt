@@ -1,0 +1,28 @@
+[
+  {
+    "id": 1,
+    "action": "keep",
+    "file": "Program.cs",
+    "side": "NEW",
+    "line": 4,
+    "quote": "Console.WriteLine($\"Dataset rows: {LargeCommitFixture.Fixtures.Dataset03.Rows.Length}\");",
+    "condition": "Fixtures/Dataset03.cs is deleted in the reviewed commit while Program.cs remains unchanged",
+    "consequence": "The project fails to compile because the referenced type LargeCommitFixture.Fixtures.Dataset03 no longer exists",
+    "contradicted": false
+  },
+  {
+    "id": 2,
+    "action": "duplicate",
+    "duplicateOf": 1
+  },
+  {
+    "id": 3,
+    "action": "duplicate",
+    "duplicateOf": 1
+  },
+  {
+    "id": 4,
+    "action": "duplicate",
+    "duplicateOf": 1
+  }
+]

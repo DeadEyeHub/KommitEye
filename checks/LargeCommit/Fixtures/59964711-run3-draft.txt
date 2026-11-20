@@ -1,0 +1,34 @@
+BUG
+FILE: Fixtures/Dataset03.cs
+LINE: 1
+SIDE: NEW
+DESCRIPTION: This commit deletes all eight fixture dataset files, including Dataset03.cs, but Program.cs (line 4, unchanged) still references LargeCommitFixture.Fixtures.Dataset03.Rows. No other definition of Dataset03 exists in the repository, so the project will no longer compile after this deletion (CS0246: type or namespace not found).
+END
+
+BUG
+FILE: Program.cs
+LINE: 4
+SIDE: HUNK
+DESCRIPTION: Line 4 references LargeCommitFixture.Fixtures.Dataset03.Rows.Length, but the defining file Fixtures/Dataset03.cs is removed by this commit. The reference is left dangling, causing a compilation failure. This line should have been removed or updated alongside the dataset deletion.
+END
+
+BUG
+FILE: Fixtures/Dataset03.cs
+LINE: 1
+SIDE: OLD
+DESCRIPTION: The commit deletes the file defining the `Dataset03` class (namespace `LargeCommitFixture.Fixtures`), but `Program.cs` — which is NOT modified in this commit — still references `LargeCommitFixture.Fixtures.Dataset03.Rows.Length`. Since no other source file provides a `Dataset03` type, the project fails to compile with CS0103 ("The name 'Dataset03' does not exist in the current context"). The deletion of the fixture must be accompanied by updating/removing the reference in `Program.cs`.
+END
+
+BUG
+FILE: Program.cs
+LINE: 4
+SIDE: OLD
+DESCRIPTION: The commit deletes all eight dataset fixture files (including Fixtures/Dataset03.cs) without updating Program.cs, which still references LargeCommitFixture.Fixtures.Dataset03.Rows.Length. After the deletion, the type no longer exists, so the project fails to compile (CS0234/CS0103). The deletion introduces a build-breaking dangling reference.
+END
+
+BUG
+FILE: Program.cs
+LINE: 4
+SIDE: HUNK
+DESCRIPTION: This commit deletes Fixtures/Dataset01.cs through Dataset08.cs, including Fixtures/Dataset03.cs which defined the internal static class LargeCommitFixture.Fixtures.Dataset03. Program.cs was not modified and still references LargeCommitFixture.Fixtures.Dataset03.Rows on line 4 (shown in the reviewed tree). The final checkout therefore no longer compiles, which also contradicts the README claim that the final checkout contains the small application again and is intended to compile.
+END

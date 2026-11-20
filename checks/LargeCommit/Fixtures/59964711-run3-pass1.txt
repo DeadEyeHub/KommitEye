@@ -1,0 +1,37 @@
+[
+  {
+    "id": 1,
+    "action": "keep",
+    "file": "Fixtures/Dataset03.cs",
+    "side": "OLD",
+    "line": 4,
+    "quote": "internal static class Dataset03",
+    "condition": "The file defining the `Dataset03` class is deleted in the NEW commit, while `Program.cs` (unchanged) still references `LargeCommitFixture.Fixtures.Dataset03.Rows`.",
+    "consequence": "The project fails to compile because the type `Dataset03` is no longer defined (CS0246/CS0103).",
+    "contradicted": false
+  },
+  {
+    "id": 2,
+    "action": "duplicate",
+    "duplicateOf": 1,
+    "reason": "Identical cause (deletion of Dataset03.cs) and consequence (compilation failure due to dangling reference in Program.cs line 4) as finding 1."
+  },
+  {
+    "id": 3,
+    "action": "duplicate",
+    "duplicateOf": 1,
+    "reason": "Identical cause (deletion of Dataset03.cs) and consequence (compilation failure due to dangling reference in Program.cs line 4) as finding 1."
+  },
+  {
+    "id": 4,
+    "action": "duplicate",
+    "duplicateOf": 1,
+    "reason": "Identical cause (deletion of Dataset03.cs) and consequence (compilation failure due to dangling reference in Program.cs line 4) as finding 1."
+  },
+  {
+    "id": 5,
+    "action": "duplicate",
+    "duplicateOf": 1,
+    "reason": "Identical cause (deletion of Dataset03.cs) and consequence (compilation failure due to dangling reference in Program.cs line 4) as finding 1."
+  }
+]

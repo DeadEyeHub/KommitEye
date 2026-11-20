@@ -17,7 +17,7 @@ public sealed class PacketCheckpoint(string project, string repository, string b
     internal IReadOnlyList<PacketResult> Packets => _state!.Packets;
     internal int FinalBudget => _state!.FinalBudget;
     // Reuse validated packets when the final audit rules change.
-    private const int CurrentFinalVersion = 3;
+    private const int CurrentFinalVersion = 4;
     internal string? FinalReport => _state!.FinalVersion == CurrentFinalVersion ? _state.FinalReport : null;
     public bool HasProgress => _state?.Packets.Count > 0;
     public int CompletedPackets => _state?.Packets.Count ?? 0;

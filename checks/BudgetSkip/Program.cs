@@ -79,16 +79,29 @@ await Git("update-ref", "refs/remotes/origin/last-skip", shas[3]);
     } finally { await runner.StopAsync(); }
 }
 Console.WriteLine("PASS final remote-tracking commit skip continues polling");
-// Output budget uses the same typed failure; tool-call limits remain ineligible.
+// The full diff exceeds 16,000 characters, but the host supplies it in smaller packets.
 Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", Path.Combine(root, "limits"));
 await File.WriteAllTextAsync(Path.Combine(repo, "file.txt"), new string('x', 30000));
 await Git("add", "."); await Git("commit", "-m", "Large fixture");
-using (var http = new HttpClient(new FixtureHandler("skip")))
-using (var tools = await GitToolSession.CreateAsync(repo, await Git("rev-parse", "HEAD"), default)) {
+var largeSha = await Git("rev-parse", "HEAD");
+var limitedProfile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
+    Parameters = new ModelParameters { ToolOutputLimit = 16000 } };
+var packetHandler = new FixtureHandler("clean");
+using (var http = new HttpClient(packetHandler))
+using (var tools = await GitToolSession.CreateAsync(repo, largeSha, default)) {
+    var report = await new ModelClient(http).ReviewAsync(limitedProfile, tools, "main", "Review", default);
+    Check(report == "NO_BUGS" && tools.ReadyForFinal && packetHandler.Reviews > 2, "output allowance renews between packets");
+}
+// A full git_file page plus the supplied patch exceeds the first packet's own allowance.
+var oversizedRead = new FixtureHandler("oversized-read");
+using (var http = new HttpClient(oversizedRead))
+using (var tools = await GitToolSession.CreateAsync(repo, largeSha, default)) {
     try {
-        await new ModelClient(http).ReviewAsync(new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1", Parameters = new ModelParameters { ToolOutputLimit = 16000 } }, tools, "main", "Review", default);
-        throw new Exception("expected budget exception");
-    } catch (ReviewBudgetException e) { Check(e.Message.Contains("output budget"), "typed output budget"); }
+        await new ModelClient(http).ReviewAsync(limitedProfile, tools, "main", "Review", default);
+        throw new Exception("Expected the first packet's oversized read to exhaust its output allowance.");
+    } catch (ReviewBudgetException e) {
+        Check(e.Message.Contains("output budget") && oversizedRead.Reviews == 1 && !tools.ReadyForFinal, "typed per-packet output budget failure");
+    }
 }
 Console.WriteLine("PASS output budget");
 // Fresh databases remain v2; repair the previous experimental schema without losing records.
@@ -178,10 +191,13 @@ sealed class FixtureHandler(string mode) : HttpMessageHandler {
             finish = "stop";
         } else {
             Reviews++;
-            if ((mode == "clean" && Reviews == 2) || body.Contains("Mandatory partitioned review protocol"))
+            if ((mode == "clean" && Reviews == 2) || (mode != "oversized-read" && body.Contains("Mandatory partitioned review protocol")))
                 return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new { choices = new[] { new { message = new { role = "assistant", content = "NO_BUGS" }, finish_reason = "stop" } } }), System.Text.Encoding.UTF8, "application/json") };
             if (mode == "api-failure") return new(HttpStatusCode.Unauthorized) { Content = new StringContent("bad key") };
-            message = new { role = "assistant", content = "", tool_calls = new[] { new { id = "call-1", type = "function", function = new { name = "git_diff", arguments = "{\"offset\":0}" } } } };
+            var function = mode == "oversized-read"
+                ? new { name = "git_file", arguments = """{"path":"file.txt"}""" }
+                : new { name = "git_diff", arguments = """{"offset":0}""" };
+            message = new { role = "assistant", content = "", tool_calls = new[] { new { id = "call-1", type = "function", function } } };
             finish = "tool_calls";
         }
         return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new { choices = new[] { new { message, finish_reason = finish } } }), System.Text.Encoding.UTF8, "application/json") };

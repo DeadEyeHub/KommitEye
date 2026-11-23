@@ -61,8 +61,8 @@ const labels: Record<string, [string, string]> = {
   ],
   maxToolCalls: ["Вызовов Git на коммит или этап проверки", "Git calls per commit or review phase"],
   toolOutputLimit: [
-    "Лимит результатов инструментов, символов",
-    "Tool output limit, characters",
+    "Результаты инструментов на этап, символов",
+    "Tool output per review phase, characters",
   ],
   reasoningLimit: [
     "Лимит рассуждений, символов",
@@ -116,7 +116,7 @@ const labels: Record<string, [string, string]> = {
     "Переменная окружения с ключом",
     "API key environment variable",
   ],
-  reviewMinutes: ["Лимит проверки, минут", "Review timeout, minutes"],
+  reviewMinutes: ["Время на этап проверки, минут", "Time per review phase, minutes"],
   responseInactivityMinutes: [
     "Ожидание ответа, минут",
     "Response inactivity, minutes",

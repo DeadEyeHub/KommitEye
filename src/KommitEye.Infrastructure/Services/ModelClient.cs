@@ -103,7 +103,8 @@ public sealed partial class ModelClient
         var callerToken = cancellationToken;
         var parameters = profile.Parameters.Clone();
         parameters.Validate();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromMinutes(parameters.ReviewMinutes), _timeProvider);
+        var timeLimit = TimeSpan.FromMinutes(parameters.ReviewMinutes);
+        using var deadline = new CancellationTokenSource(timeLimit, _timeProvider);
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(callerToken, deadline.Token);
         cancellationToken = linkedCancellation.Token;
         progress?.Invoke(ReviewStage.AgentStarted);
@@ -207,6 +208,13 @@ public sealed partial class ModelClient
                 if (beginPacket && plan != null)
                 {
                     var packet = packetIndex < plan.Packets.Count ? plan.Packets[packetIndex] : null;
+                    if (!repeatingPacket)
+                    {
+                        output = 0;
+                        tools.ClearToolCache();
+                        deadline.CancelAfter(timeLimit);
+                        progress?.Invoke(ReviewStage.AgentStarted);
+                    }
                     var task = packet != null
                         ? "Review this assigned change. Inspect relevant callers, including unchanged files. " +
                           "If a cross-file question needs a later pass, prepend a single FOLLOW_UP: question line to your report."

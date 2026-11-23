@@ -75,8 +75,8 @@ public partial class MainWindow : Window
                 "Retries per failed commit, separated by the polling interval. 3 means 4 attempts. Once exhausted, the failure is saved in the report and review continues with the next commit. Repository/fetch, report saving, cursor and branch safety failures still stop monitoring after retries. Manual reviews are not retried.",
                 "Повторы для каждого ошибочного коммита через интервал автопроверки. 3 означает 4 попытки. После исчерпания причина записывается в отчёт и проверяется следующий коммит. Ошибки репозитория/fetch, сохранения отчёта, позиции и безопасного продвижения ветки по-прежнему останавливают мониторинг после повторов. Ручная проверка не повторяется."),
             nameof(ModelParameters.ReviewMinutes) => Localization.Text(
-                "Time allowed for each model analysis attempt, including requests and tools. After exhausted retries, the commit is recorded as failed and skipped, not as bug-free.",
-                "Время каждой попытки анализа, включая запросы и инструменты. После исчерпания повторов коммит записывается как не проверенный и пропускается, а не считается проверенным без ошибок."),
+                "Time for a single-piece review. Partitioned reviews get this time for preparation, each packet and the final cross-file review. Requests, tools and corrections share the current phase timer.",
+                "Время на проверку коммита без разбиения. При разбиении подготовка, каждый пакет и финальная проверка связей получают по этому интервалу. Запросы, вызовы Git и исправления расходуют время текущего этапа."),
             nameof(ModelParameters.Temperature) => Localization.Text(
                 "Controls randomness of generated responses. Lower values produce more predictable responses; higher values increase variation. Zero is the default for code review.",
                 "Управляет случайностью ответов. Низкие значения делают ответы более предсказуемыми, высокие увеличивают разнообразие. Для ревью по умолчанию используется 0."),
@@ -96,8 +96,8 @@ public partial class MainWindow : Window
                 "Git tool calls per packet and for the final cross-file review, or per commit for a single-piece review. Rejected calls count toward the limit.",
                 "Лимит вызовов Git на каждый пакет и отдельно на финальную проверку связей. При проверке без разбиения действует на коммит. Отклонённые вызовы тоже учитываются."),
             nameof(ModelParameters.ToolOutputLimit) => Localization.Text(
-                "Total serialized tool-result characters sent to the model for one commit. This is a character limit, not a token count or the size of the repository. Larger values can exceed the model context window.",
-                "Суммарный объём сериализованных результатов инструментов, передаваемых модели на один коммит. Измеряется в символах, не в токенах и не в размере репозитория. Большой объём может превысить контекст модели."),
+                "Characters of evidence and tool results allowed for each packet and for the final cross-file review, or for the whole commit in a single-piece review. Corrections share the current allowance.",
+                "Объём данных пакета и результатов инструментов в символах. Лимит действует отдельно на каждый пакет и финальную проверку связей, а при проверке без разбиения — на весь коммит. Исправления расходуют лимит текущего этапа."),
             nameof(ModelParameters.ReasoningLimit) => Localization.Text(
                 "Maximum combined reasoning and reasoning_content characters in one model response. Resets for each request; exceeding it interrupts the review. It does not set the server token limit.",
                 "Максимальный суммарный объём reasoning и reasoning_content в одном ответе модели. Счётчик сбрасывается для каждого запроса; превышение прерывает ревью. Это не серверный лимит токенов."),

@@ -22,7 +22,7 @@ public sealed class ModelProfile
 public sealed class ModelParameters
 {
     public bool DisableThinking { get; set; }
-    [Range(1, 240), Display(Name = "Review timeout (minutes)", Description = "Время проверки коммита (минуты)")]
+    [Range(1, 240), Display(Name = "Time per review phase (minutes)", Description = "Время на этап проверки (минуты)")]
     public int ReviewMinutes { get; set; } = 15;
     [Range(1, 1440), Display(Name = "Response inactivity threshold (minutes)", Description = "Порог отсутствия ответов (минуты)")]
     public int ResponseInactivityMinutes { get; set; } = 5;
@@ -44,7 +44,7 @@ public sealed class ModelParameters
     public int ReminderRequests { get; set; } = 20;
     [Range(1, 1024), Display(Name = "Git calls per commit or review phase", Description = "Вызовов Git на коммит или этап проверки")]
     public int MaxToolCalls { get; set; } = 64;
-    [Range(16000, 32000000), Display(Name = "Tool results (characters per review)", Description = "Результаты инструментов (символов на коммит)")]
+    [Range(16000, 32000000), Display(Name = "Tool output per review phase (characters)", Description = "Результаты инструментов (символов на этап проверки)")]
     public int ToolOutputLimit { get; set; } = 512000;
     [Range(1000, 32000000), Display(Name = "Reasoning (characters per response)", Description = "Рассуждения (символов на ответ)")]
     public int ReasoningLimit { get; set; } = 2000000;

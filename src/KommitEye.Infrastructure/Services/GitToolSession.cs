@@ -34,9 +34,17 @@ public sealed partial class GitToolSession : IDisposable
     {
         foreach (var module in _submodules.Values) module.Dispose();
         _submodules.Clear();
+        ClearToolCache();
+        _disposed = true;
+    }
+
+    internal void ClearToolCache()
+    {
         foreach (var snapshot in _snapshots.Values) snapshot.Dispose();
         _snapshots.Clear();
-        _disposed = true;
+        _nextOffsets.Clear();
+        _readOffsets.Clear();
+        _verifiedFiles.Clear();
     }
     private readonly string? _parent;
     public string Sha { get; }

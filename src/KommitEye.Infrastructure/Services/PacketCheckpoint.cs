@@ -35,19 +35,21 @@ public sealed class PacketCheckpoint(string project, string repository, string b
         var parameters = JsonSerializer.SerializeToNode(profile.Parameters)!.AsObject();
         foreach (var key in parameters.Select(p => p.Key).Where(k => k.StartsWith("Git") && k.EndsWith("TimeoutSeconds")).ToArray())
             parameters.Remove(key);
-        var fingerprint = Hash(new { protocol = 1, plan, profile.Name, profile.Model, profile.Endpoint,
+        string Fingerprint(int protocol, object plan) => Hash(new { protocol, plan, profile.Name, profile.Model, profile.Endpoint,
             Parameters = parameters, prompt, Localization.Language });
+        // Optional reference lookups can time out independently on each run at the same SHA.
+        var fingerprint = Fingerprint(2, new { plan.Parent, plan.Map, Packets = plan.Packets.Select(p => new { p.Path, p.Patch }) });
         if (File.Exists(_path))
         {
             using var file = File.OpenRead(_path);
             var saved = JsonSerializer.Deserialize<Snapshot>(file) ?? throw new InvalidDataException("Empty packet checkpoint.");
-            if (saved.Fingerprint == fingerprint)
+            if (saved.Fingerprint == fingerprint || saved.Fingerprint == Fingerprint(1, plan))
             {
                 if (saved.Packets.Count > plan.Packets.Count ||
                     (saved.Packets.Count == plan.Packets.Count && saved.FinalBudget <= 0) ||
                     (saved.Packets.Count != plan.Packets.Count && saved.FinalReport != null))
                     throw new InvalidDataException("Invalid packet checkpoint coverage.");
-                _state = saved;
+                _state = saved with { Fingerprint = fingerprint };
                 return;
             }
         }

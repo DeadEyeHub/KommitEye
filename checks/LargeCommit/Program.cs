@@ -48,21 +48,7 @@ using (var session = await GitToolSession.CreateAsync(args[0], args[1], default)
     }
 }
 
-using (var session = await GitToolSession.CreateAsync(args[0], args[1], default))
-using (var http = new HttpClient(new FixtureAuditHandler(new PacketHandler())))
-{
-    var profile = new ModelProfile { Model = "fixture", Endpoint = "https://fixture.invalid/v1",
-        Parameters = new ModelParameters { MaxRounds = 7, ReminderRequests = 1 } };
-    try
-    {
-        await new ModelClient(http).ReviewAsync(profile, session, "test", "Review", default);
-        throw new Exception("Accepted review without the cross-file pass.");
-    }
-    catch (ReviewBudgetException) when (!session.ReadyForFinal)
-    {
-        Console.WriteLine("PASS exhausted budget before cross-file pass leaves review incomplete");
-    }
-}
+await PacketBudgetChecks.RunAsync(args[0], args[2]);
 
 foreach (var (packetLimit, reserve, finalLimit) in new[] { (8, 2, 2), (8, new ModelParameters().CrossFileMaxRounds, 6), (9, 2, 3), (107, 6, 105) })
 {
@@ -144,10 +130,15 @@ foreach (var (interruptAfter, changePrompt) in new[] { (4, false), (8, false), (
     }
     using var resumed = new PacketCheckpoint(project, args[0], "test", args[3]);
     using var freshHttp = new HttpClient(new FixtureAuditHandler(new PacketHandler()));
-    profile.Parameters.GitSearchTimeoutSeconds = 180;
+    var timeoutOnResume = interruptAfter == 4 && !changePrompt;
+    profile.Parameters.GitSearchTimeoutSeconds = timeoutOnResume ? 1 : 180;
     using var freshSession = await GitToolSession.CreateAsync(args[0], args[3], default, profile.Parameters);
     var report = await new ModelClient(changePrompt ? freshHttp : http).ReviewAsync(profile, freshSession, "test",
-        changePrompt ? "Changed instructions" : "Review", default, checkpoint: resumed);
+        changePrompt ? "Changed instructions" : "Review", default, checkpoint: resumed,
+        log: message =>
+        {
+            if (timeoutOnResume && message.StartsWith("Searching packet references")) Thread.Sleep(1200);
+        });
     if (!freshSession.ReadyForFinal || report != PacketHandler.Finding)
         throw new Exception("Restart lost a confirmed finding or skipped final review.");
     resumed.Complete();

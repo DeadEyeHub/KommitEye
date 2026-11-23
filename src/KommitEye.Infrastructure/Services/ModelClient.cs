@@ -159,7 +159,7 @@ public sealed partial class ModelClient
         log?.Invoke("Git agent: started");
         try
         {
-            var plan = await tools.CreateReviewPlanAsync(cancellationToken);
+            var plan = await tools.CreateReviewPlanAsync(cancellationToken, log);
             var packetIndex = 0;
             var beginPacket = plan != null;
             var repeatingPacket = false;
@@ -171,10 +171,13 @@ public sealed partial class ModelClient
             var definitions = plan == null ? GitToolSession.Definitions : GitToolSession.Definitions
                 .Where((_, i) => GitToolSession.Names[i] != "git_diff").ToArray();
             var roundLimit = parameters.MaxRounds;
+            // Carry the unused part of one request allowance into synthesis, even for a many-packet plan.
+            var finalBudget = parameters.MaxRounds + parameters.CrossFileMaxRounds;
             var round = 0;
             if (plan != null && checkpoint != null)
             {
                 checkpoint.Open(plan, profile, systemPrompt);
+                if (checkpoint.FinalBudget > 0) finalBudget = checkpoint.FinalBudget;
                 foreach (var saved in checkpoint.Packets)
                 {
                     if (GetReportFormatErrors(saved.Report).Count != 0)
@@ -212,7 +215,7 @@ public sealed partial class ModelClient
                     if (repeatingPacket)
                         task += " Review the evidence afresh. Your final answer must be exactly NO_BUGS or complete BUG blocks. Omit JSON, Markdown and review summaries.";
                     if (retrySearch != null)
-                        task += " The host has already searched the reviewed commit for the packet symbol. Inspect reference_search. " +
+                        task += " Inspect reference_search for the outcome of the host's symbol lookup. " +
                             "Use native tools for further evidence if needed; an announcement of intent is not a verdict.";
                     var evidence = JsonSerializer.Serialize(new { reviewed_sha = tools.Sha, parent_sha = plan.Parent, branch, map = plan.Map, packet,
                         related_lines = packet == null ? string.Join('\n', plan.Packets.SelectMany(p => p.References.Split('\n'))
@@ -459,8 +462,7 @@ public sealed partial class ModelClient
                         if (!content.StartsWith('{') && calls < parameters.MaxToolCalls)
                         {
                             calls++;
-                            retrySearch = await tools.SearchPacketReferencesAsync(plan.Packets[packetIndex].Path, cancellationToken);
-                            log?.Invoke($"Supplied symbol search at {tools.Sha} for {plan.Packets[packetIndex].Path}.");
+                            retrySearch = await tools.SearchPacketReferencesAsync(plan.Packets[packetIndex].Path, cancellationToken, log);
                         }
                         repeatingPacket = true;
                         beginPacket = true;
@@ -529,16 +531,16 @@ public sealed partial class ModelClient
                         if (followUp != null) questions.Add(followUp);
                         log?.Invoke($"Validated packet {packetIndex + 1}/{plan.Packets.Count}: {plan.Packets[packetIndex].Path}");
                         packetIndex++;
-                        checkpoint?.Accept(content, followUp, packetIndex == plan.Packets.Count
-                            ? roundLimit - round + parameters.CrossFileMaxRounds : 0);
+                        finalBudget = Math.Max(parameters.CrossFileMaxRounds, finalBudget - round);
+                        checkpoint?.Accept(content, followUp, finalBudget);
                         checkpoint?.Progress?.Invoke($"Saved packet {packetIndex}/{plan.Packets.Count}: {reports.Count} findings.");
                         if (packetIndex == plan.Packets.Count)
                         {
-                            var remaining = roundLimit - round;
-                            log?.Invoke($"Packet review completed in {round}/{roundLimit} requests. Cross-file review budget: {remaining} remaining + {parameters.CrossFileMaxRounds} reserved.");
-                            roundLimit = remaining + parameters.CrossFileMaxRounds;
-                            round = 0;
+                            log?.Invoke($"Validated all {packetIndex} packets. Cross-file review budget: {finalBudget} requests.");
+                            roundLimit = finalBudget;
                         }
+                        round = 0;
+                        calls = 0;
                         beginPacket = true;
                         repeatingPacket = false;
                         retrySearch = null;
@@ -560,7 +562,7 @@ public sealed partial class ModelClient
                 if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: succeeded.");
                 return content;
             }
-            var phase = plan == null ? "Git agent" : packetIndex == plan.Packets.Count ? "Cross-file review" : "Packet review";
+            var phase = plan == null ? "Git agent" : packetIndex == plan.Packets.Count ? "Cross-file review" : $"Packet {packetIndex + 1}/{plan.Packets.Count}";
             var exhausted = $"{phase} round budget exhausted ({round}/{roundLimit})";
             if (unresolvedErrors.Count > 0) throw new InvalidDataException($"{exhausted} with unresolved tool errors; skip is not eligible.");
             if (reports.Count > 0) throw new InvalidDataException($"{exhausted} with confirmed packet findings; review cannot be skipped.");

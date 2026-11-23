@@ -36,13 +36,13 @@ public sealed class ModelParameters
     public double TopP { get; set; } = 1;
     [Range(0, 2000000), Display(Name = "Max output tokens (0 = server default)", Description = "Макс. токенов ответа (0 = настройка сервера)")]
     public int MaxTokens { get; set; }
-    [Range(1, 500), Display(Name = "Model request rounds", Description = "Количество раундов запросов модели")]
+    [Range(1, 500), Display(Name = "Model requests per commit or packet", Description = "Запросов модели на коммит или пакет")]
     public int MaxRounds { get; set; } = 60;
     [Range(1, 500), Display(Name = "Extra requests for final cross-file review", Description = "Дополнительные запросы на финальную проверку связей")]
     public int CrossFileMaxRounds { get; set; } = 6;
     [Range(1, 500), Display(Name = "Remind when requests remaining", Description = "Напоминать, когда осталось запросов")]
     public int ReminderRequests { get; set; } = 20;
-    [Range(1, 1024), Display(Name = "Tool calls per review", Description = "Вызовов инструментов на коммит")]
+    [Range(1, 1024), Display(Name = "Git calls per commit or review phase", Description = "Вызовов Git на коммит или этап проверки")]
     public int MaxToolCalls { get; set; } = 64;
     [Range(16000, 32000000), Display(Name = "Tool results (characters per review)", Description = "Результаты инструментов (символов на коммит)")]
     public int ToolOutputLimit { get; set; } = 512000;

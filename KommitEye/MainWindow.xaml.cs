@@ -84,17 +84,17 @@ public partial class MainWindow : Window
                 "Limits token sampling to candidates whose cumulative probability reaches this value. 1 does not narrow the candidate set. Usually adjust either Temperature or Top P, not both at once.",
                 "Ограничивает выбор токенов набором с указанной суммарной вероятностью. Значение 1 не сужает набор. Обычно меняют либо температуру, либо Top P, а не оба параметра одновременно."),
             nameof(ModelParameters.MaxRounds) => Localization.Text(
-                "Model requests for the commit or, in a partitioned review, for all packets combined. Includes follow-ups and report corrections.",
-                "Запросы к модели на коммит или, при разбиении, на все пакеты вместе. Включает уточнения и исправления отчёта."),
+                "Model requests for each packet, or for the whole change when reviewed in one piece. Includes follow-ups and report corrections.",
+                "Запросы к модели на каждый пакет или на весь коммит при проверке без разбиения. Включает уточнения и исправления отчёта."),
             nameof(ModelParameters.CrossFileMaxRounds) => Localization.Text(
-                "These requests are added to the unused packet budget for the final cross-file review.",
-                "Эти запросы прибавляются к остатку бюджета пакетов для финальной проверки связей."),
+                "Guaranteed requests for final cross-file review, plus any rounds left from the original request allowance after all packets.",
+                "Гарантированные запросы для финальной проверки связей. К ним прибавляется остаток исходного лимита после обработки всех пакетов."),
             nameof(ModelParameters.ReminderRequests) => Localization.Text(
                 "When this many requests or fewer remain, each request reminds the model of its remaining budget and asks it to prepare the final report. The count includes the current request.",
                 "Когда остаётся столько запросов или меньше, каждый запрос напоминает модели об остатке и необходимости подготовить итоговый отчёт. Текущий запрос включён в остаток."),
             nameof(ModelParameters.MaxToolCalls) => Localization.Text(
-                "Total tool-call budget for one commit across all requests. Each call counts separately, including rejected calls. Increasing it can increase time and token consumption.",
-                "Общий лимит вызовов инструментов на коммит во всех запросах. Каждый вызов считается отдельно, включая отклонённые. Увеличение может повысить время работы и расход токенов."),
+                "Git tool calls per packet and for the final cross-file review, or per commit for a single-piece review. Rejected calls count toward the limit.",
+                "Лимит вызовов Git на каждый пакет и отдельно на финальную проверку связей. При проверке без разбиения действует на коммит. Отклонённые вызовы тоже учитываются."),
             nameof(ModelParameters.ToolOutputLimit) => Localization.Text(
                 "Total serialized tool-result characters sent to the model for one commit. This is a character limit, not a token count or the size of the repository. Larger values can exceed the model context window.",
                 "Суммарный объём сериализованных результатов инструментов, передаваемых модели на один коммит. Измеряется в символах, не в токенах и не в размере репозитория. Большой объём может превысить контекст модели."),

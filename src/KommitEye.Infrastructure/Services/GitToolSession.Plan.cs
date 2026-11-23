@@ -10,13 +10,35 @@ internal sealed record CommitReviewPlan(string? Parent, string Map, List<ReviewP
 public sealed partial class GitToolSession
 {
     private const int PacketSize = 6000;
-    internal async Task<string> SearchPacketReferencesAsync(string path, CancellationToken token)
+    private const string ReferenceSearchUnavailable = "Automatic repository-wide search unavailable after a timeout. Use git_search scoped to a relevant path to verify references.";
+    private bool _referenceSearchTimedOut;
+
+    private async Task<GitResult?> ReadPacketReferencesAsync(string path, string[] symbols, int limit, CancellationToken token, Action<string>? log)
+    {
+        token.ThrowIfCancellationRequested();
+        if (_referenceSearchTimedOut) return null;
+        try
+        {
+            var result = await GitService.ReadPageAsync(_repository, 0, limit, token,
+                trace => { if (trace.Stage == "started") log?.Invoke($"Searching packet references for {path}."); },
+                _parameters.GitSearchTimeoutSeconds, ["grep", "-n", "-I", "-F", "-w", .. symbols.SelectMany(s => new[] { "-e", s }), Sha, "--"]);
+            if (result.ExitCode is not (0 or 1)) throw new GitException("Cannot search for consumers of " + path + ": " + result.Error);
+            return result;
+        }
+        catch (GitTimeoutException error)
+        {
+            _referenceSearchTimedOut = true;
+            log?.Invoke(error.Message);
+            return null;
+        }
+    }
+
+    internal async Task<string> SearchPacketReferencesAsync(string path, CancellationToken token, Action<string>? log)
     {
         var symbol = Path.GetFileNameWithoutExtension(path);
         if (symbol.Length is 0 or > 128 || symbol.Any(char.IsControl)) return "No searchable filename symbol.";
-        var result = await GitService.ReadPageAsync(_repository, 0, 2000, token, null, _parameters.GitSearchTimeoutSeconds, "grep", "-n", "-I", "-w", "-F",
-            "-e", symbol, Sha, "--");
-        if (result.ExitCode is not (0 or 1)) throw new GitException("Cannot verify packet references: " + result.Error);
+        var result = await ReadPacketReferencesAsync(path, [symbol], 2000, token, log);
+        if (result == null) return ReferenceSearchUnavailable;
         return JsonSerializer.Serialize(new { commit = Sha, query = symbol, matches = result.Output, truncated = result.HasMore });
     }
 
@@ -140,7 +162,7 @@ public sealed partial class GitToolSession
         @"\A(?:\s|//[^\n]*\n)*(?:namespace\s+[\w.]+\s*;\s*)?(?:(?:public|internal|static|sealed|partial)\s+)*class\s+\w+\s*\{\s*(?:(?:public|private|internal|static|readonly)\s+)*string\s*\[\s*\]\s+\w+\s*=\s*\[\s*\z",
         RegexOptions.NonBacktracking);
 
-    internal async Task<CommitReviewPlan?> CreateReviewPlanAsync(CancellationToken token)
+    internal async Task<CommitReviewPlan?> CreateReviewPlanAsync(CancellationToken token, Action<string>? log)
     {
         var probe = await GitService.ReadPageAsync(_repository, 0, PageSize, token, null, _parameters.GitDiffTimeoutSeconds, DiffArguments(false));
         if (probe.ExitCode != 0) throw new GitException("Cannot measure reviewed patch. " + probe.Error);
@@ -174,11 +196,9 @@ public sealed partial class GitToolSession
             var references = "";
             if (symbols.Length > 0)
             {
-                var search = await GitService.ReadPageAsync(_repository, 0, 1500, token, null, _parameters.GitSearchTimeoutSeconds,
-                    ["grep", "-n", "-I", "-F", "-w", .. symbols.SelectMany(s => new[] { "-e", s }), Sha, "--"]);
-                if (search.ExitCode is not (0 or 1)) throw new GitException("Cannot search for consumers of " + path);
-                references = search.Output.Replace(Sha + ":", "", StringComparison.Ordinal);
-                if (search.HasMore) references += "\n[partial matches; narrow git_search if needed]";
+                var search = await ReadPacketReferencesAsync(path, symbols, 1500, token, log);
+                references = search?.Output.Replace(Sha + ":", "", StringComparison.Ordinal) ?? ReferenceSearchUnavailable;
+                if (search?.HasMore == true) references += "\n[partial matches; narrow git_search if needed]";
             }
             foreach (var piece in SplitPatch(path, fields[i], diff.Output))
                 packets.Add(new(path, piece, references));

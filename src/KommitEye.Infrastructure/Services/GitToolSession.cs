@@ -338,6 +338,11 @@ public sealed partial class GitToolSession : IDisposable
                     }
                     _snapshots.Add(key, snapshot);
                 }
+                catch (GitTimeoutException) when (name == "git_search")
+                {
+                    snapshot.Dispose();
+                    throw new GitToolQueryException($"Search timed out after {timeoutSeconds}s. Matches are unknown. Narrow the path or inspect the relevant file directly.");
+                }
                 catch { snapshot.Dispose(); throw; }
             }
             var characters = snapshot.Length / 2;

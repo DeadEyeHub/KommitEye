@@ -659,7 +659,7 @@ public sealed class GitService
                 var context = SanitizeDiagnostic(string.Join(" ", arguments));
                 var failure = $"Git {operation} timed out after {elapsed.Elapsed.TotalSeconds:F1}s (limit {timeoutSeconds}s). Repository: {repositoryPath}. Command: git {context}. Authentication: {settings?.GitAuthenticationMode ?? "local"}. stderr: {stderr}";
                 PublishTrace("timed_out", TryGetExitCode(process), failure: failure);
-                throw new GitException(failure);
+                throw new GitTimeoutException(failure);
             }
             PublishTrace("canceled", TryGetExitCode(process), failure: "Git command was canceled.");
             throw;
@@ -957,7 +957,9 @@ internal sealed record GitCommandTrace(
     GitResult? Result,
     string? Failure);
 
-public sealed class GitException : Exception
+internal sealed class GitTimeoutException(string message) : GitException(message);
+
+public class GitException : Exception
 {
     public GitException(string message) : base(message) { }
     public GitException(string message, Exception innerException) : base(message, innerException) { }

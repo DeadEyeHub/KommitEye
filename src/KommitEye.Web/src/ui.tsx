@@ -53,13 +53,13 @@ export const requestId = () => {
 const labels: Record<string, [string, string]> = {
   temperature: ["Температура", "Temperature"],
   topP: ["Top P", "Top P"],
-  maxRounds: ["Раундов запросов модели", "Model request rounds"],
+  maxRounds: ["Запросов модели на коммит или пакет", "Model requests per commit or packet"],
   crossFileMaxRounds: ["Дополнительные запросы на финальную проверку связей", "Extra requests for final cross-file review"],
   reminderRequests: [
     "Напоминать при остатке запросов",
     "Remind when requests remain",
   ],
-  maxToolCalls: ["Вызовов инструментов", "Tool call limit"],
+  maxToolCalls: ["Вызовов Git на коммит или этап проверки", "Git calls per commit or review phase"],
   toolOutputLimit: [
     "Лимит результатов инструментов, символов",
     "Tool output limit, characters",

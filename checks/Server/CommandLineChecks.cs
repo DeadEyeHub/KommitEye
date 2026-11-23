@@ -66,25 +66,44 @@ static class CommandLineChecks
         foreach (var arg in new[] { "--config", config, "--port", port.ToString(System.Globalization.CultureInfo.InvariantCulture) }) launch.ArgumentList.Add(arg);
         using var server = Process.Start(launch)!;
         var stdout = server.StandardOutput.ReadToEndAsync(); var stderr = server.StandardError.ReadToEndAsync();
+        var setupUrl = $"http://127.0.0.1:{port}/api/v1/setup";
+        var startupLimit = TimeSpan.FromMinutes(1);
+        using var timeout = new CancellationTokenSource(startupLimit);
+        using var http = new HttpClient(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false })
+            { Timeout = Timeout.InfiniteTimeSpan };
+        var lastProbe = "No response received.";
+        var ready = false;
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
-            while (true)
+            while (!server.HasExited)
             {
-                if (server.HasExited) throw new Exception("Port fixture exited: " + await stderr);
-                try { using var response = await http.GetAsync($"http://127.0.0.1:{port}/api/v1/setup", timeout.Token); if (response.IsSuccessStatusCode) break; }
-                catch (HttpRequestException) { }
-                catch (OperationCanceledException) when (!timeout.IsCancellationRequested) { }
+                try
+                {
+                    using var response = await http.GetAsync(setupUrl, timeout.Token);
+                    lastProbe = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}";
+                    if (response.IsSuccessStatusCode) { ready = true; break; }
+                }
+                catch (HttpRequestException error) { lastProbe = error.Message; }
                 await Task.Delay(100, timeout.Token);
             }
-            Check(before.SequenceEqual(File.ReadAllBytes(config)), "server listens on --port without overwriting existing configuration");
+            if (!ready) throw new Exception($"Port fixture exited with code {server.ExitCode} before {setupUrl} was ready. Last probe: {lastProbe}");
+        }
+        catch (OperationCanceledException error) when (timeout.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Port fixture did not serve {setupUrl} within {startupLimit.TotalSeconds}s. Last probe: {lastProbe}", error);
         }
         finally
         {
             if (!server.HasExited) server.Kill(entireProcessTree: true);
-            await server.WaitForExitAsync(); await stdout; await stderr;
+            await server.WaitForExitAsync();
+            await Task.WhenAll(stdout, stderr);
+            if (!ready)
+            {
+                Console.Error.WriteLine("Port fixture stdout:\n" + await stdout);
+                Console.Error.WriteLine("Port fixture stderr:\n" + await stderr);
+            }
         }
+        Check(before.SequenceEqual(File.ReadAllBytes(config)), "server listens on --port without overwriting existing configuration");
     }
     private static void Check(bool value, string message)
     { if (!value) throw new Exception(message); Console.WriteLine("PASS: " + message); }

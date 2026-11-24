@@ -595,6 +595,16 @@ dialog.modal:has(.project-log) {
   width: min(1100px, 94vw);
   max-width: 94vw;
 }
+dialog.modal:has(.diagnostic-detail) {
+  width: min(900px, 94vw);
+  max-width: 94vw;
+}
+.diagnostic-detail dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 16px;
+}
+.diagnostic-detail dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) {
   .path-field {
     align-items: stretch;

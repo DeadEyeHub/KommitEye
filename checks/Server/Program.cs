@@ -121,6 +121,8 @@ try
     Check((await Get("setup"))["required"]!.GetValue<bool>() && !File.Exists(Path.Combine(root,"data","initial-password.txt")) && !File.Exists(Path.Combine(root,"data","admin.json")),"first launch waits for user password without generating one");
     Check((await http.GetAsync("projects")).StatusCode == HttpStatusCode.Unauthorized,"anonymous project access denied");
     Check((await http.GetAsync("mail/log")).StatusCode == HttpStatusCode.Unauthorized,"mail log requires authentication");
+    Check((await http.GetAsync("diagnostics")).StatusCode == HttpStatusCode.Unauthorized &&
+        (await http.GetAsync("diagnostics/1")).StatusCode == HttpStatusCode.Unauthorized, "failure diagnostics require administrator access");
     Check((await http.PostAsJsonAsync("login",new {password="1"})).StatusCode == HttpStatusCode.Forbidden,"cross-site form commands blocked");
     http.DefaultRequestHeaders.Add("X-KommitEye-Client","web");
     Check((await http.PostAsJsonAsync("repositories/browse",new {path=repo})).StatusCode == HttpStatusCode.Unauthorized,"server file browsing requires authentication");
@@ -131,6 +133,24 @@ try
     Check((await http.PostAsJsonAsync("setup",new {password="replacement"})).StatusCode==HttpStatusCode.Conflict,"setup cannot replace an existing administrator password");
     var snapshot = await Get("projects");
     var project = snapshot["projects"]![0]!.Deserialize<AppSettings>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+    var failures = new FailureDiagnostics(Path.Combine(root, "data"));
+    Check((await Get("diagnostics"))["items"]!.AsArray().Count == 0 && !File.Exists(failures.DatabasePath), "reading empty diagnostics does not create a database");
+    File.WriteAllBytes(failures.DatabasePath, []);
+    Check((await Get("diagnostics"))["items"]!.AsArray().Count == 0 &&
+        (await http.GetAsync("diagnostics/1")).StatusCode == HttpStatusCode.NotFound, "diagnostics can be read before the first failure is committed");
+    var diagnosticProfile = new ModelProfile { Model = "fixture", ApiKey = "fixture-private-key" };
+    failures.Append("model", "retry fixture-private-key");
+    long diagnosticId = 0;
+    for (var i = 0; i < 26; i++) diagnosticId = failures.Save(project, diagnosticProfile, sha, "failure fixture-private-key", false);
+    var diagnosticsPage = await Get("diagnostics");
+    var records = diagnosticsPage["items"]!.AsArray();
+    Check(records.Count == 25 && (long)records[0]!["id"]! == diagnosticId && (bool)diagnosticsPage["hasMore"]! &&
+        records[0]!["logs"] is null && (await Get("diagnostics?before=" + (long)records[24]!["id"]!))["items"]!.AsArray().Count == 1,
+        "diagnostics list returns newest records first and pages without log payloads");
+    var detail = await Get("diagnostics/" + diagnosticId);
+    Check((string)detail["failure"]!["commitSha"]! == sha && (string)detail["logs"]![0]!["text"]! == "retry [redacted]" &&
+        !detail.ToJsonString().Contains(diagnosticProfile.ApiKey) &&
+        (await http.GetAsync("diagnostics/9223372036854775807")).StatusCode == HttpStatusCode.NotFound, "diagnostics return the saved redacted failure by journal ID");
     using (var invalid = await http.PostAsJsonAsync($"projects/{project.ProjectId}/start", new { requestKey = Guid.NewGuid().ToString() }))
         Check(invalid.StatusCode == HttpStatusCode.BadRequest && (await invalid.Content.ReadAsStringAsync()).Contains("repository", StringComparison.OrdinalIgnoreCase), "start rejects an unconfigured repository");
     // Simulate a legacy project with a repository but no explicitly selected branch.

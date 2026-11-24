@@ -11,6 +11,7 @@ import { Mail } from "./features/Mail";
 import { Prompt } from "./features/Prompt";
 import { Reports } from "./features/Reports";
 import { Jobs } from "./features/Jobs";
+import { Diagnostics } from "./features/Diagnostics";
 import { AuthorPortal } from "./features/AuthorPortal";
 import { AuthorSettings } from "./features/AuthorSettings";
 function App() {
@@ -20,7 +21,8 @@ function App() {
     [setup, setSetup] = useState<Data | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const [tab, setTab] = useState(new URLSearchParams(location.search).has("review") ? "reports" : "projects"),
+  const params = new URLSearchParams(location.search);
+  const [tab, setTab] = useState(params.has("diagnostic") ? "diagnostics" : params.has("review") ? "reports" : "projects"),
     [connection, setConnection] = useState("connecting"),
     [info, setInfo] = useState<Data>({}),
     [tick, setTick] = useState(0),
@@ -230,6 +232,7 @@ function App() {
             ["projects", "Проекты", "Projects"],
             ["reports", "Отчёты", "Reports"],
             ["jobs", "Задания", "Jobs"],
+            ["diagnostics", "Диагностика", "Diagnostics"],
             ["models", "Модели", "Models"],
             ["mail", "Почта", "Mail"],
             ["authors", "Кабинет автора", "Author portal"],
@@ -271,6 +274,8 @@ function App() {
           <Reports tick={tick} />
         ) : tab === "jobs" ? (
           <Jobs tick={tick} />
+        ) : tab === "diagnostics" ? (
+          <Diagnostics />
         ) : tab === "models" ? (
           <Models />
         ) : tab === "authors" ? (

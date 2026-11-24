@@ -142,7 +142,9 @@ public sealed partial class GitToolSession : IDisposable
         var properties = new Dictionary<string, object>
         {
             ["submodule"] = new { type = "string", description = "Optional submodule path relative to the main repository, as listed in submodules results. Nested modules use full paths. Tools then operate in that repository, restricted to pinned old/new gitlink SHAs. Paths inside it are relative to the submodule." },
-            ["commit"] = new { type = "string", description = "Main repository: reviewed SHA or first parent. With submodule: only its listed old_sha/new_sha; default new_sha (old_sha for deletion). Never arbitrary ancestors." }
+            ["commit"] = new { type = "string", description = name is "git_diff" or "git_changed_files"
+                ? "Omit commit. This tool is pinned to the reviewed change and already compares both revisions."
+                : "Main repository: reviewed SHA or first parent. With submodule: only its listed old_sha/new_sha; default new_sha (old_sha for deletion). Never arbitrary ancestors." }
         };
         if (name != "git_metadata")
             properties["offset"] = new { type = "integer", minimum = 0, maximum = int.MaxValue, description = "Initially 0; follow next_offset with the same arguments." };
@@ -224,13 +226,13 @@ public sealed partial class GitToolSession : IDisposable
             return await target.ExecuteAsync(name, JsonSerializer.Serialize(forwarded), token, trace);
         }
         var commit = args.TryGetProperty("commit", out var c) ? c.GetString() : Sha;
+        if (name is "git_diff" or "git_changed_files" && commit != Sha)
+            throw new ArgumentException($"Changes are bound to the reviewed SHA {Sha}. Omit commit and retry {name}; for the first page in the main repository call {name}({{}}). Keep the submodule and page offset if applicable.");
         if (commit is null || !_commits.Contains(commit)) throw new ArgumentException("Only the reviewed SHA and its immediate first parent are allowed. Older history and other merge parents are prohibited.");
         var offset = args.TryGetProperty("offset", out var o) ? o.GetInt32() : 0;
         if (offset < 0) throw new ArgumentException("Offset outside supported bounds.");
         var path = args.TryGetProperty("path", out var p) ? p.GetString() : null;
         var recursive = args.TryGetProperty("recursive", out var r) && r.GetBoolean();
-        if (name is "git_diff" or "git_changed_files" && commit != Sha)
-            throw new ArgumentException("Changes are bound to the reviewed SHA.");
         if ((name == "git_file" || path is not null) && (string.IsNullOrEmpty(path) || path.Length > 2048 ||
             path.Contains('\\') || path.Contains(':') || path.Any(char.IsControl) ||
             path.Split('/').Any(part => part is "" or "." or "..")))

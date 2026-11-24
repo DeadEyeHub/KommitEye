@@ -149,6 +149,14 @@ app.MapPost("/api/v1/login", async (LoginRequest request, HttpContext context, S
     return Results.Ok(new { user = "admin" });
 }).RequireRateLimiting("login");
 var api = app.MapGroup("/api/v1").RequireAuthorization("Admin");
+var failureDiagnostics = new FailureDiagnostics(AppPaths.DataDirectory);
+api.MapGet("/diagnostics", (long? before) =>
+{
+    var (items, hasMore) = failureDiagnostics.List(before);
+    return Results.Ok(new { items, hasMore });
+});
+api.MapGet("/diagnostics/{id:long}", (long id) =>
+    failureDiagnostics.Read(id) is { } detail ? Results.Ok(detail) : Results.NotFound());
 api.MapGet("/mail/log", (OAuthOperations oauth) => Results.Text(oauth.MailLog.Snapshot(true) ?? ""));
 api.MapPost("/oauth/{provider}/connect", (string provider, OAuthRequest request, OAuthOperations oauth) => oauth.Begin(provider, request.Configuration));
 api.MapGet("/oauth/{id}", (string id, OAuthOperations oauth) => oauth.Get(id));

@@ -97,7 +97,9 @@ export function ProjectLog({
           </p>
         )}
         <pre ref={pre} className="log" tabIndex={0}>
-          {visible ||
+          {visible && !details ? visible.split(/(Failure diagnostics #\d+)(?= saved:)/g).map((part, i) =>
+            i % 2 ? <a key={i} href={`?diagnostic=${part.split("#")[1]}`} target="_blank" rel="noreferrer">{part}</a> : part
+          ) : visible ||
             (query
               ? t("Совпадений нет.", "No matches.")
               : t("Записей пока нет.", "No entries yet."))}

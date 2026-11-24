@@ -156,7 +156,9 @@ public sealed partial class ModelClient
         var calls = 0;
         var emptyRecoveries = 0;
         var output = 0;
-        var unresolvedErrors = new HashSet<string>();
+        var unresolvedErrors = new Dictionary<string, string>();
+        bool correctionRequested = false;
+        string PendingErrors() => string.Join(" ", unresolvedErrors.Select(e => $"{e.Key}: {e.Value}"));
         log?.Invoke("Git agent: started");
         try
         {
@@ -322,8 +324,8 @@ public sealed partial class ModelClient
                             if (plan != null && name == "git_diff") throw new ArgumentException("Use the supplied packet and targeted context tools.");
                             result = await tools.ExecuteAsync(name, arguments, cancellationToken, trace =>
                                 log?.Invoke($"Git command for tool {callNumber} ({callId}): {JsonSerializer.Serialize(trace)}"));
-                            unresolvedErrors.Remove(safeName);
-                            unresolvedErrors.Remove("unsupported_tool");
+                            if (unresolvedErrors.Remove(safeName)) correctionRequested = false;
+                            if (unresolvedErrors.Remove("unsupported_tool")) correctionRequested = false;
                             using var toolResult = JsonDocument.Parse(result);
                             if (toolResult.RootElement.GetProperty("status").GetString() == "not_found")
                             {
@@ -341,10 +343,11 @@ public sealed partial class ModelClient
                         }
                         catch (Exception exception) when (exception is ArgumentException or JsonException or InvalidOperationException or FormatException or OverflowException)
                         {
-                            unresolvedErrors.Add(safeName);
                             var reason = exception is ArgumentException
                                 ? exception.Message
                                 : "Invalid JSON argument type or value. Follow the advertised tool schema.";
+                            if (unresolvedErrors.GetValueOrDefault(safeName) != reason) correctionRequested = false;
+                            unresolvedErrors[safeName] = reason;
                             result = JsonSerializer.Serialize(new { status = "error", message = reason });
                             log?.Invoke($"Git tool {callNumber}: {safeName} rejected");
                             activity?.Invoke(ReviewStage.ToolRejected, safeName);
@@ -410,8 +413,21 @@ public sealed partial class ModelClient
                 }
                 if ((plan == null && !tools.ReadyForFinal) || unresolvedErrors.Count > 0)
                 {
+                    string instruction;
+                    if (unresolvedErrors.Count > 0)
+                    {
+                        if (correctionRequested || round >= roundLimit)
+                        {
+                            var step = plan == null ? "Review" : packetIndex == plan.Packets.Count ? "Cross-file review" : $"Packet {packetIndex + 1}/{plan.Packets.Count}";
+                            throw new InvalidDataException($"{step} incomplete. Verdict returned with unresolved tool errors at round {round}/{roundLimit}. {PendingErrors()}");
+                        }
+                        correctionRequested = true;
+                        instruction = "Before returning a verdict, use a native tool call to correct the following rejected request(s). " + PendingErrors();
+                        log?.Invoke(instruction);
+                    }
+                    else instruction = "Review incomplete. Read the full git_diff through all its next_offset pages, including git_diff with submodule for EACH changed submodule listed by previous results (and nested entries). Auxiliary pages are optional. Providers must support native tool_calls (vLLM: auto tool choice and a model-specific tool-call parser).";
                     messages.Add(new { role = "assistant", content });
-                    messages.Add(new { role = "user", content = plan != null ? "Correct invalid tool arguments before returning the packet report." : "Review incomplete. Read the full git_diff through all its next_offset pages, including git_diff with submodule for EACH changed submodule listed by previous results (and nested entries); correct invalid tool arguments before returning the report. Auxiliary pages are optional. Providers must support native tool_calls (vLLM: auto tool choice and a model-specific tool-call parser)." });
+                    messages.Add(new { role = "user", content = instruction });
                     continue;
                 }
                 string? followUp = null;
@@ -572,7 +588,7 @@ public sealed partial class ModelClient
             }
             var phase = plan == null ? "Git agent" : packetIndex == plan.Packets.Count ? "Cross-file review" : $"Packet {packetIndex + 1}/{plan.Packets.Count}";
             var exhausted = $"{phase} round budget exhausted ({round}/{roundLimit})";
-            if (unresolvedErrors.Count > 0) throw new InvalidDataException($"{exhausted} with unresolved tool errors; skip is not eligible.");
+            if (unresolvedErrors.Count > 0) throw new InvalidDataException($"{exhausted} with unresolved tool errors; skip is not eligible. {PendingErrors()}");
             if (reports.Count > 0) throw new InvalidDataException($"{exhausted} with confirmed packet findings; review cannot be skipped.");
             throw new ReviewBudgetException($"{exhausted}; review incomplete.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
         }

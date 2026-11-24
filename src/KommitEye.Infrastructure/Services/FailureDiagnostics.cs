@@ -5,6 +5,8 @@ using Microsoft.Data.Sqlite;
 namespace KommitEye.Services;
 
 public sealed record FailureLogEntry(DateTimeOffset Time, string Source, string Text);
+public sealed record FailureSummary(long Id, string SavedAt, string ProjectName, string Branch, string CommitSha, string Error);
+public sealed record FailureDetail(FailureSummary Failure, string ProjectId, string Repository, string Model, bool Manual, FailureLogEntry[] Logs);
 
 /// <summary>A per-runner ring buffer, persisted only when a review fails.</summary>
 public sealed class FailureDiagnostics(string directory)
@@ -12,6 +14,65 @@ public sealed class FailureDiagnostics(string directory)
     private readonly object _gate = new();
     private readonly Queue<FailureLogEntry> _lines = new();
     public string DatabasePath => Path.Combine(directory, "diagnostics.db");
+
+    private SqliteConnection OpenReader()
+    {
+        var db = new SqliteConnection(new SqliteConnectionStringBuilder {
+            DataSource = DatabasePath, Mode = SqliteOpenMode.ReadOnly, DefaultTimeout = 2, Pooling = false
+        }.ToString());
+        db.Open();
+        return db;
+    }
+
+    private static FailureSummary Summary(SqliteDataReader row) => new(row.GetInt64(0), row.GetString(1),
+        row.GetString(2), row.GetString(3), row.GetString(4), row.GetString(5));
+
+    private static bool HasFailuresTable(SqliteConnection db)
+    {
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='review_failures'";
+        return command.ExecuteScalar() is not null;
+    }
+
+    public (List<FailureSummary> Items, bool HasMore) List(long? before)
+    {
+        const int pageSize = 25;
+        var items = new List<FailureSummary>();
+        if (!File.Exists(DatabasePath)) return (items, false);
+        using var db = OpenReader();
+        if (!HasFailuresTable(db)) return (items, false);
+        using var command = db.CreateCommand();
+        command.CommandText = """
+            SELECT id, saved_at, coalesce(project_name,''), coalesce(branch,''), coalesce(commit_sha,''), substr(error,1,240)
+            FROM review_failures
+            """ + (before.HasValue ? " WHERE id < $before" : "") + " ORDER BY id DESC LIMIT $limit";
+        if (before.HasValue) command.Parameters.AddWithValue("$before", before.Value);
+        command.Parameters.AddWithValue("$limit", pageSize + 1);
+        using var rows = command.ExecuteReader();
+        while (rows.Read())
+        {
+            if (items.Count == pageSize) return (items, true);
+            items.Add(Summary(rows));
+        }
+        return (items, false);
+    }
+
+    public FailureDetail? Read(long id)
+    {
+        if (!File.Exists(DatabasePath)) return null;
+        using var db = OpenReader();
+        if (!HasFailuresTable(db)) return null;
+        using var command = db.CreateCommand();
+        command.CommandText = """
+            SELECT id, saved_at, coalesce(project_name,''), coalesce(branch,''), coalesce(commit_sha,''), error,
+                   coalesce(project_id,''), coalesce(repository,''), coalesce(model,''), manual, logs_json
+            FROM review_failures WHERE id = $id
+            """;
+        command.Parameters.AddWithValue("$id", id);
+        using var row = command.ExecuteReader();
+        return row.Read() ? new(Summary(row), row.GetString(6), row.GetString(7), row.GetString(8), row.GetBoolean(9),
+            JsonSerializer.Deserialize<FailureLogEntry[]>(row.GetString(10)) ?? []) : null;
+    }
 
     public void Clear() { lock (_gate) _lines.Clear(); }
     public void Append(string source, string text)

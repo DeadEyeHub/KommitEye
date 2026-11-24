@@ -201,6 +201,7 @@ public sealed partial class ModelClient
                         tools.FinishPlan();
                         return final;
                     }
+                    checkpoint.Progress?.Invoke($"Resuming cross-file review with {roundLimit} requests.");
                 }
             }
             while (round < roundLimit)
@@ -556,7 +557,7 @@ public sealed partial class ModelClient
                         log?.Invoke($"Validated packet {packetIndex + 1}/{plan.Packets.Count}: {plan.Packets[packetIndex].Path}");
                         packetIndex++;
                         finalBudget = Math.Max(parameters.CrossFileMaxRounds, finalBudget - round);
-                        checkpoint?.Accept(content, followUp, finalBudget);
+                        checkpoint?.Accept(content, followUp, finalBudget, round);
                         checkpoint?.Progress?.Invoke($"Saved packet {packetIndex}/{plan.Packets.Count}: {reports.Count} findings.");
                         if (packetIndex == plan.Packets.Count)
                         {

@@ -9,7 +9,8 @@ namespace KommitEye.Services;
 public sealed class PacketCheckpoint(string project, string repository, string branch, string sha) : IDisposable
 {
     internal sealed record PacketResult(string Report, string? FollowUp);
-    private sealed record Snapshot(string Fingerprint, List<PacketResult> Packets, int FinalBudget, string? FinalReport, int FinalVersion = 0);
+    private sealed record Snapshot(string Fingerprint, List<PacketResult> Packets, int FinalBudget, string? FinalReport, int FinalVersion = 0,
+        long? PacketRoundsUsed = null);
     private readonly string _path = Path.Combine(AppPaths.DataDirectory, "review-progress",
         Hash(new { project, repository, branch, sha }) + ".json");
     private FileStream? _lease;
@@ -31,36 +32,66 @@ public sealed class PacketCheckpoint(string project, string repository, string b
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
         _lease ??= new FileStream(_path + ".lock", FileMode.OpenOrCreate, FileAccess.ReadWrite,
             FileShare.None, 1, FileOptions.DeleteOnClose);
-        // Process deadlines do not change the evidence in an already validated packet.
-        var parameters = JsonSerializer.SerializeToNode(profile.Parameters)!.AsObject();
-        foreach (var key in parameters.Select(p => p.Key).Where(k => k.StartsWith("Git") && k.EndsWith("TimeoutSeconds")).ToArray())
-            parameters.Remove(key);
-        string Fingerprint(int protocol, object plan) => Hash(new { protocol, plan, profile.Name, profile.Model, profile.Endpoint,
-            Parameters = parameters, prompt, Localization.Language });
+        string Fingerprint(int protocol, object plan, object settings) => Hash(new { protocol, plan, profile.Name, profile.Model, profile.Endpoint,
+            Parameters = settings, prompt, Localization.Language });
         // Optional reference lookups can time out independently on each run at the same SHA.
-        var fingerprint = Fingerprint(2, new { plan.Parent, plan.Map, Packets = plan.Packets.Select(p => new { p.Path, p.Patch }) });
+        var evidence = new { plan.Parent, plan.Map, Packets = plan.Packets.Select(p => new { p.Path, p.Patch }) };
+        var limits = profile.Parameters;
+        var fingerprint = Fingerprint(3, evidence, new { limits.DisableThinking, limits.Temperature, limits.TopP, limits.MaxTokens });
         if (File.Exists(_path))
         {
-            using var file = File.OpenRead(_path);
-            var saved = JsonSerializer.Deserialize<Snapshot>(file) ?? throw new InvalidDataException("Empty packet checkpoint.");
-            if (saved.Fingerprint == fingerprint || saved.Fingerprint == Fingerprint(1, plan))
+            Snapshot saved;
+            using (var file = File.OpenRead(_path))
+                saved = JsonSerializer.Deserialize<Snapshot>(file) ?? throw new InvalidDataException("Empty packet checkpoint.");
+            var oldReserve = limits.CrossFileMaxRounds;
+            bool matches = saved.Fingerprint == fingerprint;
+            if (!matches && saved.PacketRoundsUsed == null)
+            {
+                var parameters = JsonSerializer.SerializeToNode(profile.Parameters)!.AsObject();
+                foreach (var key in parameters.Select(p => p.Key).Where(k => k.StartsWith("Git") && k.EndsWith("TimeoutSeconds")).ToArray())
+                    parameters.Remove(key);
+                bool MatchesLegacy() => saved.Fingerprint == Fingerprint(2, evidence, parameters) ||
+                    saved.Fingerprint == Fingerprint(1, plan, parameters);
+                matches = MatchesLegacy();
+                // 4.0.5 stored only a hash and the remaining budget. After exhausting the carry,
+                // that budget is the old reserve, so a user can raise it before upgrading.
+                if (!matches && saved.FinalBudget is >= 1 and <= 500 && saved.FinalBudget != oldReserve)
+                {
+                    oldReserve = saved.FinalBudget;
+                    parameters[nameof(limits.CrossFileMaxRounds)] = oldReserve;
+                    matches = MatchesLegacy();
+                }
+            }
+            if (matches)
             {
                 if (saved.Packets.Count > plan.Packets.Count ||
                     (saved.Packets.Count == plan.Packets.Count && saved.FinalBudget <= 0) ||
                     (saved.Packets.Count != plan.Packets.Count && saved.FinalReport != null))
                     throw new InvalidDataException("Invalid packet checkpoint coverage.");
-                _state = saved with { Fingerprint = fingerprint };
+                long used = saved.PacketRoundsUsed ?? 0;
+                if (saved.PacketRoundsUsed == null && saved.Packets.Count > 0)
+                {
+                    // Older snapshots did not count rounds after the carry ran out.
+                    var carry = saved.FinalBudget - oldReserve;
+                    used = carry > 0 ? limits.MaxRounds - carry : int.MaxValue;
+                }
+                if (used < 0) throw new InvalidDataException("Invalid packet checkpoint round count.");
+                var budget = limits.CrossFileMaxRounds + (int)Math.Max(0, limits.MaxRounds - used);
+                _state = saved with { Fingerprint = fingerprint, PacketRoundsUsed = used, FinalBudget = budget };
+                if (saved.PacketRoundsUsed == null) Save();
                 return;
             }
+            Progress?.Invoke($"Restarting packet review: checkpoint with {saved.Packets.Count} validated packets is incompatible with the current plan, model, or instructions.");
         }
-        _state = new(fingerprint, [], 0, null);
+        else Progress?.Invoke("Starting packet review: no checkpoint for this project, repository, branch and commit.");
+        _state = new(fingerprint, [], 0, null, PacketRoundsUsed: 0);
         Save();
     }
 
-    internal void Accept(string report, string? followUp, int finalBudget)
+    internal void Accept(string report, string? followUp, int finalBudget, int rounds)
     {
         _state!.Packets.Add(new(report, followUp));
-        _state = _state with { FinalBudget = finalBudget };
+        _state = _state with { FinalBudget = finalBudget, PacketRoundsUsed = _state.PacketRoundsUsed + rounds };
         Save();
     }
 

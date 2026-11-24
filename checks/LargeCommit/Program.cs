@@ -50,6 +50,7 @@ using (var session = await GitToolSession.CreateAsync(args[0], args[1], default)
 
 await PacketBudgetChecks.RunAsync(args[0], args[2]);
 await ToolCorrectionChecks.RunAsync(args[0], args[2]);
+await CrossFileResumeChecks.RunAsync(args[0], args[3]);
 await PacketTimeAndOutputChecks.RunAsync(args[0], args[1]);
 
 foreach (var (packetLimit, reserve, finalLimit) in new[] { (8, 2, 2), (8, new ModelParameters().CrossFileMaxRounds, 6), (9, 2, 3), (107, 6, 105) })

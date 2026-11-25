@@ -423,32 +423,7 @@ public sealed class GitService
         var partialError = new System.Text.StringBuilder();
         var operation = arguments.FirstOrDefault() ?? "unknown";
         var token = timeout.Token;
-        var startInfo = new ProcessStartInfo("git")
-        {
-            WorkingDirectory = repositoryPath,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
-        // Ownership diagnostics are classified by the connection API.
-        if (operation is "for-each-ref" or "rev-parse") startInfo.Environment["LC_ALL"] = "C";
-        if (page is not null)
-        {
-            foreach (var key in startInfo.Environment.Keys.Where(key => key.StartsWith("GIT_", StringComparison.Ordinal)).ToArray())
-                startInfo.Environment.Remove(key);
-            startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
-            startInfo.Environment["GIT_NO_LAZY_FETCH"] = "1";
-            startInfo.Environment["GIT_NO_REPLACE_OBJECTS"] = "1";
-            startInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";
-            foreach (var argument in new[] { "--no-pager", "--literal-pathspecs", "-c", "protocol.allow=never", "-c", "core.hooksPath=/dev/null" })
-                startInfo.ArgumentList.Add(argument);
-        }
-        if (settings is not null)
-            ApplyAuthentication(startInfo, settings);
-        foreach (var argument in arguments)
-            startInfo.ArgumentList.Add(argument);
+        var startInfo = CreateStartInfo(repositoryPath, settings, arguments, page is not null);
 
         void PublishTrace(string stage, int? processExitCode = null, GitResult? result = null, string? failure = null)
         {
@@ -669,6 +644,39 @@ public sealed class GitService
             PublishTrace("failed", TryGetExitCode(process), failure: exception.Message);
             throw;
         }
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(string repositoryPath, AppSettings? settings, string[] arguments, bool localRead)
+    {
+        var operation = arguments.FirstOrDefault();
+        var startInfo = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = repositoryPath,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        // Ownership diagnostics are classified by the connection API.
+        if (operation is "for-each-ref" or "rev-parse") startInfo.Environment["LC_ALL"] = "C";
+        if (localRead)
+        {
+            foreach (var key in startInfo.Environment.Keys.Where(key => key.StartsWith("GIT_", StringComparison.Ordinal)).ToArray())
+                startInfo.Environment.Remove(key);
+            startInfo.Environment["GIT_TERMINAL_PROMPT"] = "0";
+            startInfo.Environment["GIT_NO_LAZY_FETCH"] = "1";
+            startInfo.Environment["GIT_NO_REPLACE_OBJECTS"] = "1";
+            startInfo.Environment["GIT_OPTIONAL_LOCKS"] = "0";
+            foreach (var argument in new[] { "--no-pager", "--literal-pathspecs", "-c", "protocol.allow=never", "-c", "core.hooksPath=/dev/null" })
+                startInfo.ArgumentList.Add(argument);
+        }
+        if (settings is not null)
+            ApplyAuthentication(startInfo, settings);
+        foreach (var argument in arguments)
+            startInfo.ArgumentList.Add(argument);
+
+        return startInfo;
     }
 
     private static int? TryGetExitCode(Process process)

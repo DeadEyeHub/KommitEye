@@ -64,7 +64,7 @@ public sealed partial class GitToolSession : IDisposable
             if (listing.ExitCode != 0) throw new GitException("Cannot collect skip-decision evidence: " + listing.Error);
             remaining -= listing.Output.Length + 512;
             modules.Add(new { path = session._modulePath, sha = session.Sha, diff_complete = session.DiffComplete,
-                validated_packets = session.ValidatedPackets, total_packets = session.PlannedPackets,
+                validated_packets = session.ValidatedPackets, total_packets = session._streamPending ? (int?)null : session.PlannedPackets,
                 next_offsets = session._nextOffsets.Take(10).Select(p => new { key = p.Key[..Math.Min(256, p.Key.Length)], offset = p.Value }).ToArray(), files_numstat = listing.Output,
                 listing_truncated = listing.HasMore, submodules_discovered = session._links.Count });
             foreach (var child in session._submodules.Values) await Visit(child);

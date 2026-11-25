@@ -162,7 +162,7 @@ public sealed partial class ModelClient
         log?.Invoke("Git agent: started");
         try
         {
-            var plan = await tools.CreateReviewPlanAsync(cancellationToken, log);
+            await using var plan = await tools.CreateReviewPlanAsync(cancellationToken, log);
             var packetIndex = 0;
             var beginPacket = plan != null;
             var repeatingPacket = false;
@@ -187,11 +187,30 @@ public sealed partial class ModelClient
                         throw new InvalidDataException("Invalid report in packet checkpoint.");
                     AddFindings(reports, saved.Report);
                     if (saved.FollowUp != null) questions.Add(saved.FollowUp);
-                    tools.AcceptPacket(packetIndex++);
+                    if (packetIndex < plan.Packets.Count) tools.AcceptPacket(packetIndex++);
                 }
-                if (packetIndex > 0)
-                    checkpoint.Progress?.Invoke($"Resuming review: {packetIndex}/{plan.Packets.Count} packets validated, {reports.Count} findings.");
-                if (packetIndex == plan.Packets.Count)
+                packetIndex = checkpoint.CompletedPackets;
+            }
+            var streaming = plan?.StreamPaths.Length > 0;
+            await using var stream = streaming ? tools.StreamPacketsAsync(plan!, checkpoint?.Stream, log, cancellationToken).GetAsyncEnumerator() : null;
+            StreamCursor? cursor = null;
+            async ValueTask<ReviewPacket?> NextPacket()
+            {
+                if (plan != null && packetIndex < plan.Packets.Count) return plan.Packets[packetIndex];
+                if (stream != null && await stream.MoveNextAsync())
+                {
+                    cursor = stream.Current.Cursor;
+                    return stream.Current.Packet;
+                }
+                cursor = null;
+                return null;
+            }
+            string Total() => streaming ? "?" : plan!.Packets.Count.ToString();
+            var packet = await NextPacket();
+            if (plan != null && checkpoint != null && packetIndex > 0)
+            {
+                checkpoint.Progress?.Invoke($"Resuming review: {packetIndex}/{(packet == null ? packetIndex.ToString() : Total())} packets validated, {reports.Count} findings.");
+                if (packet == null)
                 {
                     roundLimit = checkpoint.FinalBudget;
                     if (checkpoint.FinalReport is { } final)
@@ -210,7 +229,6 @@ public sealed partial class ModelClient
                 cancellationToken.ThrowIfCancellationRequested();
                 if (beginPacket && plan != null)
                 {
-                    var packet = packetIndex < plan.Packets.Count ? plan.Packets[packetIndex] : null;
                     if (!repeatingPacket)
                     {
                         output = 0;
@@ -236,7 +254,7 @@ public sealed partial class ModelClient
                     if (output > parameters.ToolOutputLimit)
                     {
                         if (reports.Count > 0) throw new InvalidDataException("Packet review incomplete with confirmed findings; review cannot be skipped.");
-                        throw new ReviewBudgetException($"Git tool output budget exhausted after {packetIndex}/{plan.Packets.Count} packets.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
+                        throw new ReviewBudgetException($"Git tool output budget exhausted after {packetIndex}/{Total()} packets.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
                     }
                     messages.Clear();
                     messages.Add(new { role = "system", content = systemPrompt + "\nMandatory partitioned review protocol overrides earlier full-diff instructions. " +
@@ -245,7 +263,7 @@ public sealed partial class ModelClient
                         "Report only bugs caused by this change. Output NO_BUGS or complete BUG/FILE:/LINE:/SIDE:/DESCRIPTION:/END blocks, each field on its own line. " +
                         "SIDE is NEW, OLD or HUNK. " + task + " " + Localization.Text("Write descriptions in English.", "Пиши описания на русском языке.") });
                     messages.Add(new { role = "user", content = evidence });
-                    log?.Invoke(packet == null ? "Reviewing cross-file interactions." : $"Review packet {packetIndex + 1}/{plan.Packets.Count}: {packet.Path}");
+                    log?.Invoke(packet == null ? "Reviewing cross-file interactions." : $"Review packet {packetIndex + 1}/{Total()}: {packet.Path}");
                     beginPacket = false;
                 }
                 // Reminders belong to the outgoing request, not the persistent conversation.
@@ -400,7 +418,7 @@ public sealed partial class ModelClient
                 var content = originalContent.Trim();
                 if (plan != null && HasTextToolCalls(content))
                 {
-                    var step = packetIndex < plan.Packets.Count ? plan.Packets[packetIndex].Path : "cross-file review";
+                    var step = packet?.Path ?? "cross-file review";
                     if (retriedTextToolCall)
                         throw new ReviewFormatException($"Model returned tool_calls as text twice during {step}; review incomplete.");
                     if (round >= roundLimit)
@@ -419,7 +437,7 @@ public sealed partial class ModelClient
                     {
                         if (correctionRequested || round >= roundLimit)
                         {
-                            var step = plan == null ? "Review" : packetIndex == plan.Packets.Count ? "Cross-file review" : $"Packet {packetIndex + 1}/{plan.Packets.Count}";
+                            var step = plan == null ? "Review" : packet == null ? "Cross-file review" : $"Packet {packetIndex + 1}/{Total()}";
                             throw new InvalidDataException($"{step} incomplete. Verdict returned with unresolved tool errors at round {round}/{roundLimit}. {PendingErrors()}");
                         }
                         correctionRequested = true;
@@ -435,9 +453,9 @@ public sealed partial class ModelClient
                 if (plan != null && content.StartsWith("FOLLOW_UP:", StringComparison.Ordinal))
                 {
                     var newline = content.IndexOf('\n');
-                    if (packetIndex == plan.Packets.Count || newline < 11 || newline > 1000 || questions.Sum(q => q.Length) + newline > 4000)
+                    if (packet == null || newline < 11 || newline > 1000 || questions.Sum(q => q.Length) + newline > 4000)
                         throw new InvalidDataException("Unresolved cross-file questions exceed the packet review limits.");
-                    followUp = plan.Packets[packetIndex].Path + ": " + content[10..newline].Trim();
+                    followUp = packet.Path + ": " + content[10..newline].Trim();
                     content = content[(newline + 1)..].Trim();
                 }
                 var unwrapped = NormalizeFieldSpacing(UnwrapReport(content));
@@ -477,17 +495,17 @@ public sealed partial class ModelClient
                     }, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
                     var reason = string.Join(" ", formatErrors);
                     log?.Invoke($"Report format rejected: {reason} Original response saved: {diagnosticPath}");
-                    if (plan != null && packetIndex < plan.Packets.Count && !content.Split('\n').Any(IsReportMarker))
+                    if (plan != null && packet != null && !content.Split('\n').Any(IsReportMarker))
                     {
                         if (verifyingVerdict)
                             throw new ReviewFormatException($"Verdict verification returned no structured verdict. Diagnostic: {diagnosticPath}");
                         if (repeatingPacket || round >= roundLimit)
-                            throw new ReviewFormatException($"Cannot obtain a structured verdict for {plan.Packets[packetIndex].Path} within the packet retry budget. Diagnostic: {diagnosticPath}");
-                        log?.Invoke($"Repeating review of packet {packetIndex + 1}/{plan.Packets.Count} with original evidence after a free-form response.");
+                            throw new ReviewFormatException($"Cannot obtain a structured verdict for {packet.Path} within the packet retry budget. Diagnostic: {diagnosticPath}");
+                        log?.Invoke($"Repeating review of packet {packetIndex + 1}/{Total()} with original evidence after a free-form response.");
                         if (!content.StartsWith('{') && calls < parameters.MaxToolCalls)
                         {
                             calls++;
-                            retrySearch = await tools.SearchPacketReferencesAsync(plan.Packets[packetIndex].Path, cancellationToken, log);
+                            retrySearch = await tools.SearchPacketReferencesAsync(packet.Path, cancellationToken, log);
                         }
                         repeatingPacket = true;
                         beginPacket = true;
@@ -550,16 +568,19 @@ public sealed partial class ModelClient
                 if (plan != null)
                 {
                     AddFindings(reports, content);
-                    if (packetIndex < plan.Packets.Count)
+                    if (packet != null)
                     {
                         tools.AcceptPacket(packetIndex);
                         if (followUp != null) questions.Add(followUp);
-                        log?.Invoke($"Validated packet {packetIndex + 1}/{plan.Packets.Count}: {plan.Packets[packetIndex].Path}");
+                        log?.Invoke($"Validated packet {packetIndex + 1}/{Total()}: {packet.Path}");
                         packetIndex++;
                         finalBudget = Math.Max(parameters.CrossFileMaxRounds, finalBudget - round);
-                        checkpoint?.Accept(content, followUp, finalBudget, round);
-                        checkpoint?.Progress?.Invoke($"Saved packet {packetIndex}/{plan.Packets.Count}: {reports.Count} findings.");
-                        if (packetIndex == plan.Packets.Count)
+                        checkpoint?.Accept(content, followUp, finalBudget, round, cursor);
+                        var label = packet.Position is { } pos ? $"file {pos.File}/{pos.Files}, part {pos.Part}" : $"packet {packetIndex}/{Total()}";
+                        checkpoint?.Progress?.Invoke($"Saved {label}: {reports.Count} findings.");
+                        deadline.CancelAfter(timeLimit);
+                        packet = await NextPacket();
+                        if (packet == null)
                         {
                             log?.Invoke($"Validated all {packetIndex} packets. Cross-file review budget: {finalBudget} requests.");
                             roundLimit = finalBudget;
@@ -587,7 +608,7 @@ public sealed partial class ModelClient
                 if (emptyRecoveries > 0) log?.Invoke("Empty report recovery: succeeded.");
                 return content;
             }
-            var phase = plan == null ? "Git agent" : packetIndex == plan.Packets.Count ? "Cross-file review" : $"Packet {packetIndex + 1}/{plan.Packets.Count}";
+            var phase = plan == null ? "Git agent" : packet == null ? "Cross-file review" : $"Packet {packetIndex + 1}/{Total()}";
             var exhausted = $"{phase} round budget exhausted ({round}/{roundLimit})";
             if (unresolvedErrors.Count > 0) throw new InvalidDataException($"{exhausted} with unresolved tool errors; skip is not eligible. {PendingErrors()}");
             if (reports.Count > 0) throw new InvalidDataException($"{exhausted} with confirmed packet findings; review cannot be skipped.");

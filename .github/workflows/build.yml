@@ -38,9 +38,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Deadline checks failed' }
           dotnet run --project checks/Installer/Installer.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Installer validation checks failed' }
+  streaming:
+    name: Streaming review and restart
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet run --project checks/Streaming/Streaming.csproj -c Release
   build:
     name: Package ${{ matrix.product }}
-    needs: [verify, platform]
+    needs: [verify, platform, streaming]
     runs-on: windows-latest
     timeout-minutes: 30
     strategy:

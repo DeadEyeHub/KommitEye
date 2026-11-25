@@ -10,7 +10,7 @@ public sealed class PacketCheckpoint(string project, string repository, string b
 {
     internal sealed record PacketResult(string Report, string? FollowUp);
     private sealed record Snapshot(string Fingerprint, List<PacketResult> Packets, int FinalBudget, string? FinalReport, int FinalVersion = 0,
-        long? PacketRoundsUsed = null);
+        long? PacketRoundsUsed = null, StreamCursor? Stream = null);
     private readonly string _path = Path.Combine(AppPaths.DataDirectory, "review-progress",
         Hash(new { project, repository, branch, sha }) + ".json");
     private FileStream? _lease;
@@ -20,8 +20,9 @@ public sealed class PacketCheckpoint(string project, string repository, string b
     // Reuse validated packets when the final audit rules change.
     private const int CurrentFinalVersion = 4;
     internal string? FinalReport => _state!.FinalVersion == CurrentFinalVersion ? _state.FinalReport : null;
-    public bool HasProgress => _state?.Packets.Count > 0;
-    public int CompletedPackets => _state?.Packets.Count ?? 0;
+    internal StreamCursor? Stream => _state!.Stream;
+    public bool HasProgress => CompletedPackets > 0;
+    public int CompletedPackets => _state?.Stream?.Accepted ?? _state?.Packets.Count ?? 0;
     public Action<string>? Progress { get; init; }
 
     private static string Hash<T>(T value) =>
@@ -37,7 +38,9 @@ public sealed class PacketCheckpoint(string project, string repository, string b
         // Optional reference lookups can time out independently on each run at the same SHA.
         var evidence = new { plan.Parent, plan.Map, Packets = plan.Packets.Select(p => new { p.Path, p.Patch }) };
         var limits = profile.Parameters;
-        var fingerprint = Fingerprint(3, evidence, new { limits.DisableThinking, limits.Temperature, limits.TopP, limits.MaxTokens });
+        var settings = new { limits.DisableThinking, limits.Temperature, limits.TopP, limits.MaxTokens };
+        var streaming = plan.StreamPaths.Length > 0;
+        var fingerprint = streaming ? Fingerprint(4, new { evidence, plan.StreamPaths }, settings) : Fingerprint(3, evidence, settings);
         if (File.Exists(_path))
         {
             Snapshot saved;
@@ -45,7 +48,7 @@ public sealed class PacketCheckpoint(string project, string repository, string b
                 saved = JsonSerializer.Deserialize<Snapshot>(file) ?? throw new InvalidDataException("Empty packet checkpoint.");
             var oldReserve = limits.CrossFileMaxRounds;
             bool matches = saved.Fingerprint == fingerprint;
-            if (!matches && saved.PacketRoundsUsed == null)
+            if (!matches && !streaming && saved.PacketRoundsUsed == null)
             {
                 var parameters = JsonSerializer.SerializeToNode(profile.Parameters)!.AsObject();
                 foreach (var key in parameters.Select(p => p.Key).Where(k => k.StartsWith("Git") && k.EndsWith("TimeoutSeconds")).ToArray())
@@ -64,9 +67,12 @@ public sealed class PacketCheckpoint(string project, string repository, string b
             }
             if (matches)
             {
-                if (saved.Packets.Count > plan.Packets.Count ||
-                    (saved.Packets.Count == plan.Packets.Count && saved.FinalBudget <= 0) ||
-                    (saved.Packets.Count != plan.Packets.Count && saved.FinalReport != null))
+                var prefixCount = plan.Packets.Count;
+                var complete = streaming ? saved.Stream is { EndFile: true } cursor && cursor.File == plan.StreamPaths.Length - 1 :
+                    saved.Packets.Count == prefixCount;
+                if ((saved.Stream == null && saved.Packets.Count > prefixCount) ||
+                    (saved.Stream != null && (!streaming || saved.Packets.Count < prefixCount || saved.Packets.Count > saved.Stream.Accepted)) ||
+                    (complete && saved.FinalBudget <= 0) || (!complete && saved.FinalReport != null))
                     throw new InvalidDataException("Invalid packet checkpoint coverage.");
                 long used = saved.PacketRoundsUsed ?? 0;
                 if (saved.PacketRoundsUsed == null && saved.Packets.Count > 0)
@@ -81,17 +87,18 @@ public sealed class PacketCheckpoint(string project, string repository, string b
                 if (saved.PacketRoundsUsed == null) Save();
                 return;
             }
-            Progress?.Invoke($"Restarting packet review: checkpoint with {saved.Packets.Count} validated packets is incompatible with the current plan, model, or instructions.");
+            Progress?.Invoke($"Restarting packet review: checkpoint with {saved.Stream?.Accepted ?? saved.Packets.Count} validated packets is incompatible with the current plan, model, or instructions.");
         }
         else Progress?.Invoke("Starting packet review: no checkpoint for this project, repository, branch and commit.");
         _state = new(fingerprint, [], 0, null, PacketRoundsUsed: 0);
         Save();
     }
 
-    internal void Accept(string report, string? followUp, int finalBudget, int rounds)
+    internal void Accept(string report, string? followUp, int finalBudget, int rounds, StreamCursor? stream)
     {
-        _state!.Packets.Add(new(report, followUp));
-        _state = _state with { FinalBudget = finalBudget, PacketRoundsUsed = _state.PacketRoundsUsed + rounds };
+        // Clean streamed fragments need only the cursor, even for very long generated lines.
+        if (stream == null || report != "NO_BUGS" || followUp != null) _state!.Packets.Add(new(report, followUp));
+        _state = _state! with { FinalBudget = finalBudget, PacketRoundsUsed = _state!.PacketRoundsUsed + rounds, Stream = stream };
         Save();
     }
 
@@ -109,7 +116,16 @@ public sealed class PacketCheckpoint(string project, string repository, string b
             JsonSerializer.Serialize(file, _state);
             file.Flush(flushToDisk: true);
         }
-        File.Move(temporary, _path, overwrite: true);
+        for (int retry = 0; ; retry++)
+        {
+            try { File.Move(temporary, _path, overwrite: true); return; }
+            catch (Exception e) when (OperatingSystem.IsWindows() && retry < 5 &&
+                (e is IOException or UnauthorizedAccessException) && (e.HResult & 0xffff) is 5 or 32 or 33)
+            {
+                // A reader without FileShare.Delete can briefly prevent the atomic rename.
+                Thread.Sleep(20 * (retry + 1));
+            }
+        }
     }
 
     public void Complete()

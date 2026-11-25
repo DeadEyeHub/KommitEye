@@ -4,8 +4,19 @@ using System.Text.RegularExpressions;
 
 namespace KommitEye.Services;
 
-internal sealed record ReviewPacket(string Path, string Patch, string References);
-internal sealed record CommitReviewPlan(string? Parent, string Map, List<ReviewPacket> Packets);
+internal sealed record ReviewPacket(string Path, string Patch, string References)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public PatchPosition? Position { get; init; }
+}
+internal sealed record CommitReviewPlan(string? Parent, string Map, List<ReviewPacket> Packets) : IAsyncDisposable
+{
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal string[] StreamPaths { get; init; } = [];
+    internal int FileCount { get; init; }
+    internal PatchProbe? FirstStream { get; init; }
+    public ValueTask DisposeAsync() => FirstStream?.DisposeAsync() ?? ValueTask.CompletedTask;
+}
 
 public sealed partial class GitToolSession
 {
@@ -97,6 +108,7 @@ public sealed partial class GitToolSession
     }
     internal int ValidatedPackets { get; private set; }
     internal int PlannedPackets { get; private set; }
+    private bool _streamPending;
 
     internal void AcceptPacket(int index)
     {
@@ -107,7 +119,7 @@ public sealed partial class GitToolSession
 
     internal void FinishPlan()
     {
-        if (PlannedPackets == 0 || ValidatedPackets != PlannedPackets)
+        if (_streamPending || PlannedPackets == 0 || ValidatedPackets != PlannedPackets)
             throw new InvalidOperationException("Incomplete packet coverage.");
         DiffComplete = true;
     }
@@ -183,12 +195,38 @@ public sealed partial class GitToolSession
         for (var i = 0; i < fields.Length - 1; i += 2)
         {
             var path = fields[i + 1];
-            var diff = await GitService.ReadPageAsync(_repository, 0, (int)Math.Min(remaining, 4_000_000), token, null, _parameters.GitDiffTimeoutSeconds,
-                [.. DiffArguments(false), path]);
-            if (diff.ExitCode != 0) throw new GitException("Cannot read patch for " + path);
-            if (diff.HasMore || diff.Output.Length == 0) return null;
-            remaining -= diff.Output.Length;
-            var symbols = Declaration.Matches(diff.Output).Concat(Method.Matches(diff.Output))
+            // Keep the active Git reader if the ordinary preparation buffer fills up.
+            var limit = (int)Math.Min(remaining, 4_000_000);
+            var probeFile = new PatchProbe(ReadPatchAsync(path, token).GetAsyncEnumerator());
+            string patch;
+            var transferred = false;
+            try
+            {
+                if (!await probeFile.FitsAsync(limit))
+                {
+                    var paths = new List<string>();
+                    for (var j = i; j < fields.Length - 1; j += 2)
+                    {
+                        paths.Add(fields[j + 1]);
+                        map.AppendLine($"{fields[j]} {fields[j + 1]}");
+                    }
+                    var reason = remaining < 4_000_000 ? "combined patch preparation limit" : "per-file patch preparation limit";
+                    log?.Invoke($"Streaming diff from {path}: {reason} ({limit} characters).");
+                    PlannedPackets = packets.Count;
+                    ValidatedPackets = 0;
+                    _streamPending = true;
+                    var plan = new CommitReviewPlan(_parent, map.ToString(), packets) {
+                        StreamPaths = paths.ToArray(), FileCount = (fields.Length - 1) / 2, FirstStream = probeFile
+                    };
+                    transferred = true;
+                    return plan;
+                }
+                patch = probeFile.PreparedPatch();
+            }
+            finally { if (!transferred) await probeFile.DisposeAsync(); }
+            if (patch.Length == 0) return null;
+            remaining -= patch.Length;
+            var symbols = Declaration.Matches(patch).Concat(Method.Matches(patch))
                 .Select(m => m.Groups[1].Value).Prepend(Path.GetFileNameWithoutExtension(path))
                 .Where(s => s.Length is > 1 and <= 128).Distinct(StringComparer.Ordinal).Take(12).ToArray();
             map.AppendLine($"{fields[i]} {path} {string.Join(' ', symbols)}");
@@ -200,7 +238,7 @@ public sealed partial class GitToolSession
                 references = search?.Output.Replace(Sha + ":", "", StringComparison.Ordinal) ?? ReferenceSearchUnavailable;
                 if (search?.HasMore == true) references += "\n[partial matches; narrow git_search if needed]";
             }
-            foreach (var piece in SplitPatch(path, fields[i], diff.Output))
+            foreach (var piece in SplitPatch(path, fields[i], patch))
                 packets.Add(new(path, piece, references));
         }
         PlannedPackets = packets.Count;

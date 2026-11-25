@@ -8,6 +8,7 @@ using KommitEye.Services;
 
 var root = Directory.CreateTempSubdirectory("kommiteye-stream-").FullName;
 Environment.SetEnvironmentVariable("KOMMITEYE_DATA_DIR", Path.Combine(root, "data"));
+await SearchReplayChecks.RunAsync(root);
 await RunCase(false);
 await RunCase(true);
 // Git marks loose objects read-only on Windows. Only clear attributes in this run's temporary fixture.

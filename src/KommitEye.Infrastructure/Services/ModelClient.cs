@@ -100,6 +100,7 @@ public sealed partial class ModelClient
         PacketCheckpoint? checkpoint = null)
     {
         ValidateProfile(profile);
+        tools.ClearSearchHistory();
         var callerToken = cancellationToken;
         var parameters = profile.Parameters.Clone();
         parameters.Validate();
@@ -256,6 +257,7 @@ public sealed partial class ModelClient
                         if (reports.Count > 0) throw new InvalidDataException("Packet review incomplete with confirmed findings; review cannot be skipped.");
                         throw new ReviewBudgetException($"Git tool output budget exhausted after {packetIndex}/{Total()} packets.", await tools.DescribeBudgetEvidenceAsync(cancellationToken));
                     }
+                    tools.ClearSearchHistory();
                     messages.Clear();
                     messages.Add(new { role = "system", content = systemPrompt + "\nMandatory partitioned review protocol overrides earlier full-diff instructions. " +
                         "The host supplies the patch and tracks coverage. Use git_search, git_file and git_tree at the reviewed SHA or first parent for context. " +

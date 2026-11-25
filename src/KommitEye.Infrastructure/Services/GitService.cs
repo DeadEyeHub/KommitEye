@@ -390,19 +390,19 @@ public sealed class GitService
 
     internal static Task<GitResult> ReadPageAsync(string repositoryPath, int offset, int limit,
         CancellationToken token, Action<GitCommandTrace>? trace, int timeoutSeconds, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, null, false, timeoutSeconds, arguments);
+        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, null, false, timeoutSeconds, null, arguments);
 
-    internal static Task<GitResult> CaptureSnapshotAsync(string repositoryPath, Stream destination, int characterLimit,
+    internal static Task<GitResult> CaptureSnapshotAsync(string repositoryPath, Stream destination, int characterLimit, string? searchQuery,
         CancellationToken token, Action<GitCommandTrace>? trace, int timeoutSeconds, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, null, token, (0, characterLimit), trace, destination, false, timeoutSeconds, arguments);
+        RunCoreAsync(repositoryPath, null, token, (0, characterLimit), trace, destination, false, timeoutSeconds, searchQuery, arguments);
 
     internal static Task<GitResult> ReadBytesAsync(string repositoryPath, int offset, int limit,
         CancellationToken token, Action<GitCommandTrace>? trace, int timeoutSeconds, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, null, true, timeoutSeconds, arguments);
+        RunCoreAsync(repositoryPath, null, token, (offset, limit), trace, null, true, timeoutSeconds, null, arguments);
 
     private static Task<GitResult> RunCoreAsync(string repositoryPath, AppSettings? settings,
         CancellationToken token, (int Offset, int Limit)? page, Action<GitCommandTrace>? trace, params string[] arguments) =>
-        RunCoreAsync(repositoryPath, settings, token, page, trace, null, false, null, arguments);
+        RunCoreAsync(repositoryPath, settings, token, page, trace, null, false, null, null, arguments);
 
     private static async Task<GitResult> RunCoreAsync(
         string repositoryPath,
@@ -413,6 +413,7 @@ public sealed class GitService
         Stream? snapshotDestination,
         bool rawBytes,
         int? toolTimeoutSeconds,
+        string? searchQuery,
         params string[] arguments)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -559,6 +560,13 @@ public sealed class GitService
             {
                 try
                 {
+                    if (searchQuery != null)
+                    {
+                        more = await GitSearchSnapshot.CaptureAsync(process.StandardOutput.BaseStream, snapshotDestination!,
+                            searchQuery, page!.Value.Limit, token);
+                        if (more && !process.HasExited) process.Kill(true);
+                        return $"[Search snapshot: {snapshotDestination!.Length} bytes; truncated={more}]";
+                    }
                     var buffer = new char[4096];
                     var bytes = new byte[buffer.Length * 2];
                     var remaining = page!.Value.Limit;

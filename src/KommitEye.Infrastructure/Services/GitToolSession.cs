@@ -14,6 +14,8 @@ public sealed partial class GitToolSession : IDisposable
     private readonly HashSet<string> _verifiedFiles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _nextOffsets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<int>> _readOffsets = new(StringComparer.Ordinal);
+    private sealed record SearchReceipt(string Location, int? Next);
+    private readonly Dictionary<(string Key, int Offset), SearchReceipt> _shownSearchPages = new();
     private readonly Dictionary<string, FileStream> _snapshots = new(StringComparer.Ordinal);
     private long _diskLimit = ReadDiskLimit();
     private bool _disposed;
@@ -36,6 +38,12 @@ public sealed partial class GitToolSession : IDisposable
         _submodules.Clear();
         ClearToolCache();
         _disposed = true;
+    }
+
+    internal void ClearSearchHistory()
+    {
+        _shownSearchPages.Clear();
+        foreach (var child in _submodules.Values) child.ClearSearchHistory();
     }
 
     internal void ClearToolCache()
@@ -183,7 +191,7 @@ public sealed partial class GitToolSession : IDisposable
                 "git_changed_files" => "Page changed file names/status for reviewed SHA against first parent (root against empty tree). Start offset=0; auxiliary pages are optional.",
                 "git_diff" => "Read the reviewed commit patch, including binary/mode changes. Start offset=0 and follow next_offset until null before final report.",
                 "git_tree" => "Browse committed directory children, optionally recursive and scoped by path. Auxiliary pages need not all be read.",
-                "git_search" => "Search literal text in an allowed commit, optionally scoped by path. Returns paths, line numbers and lines; binary files are skipped. Auxiliary pages need not all be read. No matches is a successful empty result.",
+                "git_search" => "Search literal text in an allowed commit, optionally scoped by path. Returns paths and numbered matching lines. Long lines show an excerpt around the first match. Repeating a page in the same conversation returns a receipt; use next_offset for more matches. Binary files are skipped. Auxiliary pages need not all be read. No matches is a successful empty result.",
                 _ => "Read committed blob, never working files. Default text supports pages/line ranges. format=hex uses byte_offset/byte_count and returns original bytes, blob size and BOM (not a guessed encoding). Symlinks return stored link bytes, not target content."
             },
             parameters = new
@@ -259,6 +267,13 @@ public sealed partial class GitToolSession : IDisposable
             throw new ArgumentException("Provide both start_line and end_line as an inclusive range of 1 to 500 lines.");
         var key = JsonSerializer.Serialize(new { name, commit, path, query, startLine, endLine, recursive });
         var replay = _readOffsets.TryGetValue(key, out var readOffsets) && readOffsets.Contains(offset);
+        if (name == "git_search" && _shownSearchPages.TryGetValue((key, offset), out var shown))
+        {
+            return JsonSerializer.Serialize(new { status = "already_returned", commit, offset, next_offset = shown.Next,
+                first_match = shown.Location, message = shown.Next is int nextPage
+                    ? $"Use the earlier result, or request offset {nextPage} for the next page."
+                    : "Use the earlier result. This search has no further pages." });
+        }
         var expectedOffset = _nextOffsets.GetValueOrDefault(key);
         if (format != "hex" && !replay && offset != expectedOffset)
             throw new ArgumentException($"Offset {offset} has not been read. Expected offset: {expectedOffset}. Use that offset to continue, or repeat a previously returned page offset (including 0). Do not skip unread content.");
@@ -293,7 +308,7 @@ public sealed partial class GitToolSession : IDisposable
             "git_diff" => DiffArguments(false),
             "git_tree" => (recursive ? new[] { "ls-tree", "-r", "--full-tree", commit, "--" } : new[] { "ls-tree", "--full-tree", commit, "--" })
                 .Concat(path is null ? Array.Empty<string>() : new[] { path + "/" }).ToArray(),
-            "git_search" => new[] { "grep", "--no-recurse-submodules", "--no-color", "--no-ext-grep", "--no-textconv", "-I", "-n", "-F", "-e", query!, commit, "--" }
+            "git_search" => new[] { "grep", "--no-recurse-submodules", "--no-color", "--no-ext-grep", "--no-textconv", "-I", "-n", "--column", "-z", "-F", "-e", query!, commit, "--" }
                 .Concat(path is null ? Array.Empty<string>() : new[] { path }).ToArray(),
             _ => new[] { "cat-file", "blob", commit + ":" + path }
         };
@@ -320,7 +335,7 @@ public sealed partial class GitToolSession : IDisposable
                     var budget = _budgetRoot ?? this;
                     var available = budget._diskLimit - budget.SnapshotBytes;
                     var captured = await GitService.CaptureSnapshotAsync(_repository, snapshot,
-                        (int)(available / 2), token, trace, timeoutSeconds, command);
+                        (int)(available / 2), query, token, trace, timeoutSeconds, command);
                     if (captured.HasMore)
                     {
                         var reason = $"Snapshot disk budget exceeded ({_diskLimit} bytes per session; {available} bytes available). Narrow path/query or request a smaller directory. Configure KOMMITEYE_SNAPSHOT_MB (1–1024, default 64) before restarting the application if needed.";
@@ -359,6 +374,16 @@ public sealed partial class GitToolSession : IDisposable
             if (offset > characters) throw new GitException("Snapshot ended before the requested offset; review is incomplete.");
             var content = ReadSnapshot(snapshot, offset, (int)Math.Min(PageSize, characters - offset));
             if (content.Length > 0 && offset + content.Length < characters && char.IsHighSurrogate(content[^1])) content = content[..^1];
+            if (name == "git_search")
+            {
+                // Keep each location together with its excerpt. Offsets address the compact snapshot.
+                if (offset + content.Length < characters) content = content[..(content.LastIndexOf('\n') + 1)];
+                int separator = content.IndexOf('\0');
+                if (offset < characters && separator < 0) throw new GitException("Invalid search snapshot page.");
+                var end = offset + content.Length;
+                _shownSearchPages[(key, offset)] = new(separator < 0 ? "" : content[..separator], end < characters ? end : null);
+                content = content.Replace('\0', ':');
+            }
             result = new GitResult(0, content, "", offset + content.Length < characters);
         }
         else
